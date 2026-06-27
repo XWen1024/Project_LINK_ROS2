@@ -6,14 +6,15 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
-- Current phase: SLAM-first validation.
+- Current phase: SLAM-first validation; current subphase is Point-LIO 3D lidar
+  odometry evaluation.
 - Do not run Nav2 as the next milestone. Nav2 comes after SLAM/odom/TF are stable
   and after the next SLAM approach is selected.
 - Immediate order of work:
-  1. Validate lidar data and `/scan`.
-  2. Validate the TF tree.
-  3. Run the current `rf2o + EKF + slam_toolbox` flow.
-  4. Evaluate or switch to a stronger SLAM/odometry approach, likely Point-LIO.
+  1. Keep the working `rf2o + EKF + slam_toolbox` route as a known-good fallback.
+  2. Run Point-LIO Phase A: `/unilidar/cloud + /unilidar/imu -> /odom_lio`.
+  3. If Phase A is stable, run Point-LIO Phase B with `/scan -> slam_toolbox`.
+  4. Tune Point-LIO or compare the next odometry/SLAM candidate if needed.
   5. Return to Nav2 only after SLAM and odom are reliable.
 
 ## Project Summary
@@ -70,6 +71,10 @@ Nav2 configuration, message packages, and integration launch/config files.
   - `rf2o_laser_odometry rf2o_laser_odometry_node`
 - `patrol_nav2.launch.py` was fixed to use package name `wheeltec_nav2`, not
   directory name `wheeltec_robot_nav2`.
+- The previous `rf2o + EKF + slam_toolbox` route was confirmed in RViz2 with a
+  valid 2D map on 2026-06-27.
+- Point-LIO is built in the external Orin workspace `/home/wte/point_lio_ws`, and
+  the repo wrapper `point_lio_unilidar_l1.launch.py --show-args` expands.
 
 ## SLAM-First Launch Context
 
@@ -79,7 +84,36 @@ Current SLAM candidate:
 ros2 launch turn_on_wheeltec_robot rf2o_slam_toolbox.launch.py
 ```
 
-Intended data flow:
+Preferred Orin one-command bringup:
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_slam_tmux.sh --restart
+```
+
+This creates tmux session `project_link_slam` with separate windows for the
+Unitree lidar driver, pointcloud-to-laserscan plus robot description, SLAM, and
+a live topic/TF monitor. It does not start Nav2 and does not publish `/cmd_vel`.
+
+Current Point-LIO route:
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_point_lio_tmux.sh --restart
+./start_point_lio_tmux.sh --restart --with-2d-map
+```
+
+Point-LIO source is intentionally kept outside this repo at
+`/home/wte/point_lio_ws/src/point_lio`. The repo-owned integration files are:
+
+- `configs/point_lio/unilidar_l1_project_link.yaml`
+- `src/turn_on_wheeltec_robot/launch/point_lio_unilidar_l1.launch.py`
+- `start_point_lio_tmux.sh`
+
+Do not run `rf2o_slam_toolbox.launch.py` together with Point-LIO. Only one stack
+may publish `odom -> base_footprint`.
+
+Known-good fallback data flow:
 
 ```text
 /scan
@@ -87,6 +121,22 @@ Intended data flow:
 -> /odom_rf2o
 -> robot_localization EKF
 -> /odometry/filtered and odom -> base_footprint TF
+-> slam_toolbox
+-> /map and map -> odom TF
+```
+
+Point-LIO Phase A data flow:
+
+```text
+/unilidar/cloud + /unilidar/imu
+-> point_lio
+-> /odom_lio and odom -> base_footprint TF
+```
+
+Point-LIO Phase B adds:
+
+```text
+/scan + Point-LIO odom TF
 -> slam_toolbox
 -> /map and map -> odom TF
 ```

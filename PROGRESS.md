@@ -31,18 +31,22 @@
   * ROS 包名应为 `wheeltec_nav2`
   * 不是源码目录名 `wheeltec_robot_nav2`
 * `patrol_nav2.launch.py --show-args` 已能正常展开，但 Nav2 当前不是下一步目标。
+* 上一版 `rf2o + EKF + slam_toolbox` 已在 RViz2 正常出图，可作为 fallback。
+* Point-LIO 外部工作区 `/home/wte/point_lio_ws` 已在 Orin 构建通过；主仓库已新增项目配置、wrapper launch 和 tmux 启动脚本。
 
 ### 当前阶段策略
 
 现阶段固定为 **SLAM-first**：
 
 ```text
-雷达 /scan
+已跑通的 fallback：雷达 /scan
 -> TF 树
 -> rf2o 激光里程计
 -> EKF /odometry/filtered
 -> slam_toolbox /map
--> 评估或切换更好的 SLAM / odom 方案
+当前验证：/unilidar/cloud + /unilidar/imu
+-> Point-LIO /odom_lio
+-> slam_toolbox /map
 -> 再回到 Nav2
 ```
 
@@ -55,6 +59,33 @@
 ```bash
 ros2 launch turn_on_wheeltec_robot rf2o_slam_toolbox.launch.py
 ```
+
+2026-06-27 追加：根目录新增一键 tmux 启动脚本，作为当前 Orin 侧推荐入口：
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_slam_tmux.sh --restart
+```
+
+该脚本创建 `project_link_slam` tmux session，并并行启动 Unitree 雷达驱动、`unilidar_p2s.launch.py`、`robot_mode_description.launch.py`、`rf2o_slam_toolbox.launch.py` 和一个 topic/TF 监控窗口。它不启动 Nav2，也不发布 `/cmd_vel`。
+
+2026-06-27 追加：上一版 `rf2o + EKF + slam_toolbox` 已能在 RViz2 正常出图；下一阶段开始接入 Point-LIO 作为 3D LiDAR odometry。Point-LIO 源码先放在 Orin 外部实验工作区 `/home/wte/point_lio_ws`，本仓库只维护项目配置、wrapper launch、tmux 启动脚本和文档。
+
+Point-LIO 阶段 A 入口：
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_point_lio_tmux.sh --restart
+```
+
+Point-LIO 阶段 B 入口：
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_point_lio_tmux.sh --restart --with-2d-map
+```
+
+该路线固定输入 `/unilidar/cloud` 与 `/unilidar/imu`，输出统一为 `/odom_lio` 和 `odom -> base_footprint`。不要与旧 `rf2o_slam_toolbox.launch.py` 同时运行，避免重复发布 odom TF。
 
 意图数据流：
 
@@ -74,7 +105,7 @@ ros2 launch turn_on_wheeltec_robot rf2o_slam_toolbox.launch.py
 2. 启动 `robot_mode_description.launch.py`，确认 `base_footprint -> base_link -> unilidar_link -> unilidar_lidar`。
 3. 启动当前 `rf2o_slam_toolbox.launch.py`，检查 `/odom_rf2o`、`/odometry/filtered`、`map -> odom`。
 4. 如需验证轮式 `/odom`，再接 STM32 主板；不启动 Nav2，不发 `/cmd_vel`。
-5. 当前方案跑通后，再规划 Point-LIO 或其他更好的 SLAM / odom 方案。
+5. Point-LIO 阶段 A 先验证 `/odom_lio` 和注册点云；阶段 B 再接回 `slam_toolbox` 生成 `/map`。
 
 ### 局域网 RViz2 可视化约定
 

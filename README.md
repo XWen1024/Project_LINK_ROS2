@@ -14,9 +14,11 @@ voice command
 -> TTS feedback
 ```
 
-The current engineering phase is narrower: **SLAM-first validation**. Nav2 builds
-and its obvious launch issue has been fixed, but Nav2 is intentionally paused until
-SLAM, odom, and the TF tree are stable.
+The current engineering phase is narrower: **SLAM-first validation**. The previous
+`rf2o + EKF + slam_toolbox` route now works in RViz2, so the active subphase is
+Point-LIO 3D lidar odometry. Nav2 builds and its obvious launch issue has been
+fixed, but Nav2 is intentionally paused until SLAM, odom, and the TF tree are
+stable.
 
 ## Current Status
 
@@ -26,8 +28,9 @@ SLAM, odom, and the TF tree are stable.
 - Old Orin workspace backup: `/home/wte/wheeltec_robot_backup_20260627_1250`.
 - Remote repository: `git@github.com:XWen1024/Project_LINK_ROS2.git`.
 - The migrated workspace builds successfully with `colcon build --symlink-install`.
-- Current priority: validate lidar, `/scan`, TF, `rf2o + EKF + slam_toolbox`, then
-  evaluate a stronger SLAM/odometry approach such as Point-LIO.
+- Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
+- Current priority: validate Point-LIO with `/unilidar/cloud` and `/unilidar/imu`,
+  then connect it back to `slam_toolbox` for a 2D `/map`.
 
 ## Repository Layout
 
@@ -99,7 +102,7 @@ In RViz2, start with:
 - `TF`
 - `LaserScan`, topic `/scan`
 - `Map`, topic `/map`
-- `Odometry`, topic `/odom_rf2o` or `/odometry/filtered`
+- `Odometry`, topic `/odom_rf2o`, `/odometry/filtered`, or `/odom_lio`
 
 Optional DDS discovery test:
 
@@ -114,6 +117,39 @@ ros2 multicast send
 ## SLAM-First Bringup
 
 Do not start Nav2 for this phase. Bring the system up in layers.
+
+### One-Command tmux Bringup
+
+On Orin, the preferred current entrypoint is the root tmux script:
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_slam_tmux.sh --restart
+```
+
+It creates tmux session `project_link_slam` with:
+
+- `lidar`: Unitree L1 / UniLidar driver on `/dev/unilidar`
+- `robot`: split panes for `unilidar_p2s.launch.py` and
+  `robot_mode_description.launch.py`
+- `slam`: current `rf2o_slam_toolbox.launch.py`
+- `check`: live topic/TF monitor for `/scan`, `/odom_rf2o`,
+  `/odometry/filtered`, `/map`, and `map -> odom`
+
+Useful tmux controls:
+
+```text
+Ctrl-b n              next window
+Ctrl-b p              previous window
+Ctrl-b 0..9           jump to window number
+Ctrl-b w              choose a window from the list
+Ctrl-b arrow          move between panes
+Ctrl-b d              detach, keep everything running
+tmux attach -t project_link_slam
+tmux kill-session -t project_link_slam
+```
+
+Manual bringup is still useful for debugging individual layers:
 
 1. Start the robot description TF:
 
@@ -166,6 +202,59 @@ Current intended flow:
 -> slam_toolbox
 -> /map and map -> odom TF
 ```
+
+## Point-LIO Bringup
+
+The active route is Point-LIO as 3D lidar odometry. Keep the Point-LIO source
+outside this repository for now:
+
+```bash
+cd /home/wte
+mkdir -p point_lio_ws/src
+cd point_lio_ws/src
+git clone --recursive https://github.com/dfloreaa/point_lio_ros2.git point_lio
+cd /home/wte/point_lio_ws
+source /opt/ros/humble/setup.bash
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install --packages-select point_lio
+```
+
+The current Orin already has this external workspace built at `/home/wte/point_lio_ws`.
+The project environment script sources `/home/wte/point_lio_ws/install/setup.bash`
+when it exists.
+
+Phase A, Point-LIO odometry only:
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_point_lio_tmux.sh --restart
+```
+
+Phase B, Point-LIO odometry plus `slam_toolbox` 2D map:
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_point_lio_tmux.sh --restart --with-2d-map
+```
+
+The tmux session is `project_link_point_lio` and contains:
+
+- `lidar`: Unitree L1 / UniLidar driver
+- `robot`: robot description, plus `/scan` conversion when `--with-2d-map` is used
+- `lio`: `point_lio_unilidar_l1.launch.py`
+- `check`: live monitor for `/unilidar/cloud`, `/unilidar/imu`, `/odom_lio`,
+  `/point_lio/cloud_registered`, `/scan`, `/map`, and TF
+
+Manual Point-LIO launch:
+
+```bash
+cd /home/wte/wheeltec_robot
+source scripts/project_link_env.sh
+ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py
+```
+
+Do not run `rf2o_slam_toolbox.launch.py` at the same time as the Point-LIO launch.
+Only one node stack should publish `odom -> base_footprint`.
 
 ## Hardware Test Strategy
 
