@@ -1,6 +1,6 @@
 # Docs
 
-Use this folder for project handoff notes, architecture notes, wiring notes, and test procedures.
+Use this folder for project notes, architecture notes, wiring notes, and test procedures.
 
 Suggested documents:
 
@@ -13,4 +13,3 @@ manipulation.md
 voice_service.md
 roadmap.md
 ```
-

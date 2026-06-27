@@ -2,7 +2,7 @@
 
 This file is the repo-level operating context for Codex and future coding agents.
 Keep it short, current, and actionable. When the project state changes, update this
-file together with `HANDOFF.md` and `README.md`.
+file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
@@ -124,6 +124,5 @@ When changing launch flows, hardware assumptions, network settings, or milestone
 priority, update:
 
 - `AGENTS.md`
-- `HANDOFF.md`
+- `PROGRESS.md`
 - `README.md`
-

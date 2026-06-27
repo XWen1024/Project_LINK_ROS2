@@ -33,11 +33,11 @@ SLAM, odom, and the TF tree are stable.
 
 ```text
 AGENTS.md             Codex/agent operating notes and current project truth
-HANDOFF.md            Longer project handoff and roadmap notes
+PROGRESS.md           Current project status, progress, and roadmap notes
 README.md             This quick-start guide
 bringup/              Top-level integration launch notes
 configs/              Runtime configuration files
-docs/                 Project notes and handoff documents
+docs/                 Project notes and design documents
 maps/                 Curated maps only, not generated logs
 robot_description/    URDF, meshes, and robot model launch files
 scripts/              Utility scripts
