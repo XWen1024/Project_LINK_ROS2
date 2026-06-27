@@ -292,3 +292,21 @@ log/
 Keep hardware logs, rosbag recordings, generated maps, and temporary build
 artifacts out of Git unless a small sample is intentionally added for documentation
 or tests.
+
+Repository updates should flow through Git, not direct file replacement on Orin:
+
+```bash
+# Local Windows repository
+git add <changed-files>
+git commit -m "<short message>"
+git push origin main
+
+# Orin
+cd /home/wte/wheeltec_robot
+git pull --ff-only
+```
+
+Use commits as rollback points. For launch files, hardware scripts, configs, and
+procedure-changing documentation, smaller commits are preferred over one large
+mixed change. Avoid `scp` or other direct overwrite methods for repository files
+unless the user explicitly approves an emergency exception.

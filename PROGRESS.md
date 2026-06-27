@@ -33,6 +33,7 @@
 * `patrol_nav2.launch.py --show-args` 已能正常展开，但 Nav2 当前不是下一步目标。
 * 上一版 `rf2o + EKF + slam_toolbox` 已在 RViz2 正常出图，可作为 fallback。
 * Point-LIO 外部工作区 `/home/wte/point_lio_ws` 已在 Orin 构建通过；主仓库已新增项目配置、wrapper launch 和 tmux 启动脚本。
+* 2026-06-27 追加更新规范：仓库文件以 GitHub 为同步源。本地修改后先提交并 push，再在 Orin 用 `git pull --ff-only` 更新；不再用 `scp` 等方式直接替换 Orin 仓库文件。涉及 launch、配置、硬件脚本或流程文档的变更，可以提高提交频率，方便回滚。
 
 ### 当前阶段策略
 

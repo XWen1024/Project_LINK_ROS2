@@ -168,6 +168,22 @@ asks for persistent shell configuration.
 - Generated folders and logs stay out of Git: `build/`, `install/`, `log/`, bags,
   temporary maps, and hardware captures.
 
+## Update And Git Rules
+
+- Treat GitHub as the source of truth for repository files.
+- Do not update Orin repository files by directly copying over them with `scp`,
+  ad-hoc shell writes, or other out-of-band replacement methods.
+- Preferred update path:
+  1. Edit and test in the local Windows repository.
+  2. Commit the coherent change locally.
+  3. Push to GitHub.
+  4. SSH to Orin and update with `git pull --ff-only`.
+- Use smaller, more frequent commits when a change creates a useful rollback
+  point, such as launch changes, hardware bringup scripts, configs, or docs that
+  change operating procedure.
+- Do not commit generated folders, bags, temporary maps, or hardware capture
+  outputs unless the user explicitly asks for a curated sample.
+
 ## Documentation Rule
 
 When changing launch flows, hardware assumptions, network settings, or milestone
