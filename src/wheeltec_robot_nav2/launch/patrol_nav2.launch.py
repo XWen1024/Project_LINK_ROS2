@@ -31,20 +31,15 @@ def generate_launch_description():
     nav2_params_file = LaunchConfiguration(
         'params_file',
         default=os.path.join(
-            get_package_share_directory('wheeltec_robot_nav2'),
+            get_package_share_directory('wheeltec_nav2'),
             'param', 'wheeltec_params', 'param_patrol_nav2.yaml'
         )
     )
 
     slam_toolbox_config = os.path.join(
-        get_package_share_directory('wheeltec_slam_toolbox') 
-        if 'wheeltec_slam_toolbox' in get_package_share_directory.__module__ 
-        else '/home/wte/wheeltec_robot/src/wheeltec_robot_slam/wheeltec_slam_toolbox',
+        get_package_share_directory('wheeltec_slam_toolbox'),
         'config', 'mapper_params_localization.yaml'
     )
-    # 直接用绝对路径更可靠
-    slam_toolbox_config = '/home/wte/wheeltec_robot/src/wheeltec_robot_slam/wheeltec_slam_toolbox/config/mapper_params_localization.yaml'
-
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
 
     return LaunchDescription([
