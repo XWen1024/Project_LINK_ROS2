@@ -29,6 +29,33 @@ def generate_launch_description():
     odom_only = LaunchConfiguration("odom_only")
     enable_slam_toolbox = LaunchConfiguration("enable_slam_toolbox")
     use_imu_as_input = LaunchConfiguration("use_imu_as_input")
+    publish_lidar_static_tf = LaunchConfiguration("publish_lidar_static_tf")
+
+    unilidar_static_tf_node = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="point_lio_unilidar_tf_broadcaster",
+        output="screen",
+        condition=IfCondition(publish_lidar_static_tf),
+        arguments=[
+            "--x",
+            "0",
+            "--y",
+            "0",
+            "--z",
+            "0",
+            "--roll",
+            "3.14159",
+            "--pitch",
+            "0.0",
+            "--yaw",
+            "0.44041",
+            "--frame-id",
+            "unilidar_link",
+            "--child-frame-id",
+            "unilidar_lidar",
+        ],
+    )
 
     point_lio_node = Node(
         package="point_lio",
@@ -127,6 +154,15 @@ def generate_launch_description():
                 default_value="false",
                 description="Point-LIO algorithm switch; keep false for first Unitree L1 pass.",
             ),
+            DeclareLaunchArgument(
+                "publish_lidar_static_tf",
+                default_value="true",
+                description=(
+                    "Publish unilidar_link -> unilidar_lidar for Phase A. Set false "
+                    "when unilidar_p2s.launch.py is already publishing the same TF."
+                ),
+            ),
+            unilidar_static_tf_node,
             point_lio_node,
             slam_toolbox_node,
         ]

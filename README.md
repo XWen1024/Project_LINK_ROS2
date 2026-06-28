@@ -253,6 +253,11 @@ source scripts/project_link_env.sh
 ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py
 ```
 
+In Phase A, this launch publishes the static TF `unilidar_link -> unilidar_lidar`
+because `unilidar_p2s.launch.py` is not running. In Phase B, the tmux script sets
+`publish_lidar_static_tf:=false` because `unilidar_p2s.launch.py` already owns the
+same static TF.
+
 Do not run `rf2o_slam_toolbox.launch.py` at the same time as the Point-LIO launch.
 Only one node stack should publish `odom -> base_footprint`.
 

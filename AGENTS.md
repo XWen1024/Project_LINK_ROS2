@@ -133,6 +133,9 @@ Point-LIO Phase A data flow:
 -> /odom_lio and odom -> base_footprint TF
 ```
 
+Phase A also publishes the static TF `unilidar_link -> unilidar_lidar` from
+`point_lio_unilidar_l1.launch.py`, because `unilidar_p2s.launch.py` is not running.
+
 Point-LIO Phase B adds:
 
 ```text
@@ -140,6 +143,10 @@ Point-LIO Phase B adds:
 -> slam_toolbox
 -> /map and map -> odom TF
 ```
+
+In Phase B, `start_point_lio_tmux.sh --with-2d-map` sets
+`publish_lidar_static_tf:=false` for the Point-LIO launch because
+`unilidar_p2s.launch.py` already publishes the same static TF.
 
 Do not blindly launch overlapping TF publishers. In particular, avoid running
 multiple EKF/odom publishers that all claim `odom -> base_footprint`.

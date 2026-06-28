@@ -88,6 +88,8 @@ cd /home/wte/wheeltec_robot
 
 该路线固定输入 `/unilidar/cloud` 与 `/unilidar/imu`，输出统一为 `/odom_lio` 和 `odom -> base_footprint`。不要与旧 `rf2o_slam_toolbox.launch.py` 同时运行，避免重复发布 odom TF。
 
+2026-06-28 追加：Point-LIO Phase A 现在由 `point_lio_unilidar_l1.launch.py` 自己补发 `unilidar_link -> unilidar_lidar` 静态 TF；Phase B 使用 `--with-2d-map` 时由 `unilidar_p2s.launch.py` 发布该 TF，Point-LIO wrapper 会关闭重复 TF。
+
 意图数据流：
 
 ```text

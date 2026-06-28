@@ -178,9 +178,9 @@ tmux new-session -d -s "$SESSION" -n lidar
 lidar_cmd="cd '$UNILIDAR_WS' && export ROS_DOMAIN_ID='$ROS_DOMAIN_ID' ROS_LOCALHOST_ONLY='$ROS_LOCALHOST_ONLY' && source /opt/ros/humble/setup.bash && source install/setup.bash && ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args -p port:='$LIDAR_PORT'"
 description_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && ros2 launch turn_on_wheeltec_robot robot_mode_description.launch.py"
 scan_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && ros2 launch turn_on_wheeltec_robot unilidar_p2s.launch.py"
-lio_launch_args="enable_slam_toolbox:=false"
+lio_launch_args="enable_slam_toolbox:=false publish_lidar_static_tf:=true"
 if [[ "$WITH_2D_MAP" -eq 1 ]]; then
-  lio_launch_args="enable_slam_toolbox:=true"
+  lio_launch_args="enable_slam_toolbox:=true publish_lidar_static_tf:=false"
 fi
 lio_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && sleep 6 && ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py $lio_launch_args"
 check_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && while true; do clear; date; echo; echo 'Nodes:'; ros2 node list 2>/dev/null | sort || true; echo; for topic in /unilidar/cloud /unilidar/imu /odom_lio /point_lio/cloud_registered /scan /map; do echo \"=== \$topic ===\"; timeout 3 ros2 topic hz \"\$topic\" 2>&1 | tail -n 4 || true; done; echo; echo 'TF odom -> base_footprint:'; timeout 3 ros2 run tf2_ros tf2_echo odom base_footprint 2>&1 | head -n 14 || true; if [[ '$WITH_2D_MAP' -eq 1 ]]; then echo; echo 'TF map -> odom:'; timeout 3 ros2 run tf2_ros tf2_echo map odom 2>&1 | head -n 14 || true; fi; echo; echo 'Ctrl-C stops this monitor only. Use tmux kill-session -t $SESSION to stop all panes.'; sleep 5; done"
