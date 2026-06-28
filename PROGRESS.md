@@ -90,6 +90,8 @@ cd /home/wte/wheeltec_robot
 
 2026-06-28 追加：Point-LIO Phase A 现在由 `point_lio_unilidar_l1.launch.py` 自己补发 `unilidar_link -> unilidar_lidar` 静态 TF；Phase B 使用 `--with-2d-map` 时由 `unilidar_p2s.launch.py` 发布该 TF，Point-LIO wrapper 会关闭重复 TF。
 
+2026-06-28 追加：旧 `rf2o + EKF + slam_toolbox` 脚本复测可正常出图，确认雷达硬件、Unitree driver、`/unilidar/cloud`、`/unilidar/imu`、`/scan` 链路可用。Point-LIO 一键脚本已改为等待真实 cloud/IMU 消息后再启动 Point-LIO，并暴露 `LIDAR_TF_ROLL/PITCH/YAW` 用于调整点云方向。注意：`./start_point_lio_tmux.sh --restart` 是 Phase A，只验证 `/odom_lio` 和注册点云；要出 2D `/map` 必须使用 `--with-2d-map`。
+
 意图数据流：
 
 ```text

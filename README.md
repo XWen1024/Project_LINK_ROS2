@@ -100,6 +100,8 @@ In RViz2, start with:
 
 - `Fixed Frame`: `base_footprint` before SLAM, then `map` after SLAM is running
 - `TF`
+- `RobotModel`: `Description Source` = `Topic`, `Description Topic` =
+  `/robot_description`
 - `LaserScan`, topic `/scan`
 - `Map`, topic `/map`
 - `Odometry`, topic `/odom_rf2o`, `/odometry/filtered`, or `/odom_lio`
@@ -230,6 +232,10 @@ cd /home/wte/wheeltec_robot
 ./start_point_lio_tmux.sh --restart
 ```
 
+Phase A does not start `/scan`, `slam_toolbox`, or `/map`. It is only for
+checking `/unilidar/cloud`, `/unilidar/imu`, `/odom_lio`, and
+`/point_lio/cloud_registered`.
+
 Phase B, Point-LIO odometry plus `slam_toolbox` 2D map:
 
 ```bash
@@ -257,6 +263,21 @@ In Phase A, this launch publishes the static TF `unilidar_link -> unilidar_lidar
 because `unilidar_p2s.launch.py` is not running. In Phase B, the tmux script sets
 `publish_lidar_static_tf:=false` because `unilidar_p2s.launch.py` already owns the
 same static TF.
+
+The tmux script waits for real `/unilidar/cloud` and `/unilidar/imu` messages
+before starting Point-LIO. This avoids judging the stack while the lidar driver is
+visible in the ROS graph but has not produced data yet.
+
+To tune point-cloud direction, override the static TF values when starting tmux:
+
+```bash
+LIDAR_TF_YAW=0.0 ./start_point_lio_tmux.sh --restart --with-2d-map
+LIDAR_TF_YAW=3.14159 ./start_point_lio_tmux.sh --restart --with-2d-map
+```
+
+Use `LIDAR_TF_ROLL`, `LIDAR_TF_PITCH`, and `LIDAR_TF_YAW` for orientation
+corrections. Use `LIDAR_TF_X`, `LIDAR_TF_Y`, and `LIDAR_TF_Z` only for small frame
+offset corrections between `unilidar_link` and the driver frame `unilidar_lidar`.
 
 Do not run `rf2o_slam_toolbox.launch.py` at the same time as the Point-LIO launch.
 Only one node stack should publish `odom -> base_footprint`.

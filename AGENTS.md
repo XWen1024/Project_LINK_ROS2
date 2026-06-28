@@ -103,6 +103,11 @@ cd /home/wte/wheeltec_robot
 ./start_point_lio_tmux.sh --restart --with-2d-map
 ```
 
+`./start_point_lio_tmux.sh --restart` is Phase A only and is not expected to
+publish `/scan` or `/map`. Use `--with-2d-map` when the user wants a 2D map.
+The script waits for real `/unilidar/cloud` and `/unilidar/imu` messages before
+launching Point-LIO.
+
 Point-LIO source is intentionally kept outside this repo at
 `/home/wte/point_lio_ws/src/point_lio`. The repo-owned integration files are:
 
@@ -147,6 +152,10 @@ Point-LIO Phase B adds:
 In Phase B, `start_point_lio_tmux.sh --with-2d-map` sets
 `publish_lidar_static_tf:=false` for the Point-LIO launch because
 `unilidar_p2s.launch.py` already publishes the same static TF.
+
+Point-cloud direction is tuned through `LIDAR_TF_ROLL`, `LIDAR_TF_PITCH`, and
+`LIDAR_TF_YAW` on the tmux script. Defaults are roll `3.14159`, pitch `0.0`, yaw
+`0.44041`. Keep these values synchronized between Point-LIO Phase A and Phase B.
 
 Do not blindly launch overlapping TF publishers. In particular, avoid running
 multiple EKF/odom publishers that all claim `odom -> base_footprint`.
