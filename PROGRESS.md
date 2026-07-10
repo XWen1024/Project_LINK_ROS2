@@ -1,5 +1,55 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## Current Status - 2026-07-11
+
+### C63A base integrated into current rf2o SLAM bringup
+
+* `start_slam_tmux.sh --restart` now treats the C63A base as part of the normal
+  known-good SLAM route.
+* New default tmux layout includes a `base` window running:
+  `ros2 launch turn_on_wheeltec_robot base_serial.launch.py`
+* The `slam` window waits for real `/odom` and `/scan` messages before launching
+  `rf2o_slam_toolbox.launch.py`.
+* The monitor now checks `/odom`, `/imu/data_raw`, `/PowerVoltage`, `/scan`,
+  `/odom_rf2o`, `/odometry/filtered`, `/map`, `odom -> base_footprint`, and
+  `map -> odom`.
+* `--no-base` remains available for lidar-only debugging.
+* Intended current data flow:
+
+```text
+/odom from C63A base + /scan from Unitree lidar
+-> rf2o_laser_odometry
+-> /odom_rf2o
+-> robot_localization EKF
+-> /odometry/filtered and odom -> base_footprint TF
+-> slam_toolbox
+-> /map and map -> odom TF
+```
+
+Point-LIO remains an evaluation route. Do not force Point-LIO raw 6D odometry
+into planar `base_footprint` until a projection/adapter or fusion design is
+implemented and validated.
+
+### C63A base handoff update
+
+* C63A ROS serial link was verified on Orin:
+  * USB: `1a86:55d4`
+  * alias: `/dev/wheeltec_controller -> /dev/ttyACM0`
+  * baud: `115200`
+* After power cycling the C63A board, return data was confirmed:
+  * `/odom`: about `20 Hz`
+  * `/imu/data_raw`: about `20 Hz`
+  * `/PowerVoltage`: about `26.27 V` during the check
+* A small `/cmd_vel` test produced odom movement, confirming Orin -> C63A command
+  path and C63A -> Orin return path.
+* Added differential keyboard teleop helpers:
+  * `scripts/c63_keyboard_teleop.sh`
+  * `scripts/ssh_c63_keyboard_teleop.ps1`
+* Added handoff doc for the next integrator:
+  * `docs/C63A_BASE_AND_SLAM_HANDOFF.md`
+* Continue to keep Nav2 paused. Next real integration goal is base odom + lidar +
+  Point-LIO/SLAM stability, not autonomous navigation.
+
 ## Current Status - 2026-06-27
 
 本小节记录仓库迁移和当前调试策略的最新状态；下方原始交接内容继续保留，作为项目长期背景和路线图。

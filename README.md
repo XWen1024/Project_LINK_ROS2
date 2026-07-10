@@ -22,12 +22,15 @@ stable.
 
 ## Current Status
 
-- Date: 2026-06-27.
+- Date: 2026-07-11.
 - Main onboard computer: Jetson Orin Nano.
 - Orin workspace: `/home/wte/wheeltec_robot`.
 - Old Orin workspace backup: `/home/wte/wheeltec_robot_backup_20260627_1250`.
 - Remote repository: `git@github.com:XWen1024/Project_LINK_ROS2.git`.
 - The migrated workspace builds successfully with `colcon build --symlink-install`.
+- C63A base serial link is confirmed on `/dev/wheeltec_controller` at `115200`;
+  `/odom`, `/imu/data_raw`, and `/PowerVoltage` return at about `20 Hz` after the
+  C63A board is healthy.
 - Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
 - Current priority: validate Point-LIO with `/unilidar/cloud` and `/unilidar/imu`,
   then connect it back to `slam_toolbox` for a 2D `/map`.
@@ -45,6 +48,12 @@ maps/                 Curated maps only, not generated logs
 robot_description/    URDF, meshes, and robot model launch files
 scripts/              Utility scripts
 src/                  ROS 2 packages owned by this workspace
+```
+
+Important handoff document:
+
+```text
+docs/C63A_BASE_AND_SLAM_HANDOFF.md
 ```
 
 Important ROS 2 packages:
@@ -131,12 +140,21 @@ cd /home/wte/wheeltec_robot
 
 It creates tmux session `project_link_slam` with:
 
+- `base`: C63A base serial node, publishing `/odom`, `/imu/data_raw`, and
+  `/PowerVoltage`
 - `lidar`: Unitree L1 / UniLidar driver on `/dev/unilidar`
 - `robot`: split panes for `unilidar_p2s.launch.py` and
   `robot_mode_description.launch.py`
 - `slam`: current `rf2o_slam_toolbox.launch.py`
-- `check`: live topic/TF monitor for `/scan`, `/odom_rf2o`,
-  `/odometry/filtered`, `/map`, and `map -> odom`
+- `check`: live topic/TF monitor for C63A base topics, `/scan`, `/odom_rf2o`,
+  `/odometry/filtered`, `/map`, `odom -> base_footprint`, and `map -> odom`
+
+`./start_slam_tmux.sh --restart` now waits for real `/odom` and `/scan` messages
+before starting the SLAM window. For lidar-only debugging, use:
+
+```bash
+./start_slam_tmux.sh --restart --no-base
+```
 
 Useful tmux controls:
 
@@ -153,13 +171,22 @@ tmux kill-session -t project_link_slam
 
 Manual bringup is still useful for debugging individual layers:
 
-1. Start the robot description TF:
+1. Start the C63A base serial node and confirm base return data:
+
+   ```bash
+   ros2 launch turn_on_wheeltec_robot base_serial.launch.py
+   ros2 topic hz /odom
+   ros2 topic hz /imu/data_raw
+   ros2 topic echo --once /PowerVoltage
+   ```
+
+2. Start the robot description TF:
 
    ```bash
    ros2 launch turn_on_wheeltec_robot robot_mode_description.launch.py
    ```
 
-2. Start lidar and confirm `/scan`.
+3. Start lidar and confirm `/scan`.
 
    For Unitree L1 / UniLidar, the vendor SDK stays outside this repository. Start
    the external driver so it publishes `/unilidar/cloud`, then run:
@@ -177,15 +204,16 @@ Manual bringup is still useful for debugging individual layers:
    ros2 topic hz /scan
    ```
 
-3. Start the current SLAM candidate:
+4. Start the current SLAM candidate:
 
    ```bash
    ros2 launch turn_on_wheeltec_robot rf2o_slam_toolbox.launch.py
    ```
 
-4. Verify topics and TF:
+5. Verify topics and TF:
 
    ```bash
+   ros2 topic hz /odom
    ros2 topic hz /odom_rf2o
    ros2 topic hz /odometry/filtered
    ros2 topic hz /map
@@ -196,9 +224,22 @@ Manual bringup is still useful for debugging individual layers:
 Current intended flow:
 
 ```text
+/odom from C63A base + /scan from Unitree lidar
+-> rf2o_laser_odometry
+-> /odom_rf2o
+-> robot_localization EKF
+-> /odometry/filtered and odom -> base_footprint TF
+-> slam_toolbox
+-> /map and map -> odom TF
+```
+
+Expanded:
+
+```text
 /scan
 -> rf2o_laser_odometry
 -> /odom_rf2o
+/odom
 -> robot_localization EKF
 -> /odometry/filtered and odom -> base_footprint TF
 -> slam_toolbox
@@ -289,6 +330,12 @@ Only one node stack should publish `odom -> base_footprint`.
   current SLAM launch. This can test whether laser odometry is viable.
 - Full current SLAM check: connect lidar plus STM32 base controller so `/odom` is
   available. Do not start Nav2 and do not publish `/cmd_vel`.
+- C63A base handoff and keyboard teleop details are in
+  `docs/C63A_BASE_AND_SLAM_HANDOFF.md`.
+- Differential keyboard teleop helper:
+  `scripts/ssh_c63_keyboard_teleop.ps1` starts `/tmp/c63_keyboard_teleop.sh` on
+  Orin over SSH. It publishes `/cmd_vel`, uses dead-man behavior, and exits with
+  a stop command.
 - Safety default: lift the wheels, disconnect motor power, or keep a person ready
   at the E-stop before any command that could move the base.
 

@@ -43,6 +43,8 @@ Nav2 configuration, message packages, and integration launch/config files.
 - Previous Orin workspace backup: `/home/wte/wheeltec_robot_backup_20260627_1250`.
 - Base controller: STM32-based Wheeltec chassis controller.
 - Chassis: differential AGV base, current configured `car_mode: mini_diff`.
+- C63A ROS serial link: `/dev/wheeltec_controller` at `115200`; observed as
+  `1a86:55d4` on `/dev/ttyACM0`.
 - Lidar: Unitree L1 / UniLidar for the target SLAM route; current Wheeltec config
   also contains `lidar_type: ls_M10P_uart`.
 - Manipulator: SO-101, currently outside this ROS workspace's main SLAM task.
@@ -75,6 +77,15 @@ Nav2 configuration, message packages, and integration launch/config files.
   valid 2D map on 2026-06-27.
 - Point-LIO is built in the external Orin workspace `/home/wte/point_lio_ws`, and
   the repo wrapper `point_lio_unilidar_l1.launch.py --show-args` expands.
+- C63A base serial return data was confirmed on 2026-07-11 after power cycling:
+  `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
+- The C63A base is integrated into the known-good rf2o SLAM bringup:
+  `start_slam_tmux.sh --restart` now starts `base_serial.launch.py`, waits for
+  `/odom` and `/scan`, and then starts `rf2o + EKF + slam_toolbox`.
+- Differential keyboard teleop helper exists at
+  `scripts/ssh_c63_keyboard_teleop.ps1` and `scripts/c63_keyboard_teleop.sh`.
+- C63A base and SLAM handoff is documented in
+  `docs/C63A_BASE_AND_SLAM_HANDOFF.md`.
 
 ## SLAM-First Launch Context
 
@@ -92,8 +103,10 @@ cd /home/wte/wheeltec_robot
 ```
 
 This creates tmux session `project_link_slam` with separate windows for the
-Unitree lidar driver, pointcloud-to-laserscan plus robot description, SLAM, and
-a live topic/TF monitor. It does not start Nav2 and does not publish `/cmd_vel`.
+Unitree lidar driver, C63A base serial node, pointcloud-to-laserscan plus robot
+description, SLAM, and a live topic/TF monitor. It waits for real `/odom` and
+`/scan` messages before starting SLAM. It does not start Nav2 and does not
+publish `/cmd_vel`. Use `--no-base` only for lidar-only debugging.
 
 Current Point-LIO route:
 
@@ -121,9 +134,22 @@ may publish `odom -> base_footprint`.
 Known-good fallback data flow:
 
 ```text
+/odom from C63A base + /scan from Unitree lidar
+-> rf2o_laser_odometry
+-> /odom_rf2o
+-> robot_localization EKF
+-> /odometry/filtered and odom -> base_footprint TF
+-> slam_toolbox
+-> /map and map -> odom TF
+```
+
+Expanded:
+
+```text
 /scan
 -> rf2o_laser_odometry
 -> /odom_rf2o
+/odom
 -> robot_localization EKF
 -> /odometry/filtered and odom -> base_footprint TF
 -> slam_toolbox
@@ -159,6 +185,8 @@ Point-cloud direction is tuned through `LIDAR_TF_ROLL`, `LIDAR_TF_PITCH`, and
 
 Do not blindly launch overlapping TF publishers. In particular, avoid running
 multiple EKF/odom publishers that all claim `odom -> base_footprint`.
+Do not treat Point-LIO's raw 6D pose as the planar `base_footprint` until a
+projection/adapter or fusion design is explicitly implemented and validated.
 
 ## Network Visualization Defaults
 
