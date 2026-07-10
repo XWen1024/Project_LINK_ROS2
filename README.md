@@ -277,9 +277,15 @@ autonomy readiness.
    ./start_slam_tmux.sh --stop
    ```
 
-5. Start a base/lidar/rf2o/EKF-only bringup, without mapping-mode
-   `slam_toolbox`. Do not run `start_slam_tmux.sh` together with
-   `patrol_nav2.launch.py`, because both would try to own `map -> odom`.
+5. Start the base/lidar/rf2o/EKF-only prerequisite stack, without mapping-mode
+   `slam_toolbox`:
+
+   ```bash
+   ./start_nav_prereq_tmux.sh --restart
+   ```
+
+   Do not run `start_slam_tmux.sh` together with `patrol_nav2.launch.py`,
+   because both would try to own `map -> odom`.
 
 6. Start Nav2 against the saved map:
 

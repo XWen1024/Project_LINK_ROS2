@@ -14,7 +14,8 @@ file together with `PROGRESS.md` and `README.md`.
 - Immediate order of work:
   1. Keep the working `rf2o + EKF + slam_toolbox` route as a known-good fallback.
   2. Create/save a small real map for `/home/wte/maps/patrol_map`.
-  3. For Nav2, run base/lidar/rf2o/EKF without mapping-mode slam_toolbox.
+  3. For Nav2, run `./start_nav_prereq_tmux.sh --restart` to start
+     base/lidar/rf2o/EKF without mapping-mode slam_toolbox.
   4. Start `patrol_nav2.launch.py` with the saved map and verify lifecycle,
      costmaps, localization, and planning before allowing motion.
   5. Test a tiny RViz goal only with wheels lifted or a person at the E-stop.
@@ -200,7 +201,7 @@ The intended first navigation loop is deliberately small:
 map with current rf2o SLAM
 -> save /home/wte/maps/patrol_map.yaml and /home/wte/maps/patrol_map pose graph
 -> stop mapping-mode slam_toolbox
--> run base/lidar/rf2o/EKF only
+-> run ./start_nav_prereq_tmux.sh --restart
 -> run patrol_nav2.launch.py
 -> in RViz set pose/goal and test a very short path
 ```

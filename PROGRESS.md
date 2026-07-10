@@ -15,8 +15,10 @@
   `patrol_nav2.launch.py`, because the former includes mapping-mode
   `slam_toolbox` and the latter starts localization-mode `slam_toolbox`; running
   both can duplicate `map -> odom`.
-* Next engineering step is to provide or use a base/lidar/rf2o/EKF-only bringup
-  for navigation, then start `patrol_nav2.launch.py` against a saved map.
+* Added a base/lidar/rf2o/EKF-only navigation prerequisite entrypoint:
+  `./start_nav_prereq_tmux.sh --restart`.
+* After this prerequisite stack is healthy, start `patrol_nav2.launch.py`
+  against a saved map.
 
 ### C63A base integrated into current rf2o SLAM bringup
 
