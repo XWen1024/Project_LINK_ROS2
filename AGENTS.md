@@ -7,20 +7,18 @@ file together with `PROGRESS.md` and `README.md`.
 ## Current Priority
 
 - Current phase: SLAM-first validation has a known-good rf2o fallback; the next
-  user-requested milestone is a safety-gated minimum A-to-B Nav2 loop in RViz.
-- Nav2 may be tested only after mapping/odom/TF are confirmed for the current
-  run and the robot is physically safe. Do not treat this as full autonomous
-  navigation readiness.
+  user-requested milestone is a direct RViz A-to-B motion loop with no Nav2,
+  planning, costmaps, or obstacle avoidance.
+- The minimum loop is: keep SLAM/TF running, click A and B in RViz, then publish
+  simple `/cmd_vel` commands to drive directly toward B.
 - Immediate order of work:
-  1. Keep the working `rf2o + EKF + slam_toolbox` route as a known-good fallback.
-  2. Create/save a small real map for `/home/wte/maps/patrol_map`.
-  3. For Nav2, run `./start_nav_prereq_tmux.sh --restart` to start
-     base/lidar/rf2o/EKF without mapping-mode slam_toolbox.
-  4. Start `patrol_nav2.launch.py` with the saved map and verify lifecycle,
-     costmaps, localization, and planning before allowing motion.
-  5. Test a tiny RViz goal only with wheels lifted or a person at the E-stop.
-  6. Continue Point-LIO evaluation separately; do not mix it with this minimal
-     Nav2 loop unless an explicit adapter/fusion design is implemented.
+  1. Keep the working `rf2o + EKF + slam_toolbox` route as the pose source.
+  2. Use `scripts/rviz_ab_drive.py --enable-motion` only when the robot is safe.
+  3. In RViz, publish two `/clicked_point` points: A as a start sanity check and
+     B as the target.
+  4. Verify `/cmd_vel`, TF, and odom behavior at low speed.
+  5. Continue Point-LIO evaluation separately; do not mix it into this direct
+     A-to-B loop unless an explicit adapter/fusion design is implemented.
 
 ## Project Summary
 
@@ -193,30 +191,33 @@ multiple EKF/odom publishers that all claim `odom -> base_footprint`.
 Do not treat Point-LIO's raw 6D pose as the planar `base_footprint` until a
 projection/adapter or fusion design is explicitly implemented and validated.
 
-## Minimum A-To-B Nav2 Loop Notes
+## Direct RViz A-To-B Loop Notes
 
-The intended first navigation loop is deliberately small:
+This project currently has a tiny direct-drive test script:
 
-```text
-map with current rf2o SLAM
--> save /home/wte/maps/patrol_map.yaml and /home/wte/maps/patrol_map pose graph
--> stop mapping-mode slam_toolbox
--> run ./start_nav_prereq_tmux.sh --restart
--> run patrol_nav2.launch.py
--> in RViz set pose/goal and test a very short path
+```bash
+source /home/wte/wheeltec_robot/scripts/project_link_env.sh
+python3 /home/wte/wheeltec_robot/scripts/rviz_ab_drive.py --enable-motion
 ```
 
-Do not run `start_slam_tmux.sh` at the same time as `patrol_nav2.launch.py`,
-because `start_slam_tmux.sh` includes mapping-mode `slam_toolbox`, while
-`patrol_nav2.launch.py` starts localization-mode `slam_toolbox`. Running both can
-create duplicate `map -> odom` ownership.
+It subscribes to `/clicked_point`, treats the first RViz point as A/start sanity
+check, treats the second point as B/target, looks up `map -> base_footprint`, and
+publishes `/cmd_vel` directly. It does no path planning and no obstacle
+avoidance.
 
-Before sending a real goal, verify:
+Use this only with the current SLAM stack already running:
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_slam_tmux.sh --restart
+```
+
+Before enabling motion, verify:
 
 - `/map`, `/scan`, `/odom`, `/odometry/filtered`, and `/cmd_vel` topics exist.
 - TF is unique and continuous: `map -> odom -> base_footprint -> base_link`.
-- Nav2 lifecycle nodes are active.
-- Global and local costmaps render in RViz.
+- RViz Fixed Frame is `map`.
+- RViz has the `Publish Point` tool publishing to `/clicked_point`.
 - The robot is physically safe for motion.
 
 ## Network Visualization Defaults

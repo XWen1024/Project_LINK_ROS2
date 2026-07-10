@@ -2,23 +2,21 @@
 
 ## Current Status - 2026-07-11
 
-### Minimum A-to-B Nav2 loop requested
+### Direct RViz A-to-B loop requested
 
-* User's next desired minimum closed loop is:
-  * scan/build a small map,
-  * view it in RViz,
-  * set a start/current pose and a nearby goal,
-  * let the robot plan and move from A to B.
-* This is a safety-gated Nav2 validation, not full autonomous navigation
-  readiness.
-* Important constraint: do not run `start_slam_tmux.sh` together with
-  `patrol_nav2.launch.py`, because the former includes mapping-mode
-  `slam_toolbox` and the latter starts localization-mode `slam_toolbox`; running
-  both can duplicate `map -> odom`.
-* Added a base/lidar/rf2o/EKF-only navigation prerequisite entrypoint:
-  `./start_nav_prereq_tmux.sh --restart`.
-* After this prerequisite stack is healthy, start `patrol_nav2.launch.py`
-  against a saved map.
+* User clarified the next desired minimum closed loop is not Nav2:
+  * keep the current SLAM/TF pose source running,
+  * view the map in RViz,
+  * click A and B in RViz,
+  * directly publish `/cmd_vel` to move from A toward B.
+* No path planning, no obstacle avoidance, no costmaps, and no Nav2 lifecycle
+  stack are desired for this test.
+* Added `scripts/rviz_ab_drive.py`:
+  * subscribes to `/clicked_point`,
+  * treats first click as A/start sanity check,
+  * treats second click as B/target,
+  * uses TF `map -> base_footprint`,
+  * publishes low-speed differential `/cmd_vel` only with `--enable-motion`.
 
 ### C63A base integrated into current rf2o SLAM bringup
 
