@@ -14,11 +14,11 @@ voice command
 -> TTS feedback
 ```
 
-The current engineering phase is narrower: **SLAM-first validation**. The previous
-`rf2o + EKF + slam_toolbox` route now works in RViz2, so the active subphase is
-Point-LIO 3D lidar odometry. Nav2 builds and its obvious launch issue has been
-fixed, but Nav2 is intentionally paused until SLAM, odom, and the TF tree are
-stable.
+The current engineering phase is narrower: **SLAM-first validation with a
+safety-gated A-to-B navigation check**. The previous `rf2o + EKF + slam_toolbox`
+route now works in RViz2 and C63A base odom is integrated. The next requested
+minimum loop is to build a small map, load it, and send a short RViz Nav2 goal
+only after odom, TF, localization, and costmaps are healthy.
 
 ## Current Status
 
@@ -32,8 +32,8 @@ stable.
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` return at about `20 Hz` after the
   C63A board is healthy.
 - Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
-- Current priority: validate Point-LIO with `/unilidar/cloud` and `/unilidar/imu`,
-  then connect it back to `slam_toolbox` for a 2D `/map`.
+- Current priority: minimum A-to-B Nav2 loop using the known-good rf2o/EKF odom
+  chain and a saved map. Point-LIO remains a separate odometry evaluation route.
 
 ## Repository Layout
 
@@ -60,7 +60,7 @@ Important ROS 2 packages:
 
 ```text
 turn_on_wheeltec_robot        Base serial, robot description, lidar, EKF, SLAM launch
-wheeltec_nav2                 Nav2 launch/config package; not current test target
+wheeltec_nav2                 Nav2 launch/config package for the A-to-B check
 wheeltec_slam_toolbox         slam_toolbox configs and wrappers
 rf2o_laser_odometry           Laser-scan odometry
 serial                        Vendored serial library
@@ -245,6 +245,66 @@ Expanded:
 -> slam_toolbox
 -> /map and map -> odom TF
 ```
+
+## Minimum A-To-B Nav2 Check
+
+The first navigation goal is deliberately small: make a map, load it, and send a
+nearby RViz goal. This proves the planning/control loop without claiming full
+autonomy readiness.
+
+1. Build a small map with the known-good SLAM route:
+
+   ```bash
+   cd /home/wte/wheeltec_robot
+   ./start_slam_tmux.sh --restart
+   ```
+
+2. In RViz, confirm `/map`, `/scan`, TF, and robot model look sane. Move slowly
+   with manual teleop only when the robot is physically safe.
+
+3. Save both map formats expected by the current navigation launch:
+
+   ```bash
+   mkdir -p /home/wte/maps
+   ros2 run nav2_map_server map_saver_cli -f /home/wte/maps/patrol_map
+   ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph "{filename: '/home/wte/maps/patrol_map'}"
+   ls -lh /home/wte/maps/patrol_map*
+   ```
+
+4. Stop mapping before starting navigation:
+
+   ```bash
+   ./start_slam_tmux.sh --stop
+   ```
+
+5. Start a base/lidar/rf2o/EKF-only bringup, without mapping-mode
+   `slam_toolbox`. Do not run `start_slam_tmux.sh` together with
+   `patrol_nav2.launch.py`, because both would try to own `map -> odom`.
+
+6. Start Nav2 against the saved map:
+
+   ```bash
+   source /home/wte/wheeltec_robot/scripts/project_link_env.sh
+   ros2 launch wheeltec_nav2 patrol_nav2.launch.py \
+     map:=/home/wte/maps/patrol_map.yaml \
+     slam_map:=/home/wte/maps/patrol_map
+   ```
+
+7. Before sending a real RViz goal, verify:
+
+   ```bash
+   ros2 topic hz /scan
+   ros2 topic hz /odom
+   ros2 topic hz /odometry/filtered
+   ros2 topic echo --once /cmd_vel
+   ros2 run tf2_ros tf2_echo map odom
+   ros2 run tf2_ros tf2_echo odom base_footprint
+   ros2 lifecycle nodes
+   ```
+
+In RViz, use the `2D Pose Estimate` tool only if localization needs an initial
+pose nudge, then use `Nav2 Goal` for a very nearby target. Keep the first goal
+short and low-risk.
 
 ## Point-LIO Bringup
 

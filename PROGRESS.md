@@ -2,6 +2,22 @@
 
 ## Current Status - 2026-07-11
 
+### Minimum A-to-B Nav2 loop requested
+
+* User's next desired minimum closed loop is:
+  * scan/build a small map,
+  * view it in RViz,
+  * set a start/current pose and a nearby goal,
+  * let the robot plan and move from A to B.
+* This is a safety-gated Nav2 validation, not full autonomous navigation
+  readiness.
+* Important constraint: do not run `start_slam_tmux.sh` together with
+  `patrol_nav2.launch.py`, because the former includes mapping-mode
+  `slam_toolbox` and the latter starts localization-mode `slam_toolbox`; running
+  both can duplicate `map -> odom`.
+* Next engineering step is to provide or use a base/lidar/rf2o/EKF-only bringup
+  for navigation, then start `patrol_nav2.launch.py` against a saved map.
+
 ### C63A base integrated into current rf2o SLAM bringup
 
 * `start_slam_tmux.sh --restart` now treats the C63A base as part of the normal

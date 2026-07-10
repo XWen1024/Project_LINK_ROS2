@@ -6,16 +6,20 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
-- Current phase: SLAM-first validation; current subphase is Point-LIO 3D lidar
-  odometry evaluation.
-- Do not run Nav2 as the next milestone. Nav2 comes after SLAM/odom/TF are stable
-  and after the next SLAM approach is selected.
+- Current phase: SLAM-first validation has a known-good rf2o fallback; the next
+  user-requested milestone is a safety-gated minimum A-to-B Nav2 loop in RViz.
+- Nav2 may be tested only after mapping/odom/TF are confirmed for the current
+  run and the robot is physically safe. Do not treat this as full autonomous
+  navigation readiness.
 - Immediate order of work:
   1. Keep the working `rf2o + EKF + slam_toolbox` route as a known-good fallback.
-  2. Run Point-LIO Phase A: `/unilidar/cloud + /unilidar/imu -> /odom_lio`.
-  3. If Phase A is stable, run Point-LIO Phase B with `/scan -> slam_toolbox`.
-  4. Tune Point-LIO or compare the next odometry/SLAM candidate if needed.
-  5. Return to Nav2 only after SLAM and odom are reliable.
+  2. Create/save a small real map for `/home/wte/maps/patrol_map`.
+  3. For Nav2, run base/lidar/rf2o/EKF without mapping-mode slam_toolbox.
+  4. Start `patrol_nav2.launch.py` with the saved map and verify lifecycle,
+     costmaps, localization, and planning before allowing motion.
+  5. Test a tiny RViz goal only with wheels lifted or a person at the E-stop.
+  6. Continue Point-LIO evaluation separately; do not mix it with this minimal
+     Nav2 loop unless an explicit adapter/fusion design is implemented.
 
 ## Project Summary
 
@@ -188,6 +192,32 @@ multiple EKF/odom publishers that all claim `odom -> base_footprint`.
 Do not treat Point-LIO's raw 6D pose as the planar `base_footprint` until a
 projection/adapter or fusion design is explicitly implemented and validated.
 
+## Minimum A-To-B Nav2 Loop Notes
+
+The intended first navigation loop is deliberately small:
+
+```text
+map with current rf2o SLAM
+-> save /home/wte/maps/patrol_map.yaml and /home/wte/maps/patrol_map pose graph
+-> stop mapping-mode slam_toolbox
+-> run base/lidar/rf2o/EKF only
+-> run patrol_nav2.launch.py
+-> in RViz set pose/goal and test a very short path
+```
+
+Do not run `start_slam_tmux.sh` at the same time as `patrol_nav2.launch.py`,
+because `start_slam_tmux.sh` includes mapping-mode `slam_toolbox`, while
+`patrol_nav2.launch.py` starts localization-mode `slam_toolbox`. Running both can
+create duplicate `map -> odom` ownership.
+
+Before sending a real goal, verify:
+
+- `/map`, `/scan`, `/odom`, `/odometry/filtered`, and `/cmd_vel` topics exist.
+- TF is unique and continuous: `map -> odom -> base_footprint -> base_link`.
+- Nav2 lifecycle nodes are active.
+- Global and local costmaps render in RViz.
+- The robot is physically safe for motion.
+
 ## Network Visualization Defaults
 
 Use the same ROS 2 network environment on Orin and the Ubuntu RViz2 computer:
@@ -227,6 +257,16 @@ asks for persistent shell configuration.
   change operating procedure.
 - Do not commit generated folders, bags, temporary maps, or hardware capture
   outputs unless the user explicitly asks for a curated sample.
+
+## Encoding And Shell Rules
+
+- Markdown and project notes are UTF-8. The repo enforces this with
+  `.gitattributes` and `.editorconfig`.
+- When using Windows PowerShell to read Chinese text, explicitly use UTF-8:
+  `Get-Content -Encoding UTF8 <file>`. If terminal output is still garbled, run
+  `chcp 65001` first.
+- Prefer `rg` for searching text. When a shell displays mojibake, verify the file
+  bytes/content with UTF-8 before assuming the document is corrupted.
 
 ## Documentation Rule
 
