@@ -131,7 +131,10 @@ private:
     projected_odom.header.stamp = message->header.stamp;
     projected_odom.header.frame_id = odom_frame_;
     projected_odom.child_frame_id = base_frame_;
-    projected_odom.pose.pose = tf2::toMsg(odom_to_base_planar);
+    projected_odom.pose.pose.position.x = odom_to_base_planar.getOrigin().x();
+    projected_odom.pose.pose.position.y = odom_to_base_planar.getOrigin().y();
+    projected_odom.pose.pose.position.z = odom_to_base_planar.getOrigin().z();
+    projected_odom.pose.pose.orientation = tf2::toMsg(odom_to_base_planar.getRotation());
     projected_odom.pose.covariance = message->pose.covariance;
     projected_odom.twist.twist.linear.x = message->twist.twist.linear.x;
     projected_odom.twist.twist.linear.y = message->twist.twist.linear.y;
