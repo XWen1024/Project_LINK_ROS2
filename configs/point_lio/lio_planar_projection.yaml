@@ -9,7 +9,7 @@
 
     # This is a fixed alignment between the Point-LIO world frame and the
     # project odom frame. Tune only yaw after a straight-line chassis test.
-    odom_to_lio_odom_yaw: 0.0
+    odom_to_lio_odom_yaw: 1.135
 
     # Seeded from the inverse of the installed URDF chain:
     # base_footprint -> base_link -> unilidar_link -> unilidar_imu.
