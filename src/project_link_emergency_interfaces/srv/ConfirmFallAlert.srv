@@ -1,0 +1,5 @@
+string alert_id
+bool confirmed
+---
+bool success
+string message

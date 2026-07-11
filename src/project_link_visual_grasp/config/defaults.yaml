@@ -1,0 +1,33 @@
+visual_grasp:
+  ros__parameters:
+    robot_namespace: /visual_grasp
+    camera_device: /dev/RgbCam
+    camera_width: 1280
+    camera_height: 720
+    camera_fps: 15.0
+    preview_fps: 10.0
+    jpeg_quality: 75
+    model_path: /home/wte/models/yolov8s-worldv2.pt
+    yolo_conf_threshold: 0.15
+    yolo_max_lost_frames: 15
+    yolo_infer_interval_sec: 0.0
+    yolo_ema_alpha: 0.6
+    robot_port: /dev/so101
+    robot_id: so101_slave
+    auto_connect_arm: false
+    pan_gain: 25.0
+    tilt_gain: 15.0
+    approach_step: 1.5
+    centering_threshold: 0.04
+    grasp_area_threshold: 0.45
+    gripper_open: 70.0
+    gripper_close: 0.0
+    move_fps: 15.0
+    arrive_threshold: 2.0
+    move_step_limit: 3.0
+    move_timeout_sec: 15.0
+    center_offset_x: 143.0
+    center_offset_y: 61.0
+    runtime_config_path: ~/.config/project_link/visual_grasp/overrides.yaml
+    runtime_positions_path: ~/.config/project_link/visual_grasp/positions.json
+    action_default_timeout_sec: 45.0

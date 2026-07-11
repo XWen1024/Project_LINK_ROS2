@@ -2,6 +2,46 @@
 
 ## Current Status - 2026-07-11
 
+### Guarded ROS 2 voice direct-drive implementation
+
+* Added `project_link_voice_interfaces/DriveToPoint.action` and the
+  `project_link_voice` ament Python package.
+* `voice_dialog_node` uses serial wakeup, 16 kHz FunASR `fsmn-vad` endpointing,
+  faster-whisper recognition, named-waypoint matching, and an explicit local
+  confirmation state machine. Cloud LLM chat is optional and isolated from
+  motion control.
+* `ab_drive_server` is the sole voice direct-drive publisher. It rejects goals
+  unless `enable_motion:=true`, requires `map -> base_footprint`, limits range,
+  watchdogs command output, and zeroes velocity on cancellation, TF loss,
+  timeout, completion, or shutdown.
+* Voice direct-drive remains experimental: it must not run with RViz direct
+  drive motion at the same time, and it must not be used without a physical
+  E-stop, clear floor, and supervised low-speed test.
+* Added the first voice-to-grasp orchestration path: guarded fetch phrases such
+  as `去厨房拿药瓶` resolve to a named waypoint plus YOLO target, then after direct
+  drive success the node can prepare SO-101 and call
+  `/visual_grasp/track_and_grasp`. `enable_visual_grasp:=false` remains the
+  default until the visual grasp stack and manipulation pose are hardware-safe.
+
+### Second-camera fall response module
+
+* Added `project_link_emergency_interfaces` with `AssessFall.action`,
+  `CaptureStill.srv`, and `ConfirmFallAlert.srv` for voice-to-fall-response
+  integration.
+* Added `project_link_fall_response` with:
+  * `fall_camera_node`, which owns the second camera device, default
+    `/dev/FallCam`, and returns in-memory JPEG stills.
+  * `fall_response_node`, which serializes fall checks, calls SiliconFlow vision
+    chat completions with a strict JSON contract, publishes the fixed fall alert
+    text to `/voice/tts_text`, waits 15 seconds for confirmation/cancellation,
+    and then pushes a Feishu bot alert on confirmation or timeout.
+* The fall module never publishes `/cmd_vel`, never controls SO-101, and never
+  stores captured photos. Missing cloud or Feishu credentials fail closed.
+* Added `docs/VOICE_FALL_DETECTION_INTEGRATION.md` for the audio project:
+  wake-word source localization and turn happen on the audio side, then the
+  audio side sends `/fall_detection/assess_fall` and answers
+  `/fall_detection/confirm_alert` with the feedback `alert_id`.
+
 ### Point-LIO Phase A coordinate architecture implemented
 
 * Point-LIO no longer publishes its raw 6D pose directly as
@@ -1542,3 +1582,19 @@ SLAM / odom 稳定
 → 抓取闭环稳定
 → 端到端递药稳定
 ```
+
+---
+
+## 17. YOLO World 远程视觉抓取迁移（待 Orin 硬件验证）
+
+已新增本地 `project_link_visual_grasp` 无头 ROS 2 节点和
+`project_link_visual_grasp_gui` Ubuntu 客户端。Orin 负责 V4L2 摄像头、YOLO-World、
+SO-101 与 2D 视觉伺服；GUI 负责远端标注画面、参数、姿态、夹爪、扭矩、跟踪和手动
+抓取控制。云端 VLM 路线没有迁入。
+
+- [x] 定义 `SetTarget`、`SetGripper`、`VisualGraspStatus` 与 `TrackAndGrasp` action
+- [x] 实现 Orin JPEG 状态/发现/控制接口和运行时参数覆盖文件
+- [x] 实现 Ubuntu 基础浅色 PySide6 远端操作界面
+- [x] 提供 Orin tmux 启动脚本、部署说明和导航调度接口文档
+- [ ] 在 Orin 验证 Jetson PyTorch、YOLO-World、`/dev/RgbCam`、`/dev/so101` 和模型路径
+- [ ] 在安全条件下验证人工跟踪→逼近→抓取，再验证导航后 `TrackAndGrasp` action

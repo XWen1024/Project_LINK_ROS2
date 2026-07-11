@@ -62,6 +62,14 @@ Nav2 configuration, message packages, and integration launch/config files.
 - `rf2o_laser_odometry`: laser-scan odometry package.
 - `serial`: vendored serial library in `src/depend/serial_ros2`.
 - `wheeltec_robot_msg`: custom Wheeltec messages.
+- `project_link_voice_interfaces`: `DriveToPoint.action` for voice direct-drive.
+- `project_link_emergency_interfaces`: fall-response Action/Service interfaces.
+- `project_link_voice`: FunASR VAD voice dialog, local TTS bridge, and guarded
+  direct-drive nodes.
+- `project_link_fall_response`: second-camera fall assessment, SiliconFlow
+  vision call, TTS alert, and Feishu bot notification bridge.
+- `project_link_visual_grasp`: headless Orin YOLO-World camera, SO-101 control,
+  and visual-servo ROS services/actions.
 
 ## Known Good State
 
@@ -296,3 +304,72 @@ priority, update:
 - `AGENTS.md`
 - `PROGRESS.md`
 - `README.md`
+
+## Guarded Voice Direct-Drive Integration
+
+- Workspace-owned production packages: `project_link_voice_interfaces` defines
+  `DriveToPoint.action`; `project_link_voice` contains FunASR VAD, voice dialog,
+  TTS bridge, and guarded direct-drive nodes.
+- This is an experimental extension of the direct RViz A-to-B milestone, not a
+  Nav2 replacement. It has no obstacle avoidance, costmaps, or path planning.
+- `ros2 launch project_link_voice voice_direct_drive.launch.py` defaults to
+  `enable_motion:=false`. Do not set it true until `/map`, `/scan`, `/odom`, and
+  `map -> base_footprint` are healthy and a physical E-stop is available.
+- Do not run `ab_drive_server` concurrently with
+  `scripts/rviz_ab_drive.py --enable-motion`; both publish `/cmd_vel`.
+- FunASR `fsmn-vad` replaces RMS recording cutoff. Keep its model and the
+  faster-whisper model pre-downloaded on Orin; use an Orin-specific virtual
+  environment with a JetPack-compatible PyTorch build.
+- Voice motion is local and guarded: only named map waypoints, explicit
+  `确认前往`, then the `DriveToPoint` Action. `停止`/`取消` cancels and publishes
+  zero velocity, but it does not replace a physical E-stop.
+
+## Voice-To-Grasp Task Integration
+
+- `voice_dialog_node` can parse guarded fetch commands such as `去厨房拿药瓶`.
+  It maps the named waypoint to direct drive and maps spoken object aliases to
+  YOLO-World targets, for example `药瓶=medicine bottle`.
+- The fetch chain is only valid after the direct-drive Action succeeds and the
+  base has stopped at a verified safe manipulation pose. Then it may call
+  `/visual_grasp/connect_arm`, `/visual_grasp/set_torque`, and
+  `/visual_grasp/track_and_grasp`.
+- `enable_visual_grasp:=false` is the default. Do not set it true unless the
+  visual grasp stack is running, SO-101 space is clear, and physical E-stop or
+  power-cut procedure is ready.
+
+## Voice-Triggered Fall Response
+
+- `project_link_fall_response` is a separate emergency module. It uses the
+  second camera device, default `/dev/FallCam`, and must not share the visual
+  grasp camera `/dev/RgbCam`.
+- The audio project owns wake-word detection, sound-source localization, and any
+  controlled turn toward the person. The fall module only starts after audio
+  calls `/fall_detection/assess_fall`.
+- If SiliconFlow returns strict JSON with `fall_suspected=true` above threshold,
+  the module publishes `您看起来摔倒了，正在为您呼叫紧急联系人。` on
+  `/voice/tts_text`, waits 15 seconds for `/fall_detection/confirm_alert`, and
+  pushes a Feishu bot alert on confirmation or timeout.
+- Missing `SILICONFLOW_API_KEY` or Feishu bot environment values must fail
+  closed. Do not commit API keys, webhook URLs, signing secrets, captured
+  images, or cloud response logs.
+- The module must not publish `/cmd_vel`, start Nav2, control SO-101, or replace
+  a physical E-stop/emergency procedure. See
+  `docs/VOICE_FALL_DETECTION_INTEGRATION.md` before changing the audio contract.
+
+## Headless YOLO World Visual Grasp
+
+- `project_link_visual_grasp` owns the Orin V4L2 camera, local YOLO-World model,
+  and SO-101 serial connection. `project_link_visual_grasp_gui` is Ubuntu-only;
+  it must never open the camera, load Ultralytics/LeRobot, or command serial
+  hardware directly.
+- Do not import or migrate `VisualTracker/main.py`, `src/vlm_detector.py`, or
+  the cloud/VLM pipeline. This ROS integration is local YOLO-World only.
+- Start `scripts/start_visual_grasp_tmux.sh` separately after any required SLAM
+  bringup. It must not start Nav2, publish `/cmd_vel`, or become another TF/odom
+  publisher.
+- Runtime GUI tuning and recorded poses live under
+  `~/.config/project_link/visual_grasp/` on Orin. Do not write runtime changes
+  into Git-tracked YAML files on the robot.
+- Before torque, manual approach, or `TrackAndGrasp` action tests, verify a clear
+  workspace and physical E-stop/power-cut procedure. The scheduler action is
+  only valid after navigation reaches a safe manipulation pose.

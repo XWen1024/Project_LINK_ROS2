@@ -1,0 +1,11 @@
+# Install in a dedicated Jetson Orin virtual environment after ROS 2 Humble setup.
+# Install a JetPack/CUDA-compatible torch wheel first; do not replace it with generic pip torch.
+funasr
+faster-whisper>=1.0.0
+numpy>=1.23.0
+pyaudio>=0.2.13
+pyserial>=3.5
+openai>=1.0.0
+pygame>=2.1.0
+websockets>=12.0
+requests>=2.28.0

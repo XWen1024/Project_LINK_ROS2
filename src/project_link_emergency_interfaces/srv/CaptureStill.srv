@@ -1,0 +1,7 @@
+---
+bool success
+string message
+uint8[] jpeg_data
+uint32 width
+uint32 height
+builtin_interfaces/Time stamp

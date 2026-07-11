@@ -1,0 +1,9 @@
+geometry_msgs/PoseStamped target
+---
+uint8 status
+string message
+---
+string state
+float32 distance_remaining
+float32 linear_velocity
+float32 angular_velocity

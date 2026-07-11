@@ -459,3 +459,179 @@ Use commits as rollback points. For launch files, hardware scripts, configs, and
 procedure-changing documentation, smaller commits are preferred over one large
 mixed change. Avoid `scp` or other direct overwrite methods for repository files
 unless the user explicitly approves an emergency exception.
+
+## Guarded Voice Direct Drive (Experimental)
+
+`project_link_voice` and `project_link_voice_interfaces` add a production-oriented
+voice path for the current SLAM-first milestone. It is **not Nav2** and has no
+path planning or obstacle avoidance.
+
+The path is:
+
+```text
+serial wake event -> FunASR fsmn-vad endpointing -> faster-whisper
+-> local named-waypoint match -> spoken confirmation -> /voice/drive_to_point Action
+-> guarded low-speed /cmd_vel
+```
+
+Safety rules:
+
+- `enable_motion:=false` is the default. In this mode confirmations are dry-run
+  only and the drive Action server rejects every goal.
+- Voice commands only accept saved `map` waypoints. `确认前往` is mandatory after
+  the target is repeated; `停止` or `取消` cancels the active Action and emits zero
+  velocity commands.
+- `ab_drive_server` stops on cancel, TF loss, action timeout, watchdog expiry,
+  process shutdown, or goal completion. A physical E-stop is still mandatory.
+- Do not launch it alongside `scripts/rviz_ab_drive.py --enable-motion`, because
+  both can publish `/cmd_vel`.
+
+### Orin setup
+
+```bash
+cd /home/wte/wheeltec_robot
+source /opt/ros/humble/setup.bash
+python3 -m venv --system-site-packages .venv-voice
+source .venv-voice/bin/activate
+# First install the JetPack/CUDA-compatible PyTorch wheel for this Orin.
+pip install -r src/project_link_voice/requirements-orin.txt
+colcon build --symlink-install --packages-select project_link_voice_interfaces project_link_voice
+source scripts/project_link_env.sh
+```
+
+Pre-download models while the Orin has network access, then preserve the model
+cache for offline operation:
+
+```bash
+python3 -c "from funasr import AutoModel; AutoModel(model='fsmn-vad', device='cuda')"
+python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cuda', compute_type='float16')"
+```
+
+Bring up the known-good SLAM stack first. Verify `/map`, `/scan`, `/odom`, and
+`map -> base_footprint`, then start dry-run voice integration:
+
+```bash
+./start_slam_tmux.sh --restart
+source scripts/project_link_env.sh
+ros2 launch project_link_voice voice_direct_drive.launch.py
+```
+
+To run only the voice service on a local test machine, without SLAM, direct
+drive, or `/cmd_vel`, use the pure test launch. It defaults to `COM9`,
+`115200`, and `wakeup_only:=true`, so it prints all serial frames and reports
+only `aiui_event` frames as wakeups:
+
+```bash
+ros2 launch project_link_voice voice_pure_test.launch.py
+```
+
+Useful overrides:
+
+```bash
+ros2 launch project_link_voice voice_pure_test.launch.py wakeup_serial_port:=COM9
+ros2 launch project_link_voice voice_pure_test.launch.py wakeup_match_text:=
+ros2 launch project_link_voice voice_pure_test.launch.py wakeup_only:=false
+```
+
+`voice_direct_drive.launch.py` also has `pure_test_mode:=auto` in its default
+parameter file. If it starts and sees no `/map`, `/scan`, or `/odom` topics, it
+prints a console banner and stays in non-motion pure test behavior. If those
+SLAM/base topics appear later, it leaves pure test mode automatically.
+
+For a supervised motion test only, with clear floor, low speed, and a person at
+the physical E-stop:
+
+```bash
+ros2 launch project_link_voice voice_direct_drive.launch.py enable_motion:=true
+```
+
+For a supervised fetch test after the robot has a verified safe manipulation
+pose, start the visual grasp stack separately, then permit both the base direct
+drive and the SO-101 grasp Action:
+
+```bash
+./scripts/start_visual_grasp_tmux.sh --restart
+ros2 launch project_link_voice voice_direct_drive.launch.py \
+  enable_motion:=true \
+  enable_visual_grasp:=true
+```
+
+Supported local phrases include commands like `去厨房拿药瓶`. The voice node
+parses the named waypoint and maps common spoken object names to YOLO-World
+targets, for example `药瓶 -> medicine bottle` and `水杯 -> red cup`. The flow is:
+
+```text
+confirm fetch command
+-> direct drive to the named map waypoint
+-> stop at the safe grasp pose
+-> /visual_grasp/connect_arm
+-> /visual_grasp/set_torque true
+-> /visual_grasp/track_and_grasp
+```
+
+`enable_visual_grasp:=false` is the default. In that mode the robot can stop at
+the waypoint and announce that grasping is disabled, but it will not connect the
+arm, enable torque, or call `TrackAndGrasp`.
+
+The included local TTS bridge subscribes to `/voice/tts_text` and defaults to
+`espeak-ng -v zh`. Install/configure an approved Chinese TTS command before
+hardware tests. The optional SiliconFlow chat path reads `SILICONFLOW_API_KEY`
+from the environment and can only produce text replies; it is never a motion
+control path. Override deployed waypoint coordinates in a user-owned JSON file
+using the `waypoints_override_file` parameter; do not modify packaged defaults
+on the Orin.
+
+### FunVAD hardware audio fixtures
+
+The repository contains the capture contract at
+`src/project_link_voice/test/audio/README.md` and an offline evaluator:
+
+```bash
+PYTHONPATH=src/project_link_voice python3 src/project_link_voice/tools/evaluate_vad.py path/to/capture.wav
+```
+
+Capture the prescribed quiet, fan, chassis-noise, distant-speech, and long-pause
+clips on the real Orin USB microphone before enabling motion. No private or
+uncurated audio recordings should be committed.
+
+## 跌倒识别与飞书告警（第二摄像头）
+
+`project_link_fall_response` 是独立的跌倒响应模块：它使用第二路摄像头
+`/dev/FallCam` 拍一张 JPEG，调用硅基流动视觉模型按严格 JSON 判断是否疑似跌倒，
+再通过 `/voice/tts_text` 播报固定提示。若语音项目在 15 秒内确认，则立即推送飞书
+机器人告警；若取消则不推送；若 15 秒无响应，则自动推送到配置的飞书群。
+
+```bash
+source /home/wte/wheeltec_robot/scripts/project_link_env.sh
+ros2 launch project_link_fall_response fall_response.launch.py camera_device:=/dev/FallCam
+```
+
+飞书 webhook 和签名密钥只从环境变量读取，不写入仓库配置。未配置完整时会安全失败，
+不会推送。该模块不发布 `/cmd_vel`，不控制底盘或机械臂；
+音频项目需要先完成唤醒词、声源定位和受控转向，再调用
+`/fall_detection/assess_fall`。详细对接契约见
+`docs/VOICE_FALL_DETECTION_INTEGRATION.md`。
+
+## YOLO World 远程抓取（Orin 无 GUI）
+
+`project_link_visual_grasp` 是独立的本地 YOLO-World + SO-101 视觉伺服栈：Orin
+独占 USB 摄像头、模型推理和机械臂串口；Ubuntu 电脑只运行
+`project_link_visual_grasp_gui`，通过 ROS 2 显示标注 JPEG、设置参数并发送控制。
+它不使用豆包/VLM 云端识别，不启动 Nav2，不发布 `/cmd_vel`，也不改变当前 SLAM/TF
+链路。
+
+完成 Orin 依赖、模型和稳定设备名配置后，分别启动：
+
+```bash
+# Orin
+cd /home/wte/wheeltec_robot
+./scripts/start_visual_grasp_tmux.sh --restart
+
+# Ubuntu GUI（与 Orin 使用相同 ROS_DOMAIN_ID=42）
+ros2 run project_link_visual_grasp_gui visual_grasp_gui
+```
+
+使用 GUI 的自动发现列表选择 Orin。参数即时应用，并保存在 Orin 的
+`~/.config/project_link/visual_grasp/`，不会改写仓库配置。接口、调度 action 与部署
+检查见 `docs/VISUAL_GRASP_INTERFACE.md` 和 `docs/VISUAL_GRASP_ORIN_SETUP.md`。先确认
+机械臂空间安全并保留物理急停，再连接、启用扭矩或开始抓取。

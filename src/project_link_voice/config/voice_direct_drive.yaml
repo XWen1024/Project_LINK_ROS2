@@ -1,0 +1,70 @@
+voice_dialog_node:
+  ros__parameters:
+    # Start with false. Set true only during a supervised, physically safe motion test.
+    enable_motion: false
+    enable_audio: true
+    wakeup_only: false
+    # auto enters pure test mode when no /map, /scan, or /odom topics are present.
+    # Use "on" to force voice-only testing, or "off" for production-only behavior.
+    pure_test_mode: auto
+    pure_test_auto_delay_sec: 3.0
+    keyboard_wakeup: false
+    wakeup_serial_port: /dev/ttyUSB0
+    wakeup_serial_baud: 115200
+    # Empty string accepts any serial data. COM9 AIUI modules also emit heartbeat frames,
+    # so the default only treats AIUI event frames as wakeups.
+    wakeup_match_text: aiui_event
+    target_frame: map
+    base_frame: base_footprint
+    # Example: /home/wte/.ros/project_link_voice/waypoints.json
+    waypoints_override_file: ""
+    funvad_model: fsmn-vad
+    funvad_device: cuda
+    audio_sample_rate: 16000
+    audio_chunk_ms: 200
+    audio_pre_roll_ms: 400
+    audio_no_speech_timeout_sec: 8.0
+    audio_max_utterance_sec: 12.0
+    audio_min_speech_sec: 0.30
+    whisper_model: small
+    whisper_device: cuda
+    whisper_compute_type: float16
+    # Optional non-safety-critical chat. Read the key only from SILICONFLOW_API_KEY.
+    enable_llm_chat: false
+    llm_base_url: https://api.siliconflow.cn/v1
+    llm_model: Qwen/Qwen3-8B
+    # Keep false until the robot is at a verified safe grasp pose and SO-101 space is clear.
+    enable_visual_grasp: false
+    visual_grasp_timeout_sec: 45.0
+    visual_grasp_prepare_arm: true
+    visual_grasp_action_name: /visual_grasp/track_and_grasp
+    visual_grasp_connect_service: /visual_grasp/connect_arm
+    visual_grasp_torque_service: /visual_grasp/set_torque
+    visual_grasp_stop_service: /visual_grasp/stop
+    grasp_target_aliases:
+      - 药瓶=medicine bottle
+      - 药=medicine bottle
+      - 水杯=red cup
+      - 杯子=cup
+
+voice_tts_node:
+  ros__parameters:
+    tts_enabled: true
+    # Replace with the approved Volcano/local TTS adapter command when deployed.
+    tts_command: espeak-ng -v zh
+
+ab_drive_server:
+  ros__parameters:
+    cmd_vel_topic: /cmd_vel
+    target_frame: map
+    base_frame: base_footprint
+    control_rate_hz: 20.0
+    goal_tolerance_m: 0.08
+    max_goal_distance_m: 3.0
+    max_motion_sec: 30.0
+    max_linear_mps: 0.08
+    max_angular_rps: 0.35
+    linear_gain: 0.45
+    angular_gain: 1.2
+    stop_linear_angle_rad: 0.8
+    command_watchdog_sec: 0.5

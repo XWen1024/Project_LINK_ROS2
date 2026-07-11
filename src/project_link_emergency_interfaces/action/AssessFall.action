@@ -1,0 +1,16 @@
+string request_id
+string context
+---
+bool fall_suspected
+float32 confidence
+string reason
+bool alert_started
+string alert_id
+bool notification_attempted
+bool notification_success
+string message
+---
+string alert_id
+string stage
+float32 confidence
+string message

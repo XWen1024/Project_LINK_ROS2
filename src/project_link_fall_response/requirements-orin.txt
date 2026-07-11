@@ -1,0 +1,2 @@
+# Optional runtime dependencies for the Orin deployment.
+# Prefer the JetPack-provided OpenCV build if available.
