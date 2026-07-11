@@ -96,6 +96,9 @@ Nav2 configuration, message packages, and integration launch/config files.
 - The projected `odom -> base_footprint` TF has verified `z=0`, roll `0`, and
   pitch `0`. Its observed yaw is about `-65 degrees` before the required
   straight-line calibration; do not treat that yaw as a final chassis heading.
+- The initial yaw alignment was set to `1.135 rad` on 2026-07-11. In Point-LIO
+  Phase B, `/scan`, `/map`, and `map -> odom -> base_footprint` were verified;
+  the projected stationary yaw is now about `-0.5 degrees`.
 - C63A base serial return data was confirmed on 2026-07-11 after power cycling:
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
 - The C63A base is integrated into the known-good rf2o SLAM bringup:

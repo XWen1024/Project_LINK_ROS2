@@ -357,6 +357,12 @@ cd /home/wte/wheeltec_robot
 ./start_point_lio_tmux.sh --restart --with-2d-map
 ```
 
+The initial Phase B bringup was verified on 2026-07-11 without Nav2 or motion
+commands: `/scan` runs at about `9.6 Hz`, `/map` publishes an occupancy grid,
+and `map -> odom -> base_footprint` is continuous. The initial yaw alignment is
+`odom_to_lio_odom_yaw: 1.135`; refine it only after a real straight-line chassis
+check.
+
 The tmux session is `project_link_point_lio` and contains:
 
 - `lidar`: Unitree L1 / UniLidar driver

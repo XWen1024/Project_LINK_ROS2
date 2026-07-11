@@ -76,6 +76,11 @@
   projected yaw is about `-65 degrees` while stationary. Perform the low-speed
   straight-line test, then tune only `odom_to_lio_odom_yaw` and, if needed, the
   versioned LIO-to-base offsets in `configs/point_lio/lio_planar_projection.yaml`.
+* The initial stationary correction was applied as
+  `odom_to_lio_odom_yaw: 1.135`. Point-LIO Phase B was then brought up without
+  Nav2 or `/cmd_vel`: `/scan` ran at about `9.6 Hz`, `/map` published a real
+  occupancy grid, and `map -> odom -> base_footprint` was continuous. The
+  projected yaw is now about `-0.5 degrees` while stationary.
 
 ### Direct RViz A-to-B loop requested
 
