@@ -24,6 +24,18 @@
 * Phase A acceptance is now: real cloud, IMU, raw odom, planar odom, registered
   cloud, unique TF, 60-second stationary check, and low-speed straight/turn
   calibration. Do not start `--with-2d-map` before those checks pass.
+* Initial Orin bringup passed on commit `f647484`:
+  * `/unilidar/cloud`: about `9.8 Hz`
+  * `/unilidar/imu`: about `249 Hz`
+  * `/odom_lio_raw`, `/odom_lio`, `/point_lio/cloud_registered`: about `9.7-9.9 Hz`
+  * raw odom has one `point_lio_mapping` publisher; planar odom has one
+    `lio_planar_projection` publisher.
+  * raw TF retains the expected 3D LIO attitude; projected
+    `odom -> base_footprint` is verified at `z=0`, roll `0`, pitch `0`.
+* The remaining Phase A calibration item is chassis heading: the initial
+  projected yaw is about `-65 degrees` while stationary. Perform the low-speed
+  straight-line test, then tune only `odom_to_lio_odom_yaw` and, if needed, the
+  versioned LIO-to-base offsets in `configs/point_lio/lio_planar_projection.yaml`.
 
 ### Direct RViz A-to-B loop requested
 

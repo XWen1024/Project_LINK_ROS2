@@ -80,6 +80,14 @@ Nav2 configuration, message packages, and integration launch/config files.
   valid 2D map on 2026-06-27.
 - Point-LIO is built in the external Orin workspace `/home/wte/point_lio_ws`, and
   the repo wrapper `point_lio_unilidar_l1.launch.py --show-args` expands.
+- The Point-LIO planar projection package was built and brought up on Orin on
+  2026-07-11. Phase A publishes real `/unilidar/cloud` at about 9.8 Hz,
+  `/unilidar/imu` at about 249 Hz, `/odom_lio_raw`, `/odom_lio`, and
+  `/point_lio/cloud_registered` at lidar cadence. The raw output has a single
+  Point-LIO publisher and the planar output has a single adapter publisher.
+- The projected `odom -> base_footprint` TF has verified `z=0`, roll `0`, and
+  pitch `0`. Its observed yaw is about `-65 degrees` before the required
+  straight-line calibration; do not treat that yaw as a final chassis heading.
 - C63A base serial return data was confirmed on 2026-07-11 after power cycling:
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
 - The C63A base is integrated into the known-good rf2o SLAM bringup:

@@ -343,6 +343,12 @@ roll and pitch near zero. Tune the versioned
 `configs/point_lio/lio_planar_projection.yaml` only after a stationary and
 straight-line chassis check.
 
+The initial Orin Phase A bringup was verified on 2026-07-11: cloud is about
+`9.8 Hz`, IMU about `249 Hz`, and raw/projected odom plus registered cloud are
+at lidar cadence. The projected TF correctly has zero z/roll/pitch. Its initial
+yaw is about `-65 degrees`, so perform a low-speed straight-line calibration and
+adjust only `odom_to_lio_odom_yaw` before any Phase B map test.
+
 Phase B, Point-LIO odometry plus `slam_toolbox` 2D map, is blocked until the
 Phase A checks above pass:
 
