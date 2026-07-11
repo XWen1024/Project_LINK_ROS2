@@ -11,7 +11,12 @@ setup(
         ("share/" + package_name, ["package.xml", "requirements-orin.txt"]),
         (
             "share/" + package_name + "/launch",
-            ["launch/voice_direct_drive.launch.py", "launch/voice_pure_test.launch.py"],
+            [
+                "launch/voice_direct_drive.launch.py",
+                "launch/voice_pure_test.launch.py",
+                "launch/voice_demo_motion.launch.py",
+                "launch/llm_motion_demo.launch.py",
+            ],
         ),
         ("share/" + package_name + "/config", ["config/voice_direct_drive.yaml"]),
         ("share/" + package_name + "/data", ["data/default_waypoints.json"]),
@@ -25,6 +30,7 @@ setup(
     entry_points={
         "console_scripts": [
             "voice_dialog_node = project_link_voice.voice_dialog_node:main",
+            "llm_motion_demo_node = project_link_voice.llm_motion_demo_node:main",
             "ab_drive_server = project_link_voice.ab_drive_server:main",
             "voice_tts_node = project_link_voice.tts_node:main",
         ],

@@ -2,14 +2,24 @@
 
 ## Current Status - 2026-07-11
 
-### Guarded ROS 2 voice direct-drive implementation
+### LLM Tool Calling ROS 2 voice orchestration
 
 * Added `project_link_voice_interfaces/DriveToPoint.action` and the
   `project_link_voice` ament Python package.
 * `voice_dialog_node` uses serial wakeup, 16 kHz FunASR `fsmn-vad` endpointing,
-  faster-whisper recognition, named-waypoint matching, and an explicit local
-  confirmation state machine. Cloud LLM chat is optional and isolated from
-  motion control.
+  faster-whisper recognition, SiliconFlow OpenAI-compatible Tool Calling, and an
+  explicit Python safety confirmation state machine.
+* Restored the intended ASR -> LLM tool call -> Python executor chain. The LLM
+  can choose whitelisted tools such as `navigate_to_location` and
+  `fetch_item_from_location`, but it never publishes `/cmd_vel`, enables torque,
+  or calls ROS actions directly.
+* Motion and fetch tool calls now create a pending task. Python validates named
+  waypoints, TF/SLAM readiness, dry-run/pure-test mode, and visual grasp target
+  text, then requires the user to say `确认开始` before executing.
+* Volcano bidirectional WebSocket TTS was migrated into the ROS 2 package.
+  `voice_dialog_node` uses it in-process for streamed LLM speech and fixed safety
+  confirmations; `voice_tts_node` remains as a `/voice/tts_text` bridge for other
+  modules. API keys stay in `/home/wte/.config/project_link/voice_api.env`.
 * `ab_drive_server` is the sole voice direct-drive publisher. It rejects goals
   unless `enable_motion:=true`, requires `map -> base_footprint`, limits range,
   watchdogs command output, and zeroes velocity on cancellation, TF loss,
@@ -17,11 +27,25 @@
 * Voice direct-drive remains experimental: it must not run with RViz direct
   drive motion at the same time, and it must not be used without a physical
   E-stop, clear floor, and supervised low-speed test.
-* Added the first voice-to-grasp orchestration path: guarded fetch phrases such
-  as `去厨房拿药瓶` resolve to a named waypoint plus YOLO target, then after direct
-  drive success the node can prepare SO-101 and call
+* Added the first voice-to-grasp orchestration path: LLM fetch tool calls resolve
+  to a named waypoint plus YOLO target, then after direct drive success the node
+  can prepare SO-101 and call
   `/visual_grasp/track_and_grasp`. `enable_visual_grasp:=false` remains the
   default until the visual grasp stack and manipulation pose are hardware-safe.
+* Added site bringup helpers for the fastest field path:
+  * `scripts/site_map_and_save.sh` starts SLAM and saves the current map.
+  * `scripts/site_waypoints.sh` saves named voice waypoints from current TF or
+    RViz clicked points.
+  * `scripts/start_site_voice_stack.sh` starts dry-run voice by default and only
+    enables motion or visual grasp with explicit flags.
+  * `docs/SITE_VOICE_MOBILE_MANIPULATION_RUNBOOK.md` documents the map,
+    waypoint, iFlytek wake, USB speaker, direct drive, and visual grasp sequence.
+* Added an emergency no-map LLM voice car demo path for the current field
+  constraint: `llm_motion_demo.launch.py` plus
+  `scripts/start_llm_voice_car_demo.sh`. It bypasses SLAM/waypoints/arm but keeps
+  SiliconFlow Tool Calling and Volcano TTS. It exposes `/voice_demo/text_input`
+  and `/voice_demo/status`, and the only LLM tool can publish bounded short
+  `/cmd_vel` actions: forward, backward, left, right, spin, and stop.
 
 ### Second-camera fall response module
 

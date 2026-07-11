@@ -56,6 +56,7 @@ Important handoff document:
 
 ```text
 docs/C63A_BASE_AND_SLAM_HANDOFF.md
+docs/SITE_VOICE_MOBILE_MANIPULATION_RUNBOOK.md
 ```
 
 Important ROS 2 packages:
@@ -472,21 +473,75 @@ unless the user explicitly approves an emergency exception.
 voice path for the current SLAM-first milestone. It is **not Nav2** and has no
 path planning or obstacle avoidance.
 
+For the fastest site procedure, use
+`docs/SITE_VOICE_MOBILE_MANIPULATION_RUNBOOK.md`. It covers one-command map
+capture, voice waypoint saving, iFlytek wake testing, USB speaker checks, direct
+drive enablement, and visual-grasp bringup.
+
+### Standalone LLM Voice Car Demo
+
+If the site has no lidar/map/arm setup available, use the standalone LLM voice
+car demo. It starts the base serial node plus a dedicated voice node, does not
+use SLAM, does not use waypoints, and exposes only two demo topics:
+`/voice_demo/text_input` for text tests and `/voice_demo/status` for status.
+Motion still goes to the normal `/cmd_vel`.
+
+```bash
+cd /home/wte/wheeltec_robot
+bash scripts/start_llm_voice_car_demo.sh --restart
+```
+
+This path uses SiliconFlow Tool Calling when `SILICONFLOW_API_KEY` is set. The
+LLM can only call `demo_motion` with `forward`, `backward`, `turn_left`,
+`turn_right`, `spin`, or `stop`. If the LLM is unavailable, it falls back to the
+same local words for emergency demos.
+
+Scan serial, microphone, speaker, and cloud/TTS env state:
+
+```bash
+bash scripts/start_llm_voice_car_demo.sh --scan-only
+```
+
+If auto scan picks the wrong iFlytek serial port or microphone:
+
+```bash
+bash scripts/start_llm_voice_car_demo.sh --restart --wakeup-port /dev/ttyUSB0 --audio-input-index 2
+```
+
+Text test without microphone:
+
+```bash
+ros2 topic pub --once /voice_demo/text_input std_msgs/msg/String "data: '请你往前走两步'"
+ros2 topic pub --once /voice_demo/text_input std_msgs/msg/String "data: '帮我转个圈'"
+ros2 topic pub --once /voice_demo/text_input std_msgs/msg/String "data: '停止'"
+```
+
+This mode publishes `/cmd_vel` directly for short bounded durations. Keep the
+robot clear, low speed, and physically ready to E-stop. Set the USB speaker as
+the OS default audio output; Volcano TTS uses the default pygame output device.
+
 The path is:
 
 ```text
 serial wake event -> FunASR fsmn-vad endpointing -> faster-whisper
--> local named-waypoint match -> spoken confirmation -> /voice/drive_to_point Action
--> guarded low-speed /cmd_vel
+-> SiliconFlow LLM Tool Calling
+-> Python safety validation and spoken confirmation
+-> /voice/drive_to_point Action
+-> optional /visual_grasp/track_and_grasp after arrival
 ```
 
 Safety rules:
 
 - `enable_motion:=false` is the default. In this mode confirmations are dry-run
   only and the drive Action server rejects every goal.
-- Voice commands only accept saved `map` waypoints. `确认前往` is mandatory after
-  the target is repeated; `停止` or `取消` cancels the active Action and emits zero
-  velocity commands.
+- The LLM may choose a whitelisted tool and fill arguments, but Python validates
+  every tool call. It never lets the LLM publish `/cmd_vel`, enable torque, or
+  call ROS actions directly.
+- Motion and fetch tools only create a pending task. `确认开始` is mandatory after
+  the Python safety summary; `停止` or `取消` bypasses the LLM and cancels the
+  active Action immediately.
+- Voice commands only accept saved `map` waypoints. Free-form coordinates from
+  speech or LLM output are rejected.
 - `ab_drive_server` stops on cancel, TF loss, action timeout, watchdog expiry,
   process shutdown, or goal completion. A physical E-stop is still mandatory.
 - Do not launch it alongside `scripts/rviz_ab_drive.py --enable-motion`, because
@@ -503,6 +558,33 @@ source .venv-voice/bin/activate
 pip install -r src/project_link_voice/requirements-orin.txt
 colcon build --symlink-install --packages-select project_link_voice_interfaces project_link_voice
 source scripts/project_link_env.sh
+```
+
+Cloud API secrets are loaded only from the Orin private environment file:
+
+```bash
+mkdir -p /home/wte/.config/project_link
+nano /home/wte/.config/project_link/voice_api.env
+chmod 600 /home/wte/.config/project_link/voice_api.env
+```
+
+Required values:
+
+```bash
+export SILICONFLOW_API_KEY=...
+export VOLCANO_APP_ID=...
+export VOLCANO_ACCESS_TOKEN=...
+export VOLCANO_RESOURCE_ID=seed-tts-2.0
+export VOLCANO_SPEAKER=...
+export QWEATHER_API_KEY=...   # optional; weather tool only
+```
+
+Source it before launching voice:
+
+```bash
+source /home/wte/wheeltec_robot/scripts/project_link_env.sh
+source /home/wte/.config/project_link/voice_api.env
+source /home/wte/wheeltec_robot/install/setup.bash
 ```
 
 Pre-download models while the Orin has network access, then preserve the model
@@ -548,6 +630,9 @@ For a supervised motion test only, with clear floor, low speed, and a person at
 the physical E-stop:
 
 ```bash
+source /home/wte/wheeltec_robot/scripts/project_link_env.sh
+source /home/wte/.config/project_link/voice_api.env
+source /home/wte/wheeltec_robot/install/setup.bash
 ros2 launch project_link_voice voice_direct_drive.launch.py enable_motion:=true
 ```
 
@@ -563,8 +648,10 @@ ros2 launch project_link_voice voice_direct_drive.launch.py \
 ```
 
 Supported local phrases include commands like `去厨房拿药瓶`. The voice node
-parses the named waypoint and maps common spoken object names to YOLO-World
-targets, for example `药瓶 -> medicine bottle` and `水杯 -> red cup`. The flow is:
+passes ASR text to the LLM, which must call `navigate_to_location` or
+`fetch_item_from_location`. Python then validates the named waypoint and maps
+common spoken object names to YOLO-World targets, for example
+`药瓶 -> medicine bottle` and `水杯 -> red cup`. The flow is:
 
 ```text
 confirm fetch command
@@ -580,12 +667,12 @@ the waypoint and announce that grasping is disabled, but it will not connect the
 arm, enable torque, or call `TrackAndGrasp`.
 
 The included local TTS bridge subscribes to `/voice/tts_text` and defaults to
-`espeak-ng -v zh`. Install/configure an approved Chinese TTS command before
-hardware tests. The optional SiliconFlow chat path reads `SILICONFLOW_API_KEY`
-from the environment and can only produce text replies; it is never a motion
-control path. Override deployed waypoint coordinates in a user-owned JSON file
-using the `waypoints_override_file` parameter; do not modify packaged defaults
-on the Orin.
+Volcano bidirectional WebSocket TTS. `voice_dialog_node` also uses the same
+Volcano adapter in-process for low-latency streamed LLM speech. If API values,
+`pygame`, or `websockets` are missing, it falls back to console mock output.
+Override deployed waypoint coordinates in a user-owned JSON file using the
+`waypoints_override_file` parameter; do not modify packaged defaults on the
+Orin.
 
 ### FunVAD hardware audio fixtures
 

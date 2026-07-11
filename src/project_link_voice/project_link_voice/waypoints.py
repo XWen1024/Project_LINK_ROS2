@@ -45,6 +45,17 @@ class WaypointStore:
     def names(self) -> list[str]:
         return sorted(self._waypoints)
 
+    def save(self, name: str, x: float, y: float, yaw: float) -> None:
+        if not self._override_path:
+            raise ValueError("waypoints_override_file is required to save waypoints")
+        self._override_path.parent.mkdir(parents=True, exist_ok=True)
+        data = self._read_file(self._override_path)
+        data[name] = {"x": float(x), "y": float(y), "yaw": float(yaw)}
+        with self._override_path.open("w", encoding="utf-8") as stream:
+            json.dump(data, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+        self._waypoints[name] = Waypoint(name, float(x), float(y), float(yaw))
+
     def find_in_text(self, text: str) -> Waypoint | None:
         matches = [waypoint for name, waypoint in self._waypoints.items() if name in text]
         if not matches:

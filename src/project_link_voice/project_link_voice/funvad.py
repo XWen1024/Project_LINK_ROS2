@@ -97,10 +97,11 @@ def extract_vad_events(result: Any) -> list[tuple[int, int]]:
 class FunVadRecorder:
     """Captures 16 kHz PCM and terminates only on VAD or an explicit hard bound."""
 
-    def __init__(self, settings: VadSettings, model_name: str, device: str = "cuda") -> None:
+    def __init__(self, settings: VadSettings, model_name: str, device: str = "cuda", input_device_index: int | None = None) -> None:
         self.settings = settings
         self.model_name = model_name
         self.device = device
+        self.input_device_index = input_device_index
         self._model: Any = None
 
     def _model_instance(self) -> Any:
@@ -128,13 +129,16 @@ class FunVadRecorder:
         state = VadEndpointState(self.settings)
         cache: dict[str, Any] = {}
         audio = pyaudio.PyAudio()
-        stream = audio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=self.settings.sample_rate,
-            input=True,
-            frames_per_buffer=self.settings.chunk_bytes // 2,
-        )
+        open_kwargs = {
+            "format": pyaudio.paInt16,
+            "channels": 1,
+            "rate": self.settings.sample_rate,
+            "input": True,
+            "frames_per_buffer": self.settings.chunk_bytes // 2,
+        }
+        if self.input_device_index is not None and self.input_device_index >= 0:
+            open_kwargs["input_device_index"] = self.input_device_index
+        stream = audio.open(**open_kwargs)
         try:
             while True:
                 chunk = stream.read(self.settings.chunk_bytes // 2, exception_on_overflow=False)

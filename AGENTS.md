@@ -7,18 +7,18 @@ file together with `PROGRESS.md` and `README.md`.
 ## Current Priority
 
 - Current phase: SLAM-first validation has a known-good rf2o fallback; the next
-  user-requested milestone is a direct RViz A-to-B motion loop with no Nav2,
-  planning, costmaps, or obstacle avoidance.
-- The minimum loop is: keep SLAM/TF running, click A and B in RViz, then publish
-  simple `/cmd_vel` commands to drive directly toward B.
+  user-requested milestone is site voice mobile-manipulation bringup with no
+  Nav2, planning, costmaps, or obstacle avoidance.
+- The minimum loop is: save a good map, save named voice waypoints, dry-run
+  ASR/LLM/TTS, enable direct point-to-point drive, validate visual grasp alone,
+  then allow voice fetch.
 - Immediate order of work:
   1. Keep the working `rf2o + EKF + slam_toolbox` route as the pose source.
-  2. Use `scripts/rviz_ab_drive.py --enable-motion` only when the robot is safe.
-  3. In RViz, publish two `/clicked_point` points: A as a start sanity check and
-     B as the target.
-  4. Verify `/cmd_vel`, TF, and odom behavior at low speed.
-  5. Complete the Point-LIO Phase A planar projection validation before using
-     Point-LIO for a 2D map or any A-to-B motion test.
+  2. Use `scripts/site_map_and_save.sh --restart` to make/save the site map.
+  3. Use `scripts/site_waypoints.sh` to write the voice waypoint JSON.
+  4. Use `scripts/start_site_voice_stack.sh --restart` for dry-run voice tests.
+  5. Add `--enable-motion` and then `--enable-visual-grasp` only after each
+     subsystem is independently safe.
 
 ## Project Summary
 
@@ -64,8 +64,8 @@ Nav2 configuration, message packages, and integration launch/config files.
 - `wheeltec_robot_msg`: custom Wheeltec messages.
 - `project_link_voice_interfaces`: `DriveToPoint.action` for voice direct-drive.
 - `project_link_emergency_interfaces`: fall-response Action/Service interfaces.
-- `project_link_voice`: FunASR VAD voice dialog, local TTS bridge, and guarded
-  direct-drive nodes.
+- `project_link_voice`: FunASR VAD, faster-whisper ASR, SiliconFlow LLM tool
+  calling, Volcano TTS, guarded direct-drive, and voice-to-grasp orchestration.
 - `project_link_fall_response`: second-camera fall assessment, SiliconFlow
   vision call, TTS alert, and Feishu bot notification bridge.
 - `project_link_visual_grasp`: headless Orin YOLO-World camera, SO-101 control,
@@ -312,7 +312,9 @@ priority, update:
 
 - Workspace-owned production packages: `project_link_voice_interfaces` defines
   `DriveToPoint.action`; `project_link_voice` contains FunASR VAD, voice dialog,
-  TTS bridge, and guarded direct-drive nodes.
+  Volcano TTS, LLM tool calling, and guarded direct-drive nodes.
+- The fastest site runbook is `docs/SITE_VOICE_MOBILE_MANIPULATION_RUNBOOK.md`.
+  Prefer its scripts over hand-assembling long launch commands during field work.
 - This is an experimental extension of the direct RViz A-to-B milestone, not a
   Nav2 replacement. It has no obstacle avoidance, costmaps, or path planning.
 - `ros2 launch project_link_voice voice_direct_drive.launch.py` defaults to
@@ -323,15 +325,26 @@ priority, update:
 - FunASR `fsmn-vad` replaces RMS recording cutoff. Keep its model and the
   faster-whisper model pre-downloaded on Orin; use an Orin-specific virtual
   environment with a JetPack-compatible PyTorch build.
-- Voice motion is local and guarded: only named map waypoints, explicit
-  `确认前往`, then the `DriveToPoint` Action. `停止`/`取消` cancels and publishes
-  zero velocity, but it does not replace a physical E-stop.
+- Voice motion is LLM-selected but Python-executed: ASR text goes to SiliconFlow
+  Tool Calling, the LLM chooses only whitelisted tools, and Python validates
+  named map waypoints plus SLAM/TF readiness before creating a pending task.
+- The LLM must never publish `/cmd_vel`, enable SO-101 torque, or call ROS
+  actions directly. Motion/fetch tools require the local fixed safety summary
+  and explicit `确认开始`; `停止`/`取消` bypasses the LLM and cancels active goals.
+- Exception for demos only: `llm_motion_demo.launch.py` and
+  `scripts/start_llm_voice_car_demo.sh` intentionally keep LLM Tool Calling and
+  Volcano TTS while publishing bounded short `/cmd_vel` commands without SLAM.
+  Do not use that mode as production navigation.
+- API secrets live only in `/home/wte/.config/project_link/voice_api.env`, which
+  must be sourced before launch. Do not commit `SILICONFLOW_API_KEY`,
+  `VOLCANO_APP_ID`, `VOLCANO_ACCESS_TOKEN`, Feishu keys, weather keys, or model
+  cache artifacts.
 
 ## Voice-To-Grasp Task Integration
 
-- `voice_dialog_node` can parse guarded fetch commands such as `去厨房拿药瓶`.
-  It maps the named waypoint to direct drive and maps spoken object aliases to
-  YOLO-World targets, for example `药瓶=medicine bottle`.
+- `voice_dialog_node` accepts fetch intent through LLM `fetch_item_from_location`
+  tool calls. It maps the named waypoint to direct drive and maps spoken object
+  aliases to YOLO-World targets, for example `药瓶=medicine bottle`.
 - The fetch chain is only valid after the direct-drive Action succeeds and the
   base has stopped at a verified safe manipulation pose. Then it may call
   `/visual_grasp/connect_arm`, `/visual_grasp/set_torque`, and
