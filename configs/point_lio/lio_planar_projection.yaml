@@ -1,0 +1,24 @@
+/**:
+  ros__parameters:
+    raw_odom_topic: "/odom_lio_raw"
+    projected_odom_topic: "/odom_lio"
+    odom_frame: "odom"
+    lio_odom_frame: "lio_odom"
+    lio_base_frame: "lio_base"
+    base_frame: "base_footprint"
+
+    # This is a fixed alignment between the Point-LIO world frame and the
+    # project odom frame. Tune only yaw after a straight-line chassis test.
+    odom_to_lio_odom_yaw: 0.0
+
+    # Seeded from the inverse of the installed URDF chain:
+    # base_footprint -> base_link -> unilidar_link -> unilidar_imu.
+    # Refine these values only after the Phase A stationary/straight-line tests.
+    lio_to_base_x: 0.6285
+    lio_to_base_y: 0.0
+    lio_to_base_z: 0.19
+    lio_to_base_roll: 0.0
+    lio_to_base_pitch: 1.5708
+    lio_to_base_yaw: 3.14159
+
+    projected_z: 0.0

@@ -1,7 +1,9 @@
 """Project LINK Point-LIO entrypoint for Unitree L1 / UniLidar.
 
-Phase A runs 3D lidar-inertial odometry only:
-  /unilidar/cloud + /unilidar/imu -> Point-LIO -> /odom_lio and odom -> base_footprint
+Phase A preserves Point-LIO's 3D pose and derives a planar base pose:
+  /unilidar/cloud + /unilidar/imu
+  -> Point-LIO /odom_lio_raw and lio_odom -> lio_base
+  -> lio_planar_projection /odom_lio and odom -> base_footprint
 
 Phase B can additionally run slam_toolbox with enable_slam_toolbox:=true:
   /scan + Point-LIO TF -> slam_toolbox -> /map and map -> odom
@@ -24,8 +26,15 @@ def generate_launch_description():
         "point_lio",
         "unilidar_l1_project_link.yaml",
     )
+    default_projection_config = os.path.join(
+        workspace,
+        "configs",
+        "point_lio",
+        "lio_planar_projection.yaml",
+    )
 
     config_file = LaunchConfiguration("config_file")
+    projection_config_file = LaunchConfiguration("projection_config_file")
     odom_only = LaunchConfiguration("odom_only")
     enable_slam_toolbox = LaunchConfiguration("enable_slam_toolbox")
     use_imu_as_input = LaunchConfiguration("use_imu_as_input")
@@ -82,19 +91,27 @@ def generate_launch_description():
                 "cube_side_length": 1000.0,
                 "runtime_pos_log_enable": False,
                 "odom_only": odom_only,
-                "odom_header_frame_id": "odom",
-                "odom_child_frame_id": "base_footprint",
+                "odom_header_frame_id": "lio_odom",
+                "odom_child_frame_id": "lio_base",
             },
         ],
         remappings=[
-            ("/aft_mapped_to_init", "/odom_lio"),
-            ("/odom_corrected", "/odom_lio"),
+            ("/aft_mapped_to_init", "/odom_lio_raw"),
+            ("/odom_corrected", "/odom_lio_raw"),
             ("/cloud_registered", "/point_lio/cloud_registered"),
             ("/cloud_registered_body", "/point_lio/cloud_registered_body"),
             ("/cloud_effected", "/point_lio/cloud_effected"),
             ("/Laser_map", "/point_lio/laser_map"),
             ("/path", "/path_lio"),
         ],
+    )
+
+    lio_planar_projection_node = Node(
+        package="turn_on_wheeltec_robot",
+        executable="lio_planar_projection",
+        name="lio_planar_projection",
+        output="screen",
+        parameters=[projection_config_file],
     )
 
     slam_toolbox_node = Node(
@@ -143,6 +160,11 @@ def generate_launch_description():
                 description="Point-LIO Unitree L1 config file.",
             ),
             DeclareLaunchArgument(
+                "projection_config_file",
+                default_value=default_projection_config,
+                description="Planar Point-LIO base projection configuration.",
+            ),
+            DeclareLaunchArgument(
                 "odom_only",
                 default_value="false",
                 description=(
@@ -176,6 +198,7 @@ def generate_launch_description():
             DeclareLaunchArgument("lidar_tf_yaw", default_value="0.44041"),
             unilidar_static_tf_node,
             point_lio_node,
+            lio_planar_projection_node,
             slam_toolbox_node,
         ]
     )

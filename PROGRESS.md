@@ -2,6 +2,29 @@
 
 ## Current Status - 2026-07-11
 
+### Point-LIO Phase A coordinate architecture implemented
+
+* Point-LIO no longer publishes its raw 6D pose directly as
+  `odom -> base_footprint`.
+* The new Phase A chain is:
+
+```text
+/unilidar/cloud + /unilidar/imu
+-> Point-LIO /odom_lio_raw and lio_odom -> lio_base
+-> lio_planar_projection
+-> /odom_lio and odom -> base_footprint
+```
+
+* `lio_planar_projection` preserves the original 3D LIO output, applies the
+  versioned LIO-to-base calibration seed from the installed URDF, and publishes
+  a base pose constrained to `z=0`, `roll=0`, and `pitch=0`.
+* Point-LIO's `publish_odometry_without_downsample` is now disabled so raw odom
+  is emitted at lidar-frame cadence instead of the previous unnecessary high
+  loop rate.
+* Phase A acceptance is now: real cloud, IMU, raw odom, planar odom, registered
+  cloud, unique TF, 60-second stationary check, and low-speed straight/turn
+  calibration. Do not start `--with-2d-map` before those checks pass.
+
 ### Direct RViz A-to-B loop requested
 
 * User clarified the next desired minimum closed loop is not Nav2:
@@ -42,9 +65,9 @@
 -> /map and map -> odom TF
 ```
 
-Point-LIO remains an evaluation route. Do not force Point-LIO raw 6D odometry
-into planar `base_footprint` until a projection/adapter or fusion design is
-implemented and validated.
+Point-LIO remains an evaluation route. Its planar projection adapter is now in
+place, but it must complete the Phase A physical validation before it replaces
+the known-good rf2o chain for mapping or direct motion.
 
 ### C63A base handoff update
 

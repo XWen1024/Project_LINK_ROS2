@@ -32,9 +32,10 @@ is not Nav2: keep SLAM/TF running, click A and B in RViz, and send low-speed
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` return at about `20 Hz` after the
   C63A board is healthy.
 - Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
-- Current priority: direct RViz A-to-B motion loop using the known-good
-  rf2o/EKF/SLAM pose chain. Point-LIO remains a separate odometry evaluation
-  route.
+- Current priority: Point-LIO Phase A coordinate validation. The known-good
+  rf2o/EKF/SLAM route remains the fallback; Point-LIO will not be used for map
+  building or direct A-to-B motion until its planar base TF passes hardware
+  validation.
 
 ## Repository Layout
 
@@ -315,11 +316,35 @@ cd /home/wte/wheeltec_robot
 ./start_point_lio_tmux.sh --restart
 ```
 
-Phase A does not start `/scan`, `slam_toolbox`, or `/map`. It is only for
-checking `/unilidar/cloud`, `/unilidar/imu`, `/odom_lio`, and
-`/point_lio/cloud_registered`.
+Phase A does not start `/scan`, `slam_toolbox`, or `/map`. It preserves raw 3D
+Point-LIO state while publishing a separate planar base pose:
 
-Phase B, Point-LIO odometry plus `slam_toolbox` 2D map:
+```text
+/unilidar/cloud + /unilidar/imu
+-> Point-LIO /odom_lio_raw and lio_odom -> lio_base
+-> lio_planar_projection
+-> /odom_lio and odom -> base_footprint
+```
+
+The Phase A topic checks are:
+
+```bash
+ros2 topic hz /unilidar/cloud
+ros2 topic hz /unilidar/imu
+ros2 topic hz /odom_lio_raw
+ros2 topic hz /odom_lio
+ros2 topic hz /point_lio/cloud_registered
+ros2 run tf2_ros tf2_echo lio_odom lio_base
+ros2 run tf2_ros tf2_echo odom base_footprint
+```
+
+During the stationary test, `odom -> base_footprint` must retain `z=0` with
+roll and pitch near zero. Tune the versioned
+`configs/point_lio/lio_planar_projection.yaml` only after a stationary and
+straight-line chassis check.
+
+Phase B, Point-LIO odometry plus `slam_toolbox` 2D map, is blocked until the
+Phase A checks above pass:
 
 ```bash
 cd /home/wte/wheeltec_robot
@@ -331,8 +356,9 @@ The tmux session is `project_link_point_lio` and contains:
 - `lidar`: Unitree L1 / UniLidar driver
 - `robot`: robot description, plus `/scan` conversion when `--with-2d-map` is used
 - `lio`: `point_lio_unilidar_l1.launch.py`
-- `check`: live monitor for `/unilidar/cloud`, `/unilidar/imu`, `/odom_lio`,
-  `/point_lio/cloud_registered`, `/scan`, `/map`, and TF
+- `check`: live monitor for `/unilidar/cloud`, `/unilidar/imu`,
+  `/odom_lio_raw`, `/odom_lio`, `/point_lio/cloud_registered`, `/scan`, `/map`,
+  and the raw/projected TF chain
 
 Manual Point-LIO launch:
 
@@ -363,7 +389,9 @@ corrections. Use `LIDAR_TF_X`, `LIDAR_TF_Y`, and `LIDAR_TF_Z` only for small fra
 offset corrections between `unilidar_link` and the driver frame `unilidar_lidar`.
 
 Do not run `rf2o_slam_toolbox.launch.py` at the same time as the Point-LIO launch.
-Only one node stack should publish `odom -> base_footprint`.
+Only one node stack should publish `odom -> base_footprint`. In the Point-LIO
+stack, the raw node owns `lio_odom -> lio_base` and `lio_planar_projection`
+owns the projected base TF.
 
 ## Hardware Test Strategy
 

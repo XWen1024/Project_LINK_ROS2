@@ -17,8 +17,8 @@ file together with `PROGRESS.md` and `README.md`.
   3. In RViz, publish two `/clicked_point` points: A as a start sanity check and
      B as the target.
   4. Verify `/cmd_vel`, TF, and odom behavior at low speed.
-  5. Continue Point-LIO evaluation separately; do not mix it into this direct
-     A-to-B loop unless an explicit adapter/fusion design is implemented.
+  5. Complete the Point-LIO Phase A planar projection validation before using
+     Point-LIO for a 2D map or any A-to-B motion test.
 
 ## Project Summary
 
@@ -120,15 +120,17 @@ cd /home/wte/wheeltec_robot
 ```
 
 `./start_point_lio_tmux.sh --restart` is Phase A only and is not expected to
-publish `/scan` or `/map`. Use `--with-2d-map` when the user wants a 2D map.
-The script waits for real `/unilidar/cloud` and `/unilidar/imu` messages before
-launching Point-LIO.
+publish `/scan` or `/map`. It waits for real `/unilidar/cloud` and
+`/unilidar/imu` messages before launching Point-LIO. Do not use
+`--with-2d-map` until Phase A TF validation has passed.
 
 Point-LIO source is intentionally kept outside this repo at
 `/home/wte/point_lio_ws/src/point_lio`. The repo-owned integration files are:
 
 - `configs/point_lio/unilidar_l1_project_link.yaml`
+- `configs/point_lio/lio_planar_projection.yaml`
 - `src/turn_on_wheeltec_robot/launch/point_lio_unilidar_l1.launch.py`
+- `src/turn_on_wheeltec_robot/src/lio_planar_projection.cpp`
 - `start_point_lio_tmux.sh`
 
 Do not run `rf2o_slam_toolbox.launch.py` together with Point-LIO. Only one stack
@@ -164,8 +166,16 @@ Point-LIO Phase A data flow:
 ```text
 /unilidar/cloud + /unilidar/imu
 -> point_lio
--> /odom_lio and odom -> base_footprint TF
+-> /odom_lio_raw and lio_odom -> lio_base TF (raw 3D pose)
+-> lio_planar_projection
+-> /odom_lio and odom -> base_footprint TF (planar pose)
 ```
+
+The raw Point-LIO pose is intentionally not a planar chassis frame. The adapter
+publishes `odom -> lio_odom` as a static alignment, then dynamically publishes
+`lio_base -> base_footprint` so the composed base TF has `z=0`, `roll=0`, and
+`pitch=0`. Tune only the versioned projection YAML after the stationary and
+straight-line hardware checks.
 
 Phase A also publishes the static TF `unilidar_link -> unilidar_lidar` from
 `point_lio_unilidar_l1.launch.py`, because `unilidar_p2s.launch.py` is not running.
@@ -187,9 +197,9 @@ Point-cloud direction is tuned through `LIDAR_TF_ROLL`, `LIDAR_TF_PITCH`, and
 `0.44041`. Keep these values synchronized between Point-LIO Phase A and Phase B.
 
 Do not blindly launch overlapping TF publishers. In particular, avoid running
-multiple EKF/odom publishers that all claim `odom -> base_footprint`.
-Do not treat Point-LIO's raw 6D pose as the planar `base_footprint` until a
-projection/adapter or fusion design is explicitly implemented and validated.
+multiple EKF/odom publishers that all claim `odom -> base_footprint`. Point-LIO
+owns only `lio_odom -> lio_base`; `lio_planar_projection` owns the planar base
+TF in the Point-LIO stack.
 
 ## Direct RViz A-To-B Loop Notes
 
