@@ -116,6 +116,7 @@ private:
     if (!frames_.empty() && stamp < frames_.back().stamp) {
       RCLCPP_WARN(get_logger(), "ROS time moved backwards; clearing accumulated scans");
       frames_.clear();
+      ready_ = false;
     }
 
     geometry_msgs::msg::TransformStamped fixed_from_scan_msg;
@@ -218,13 +219,21 @@ private:
       [](float range) {return std::isfinite(range);}));
     const double coverage =
       static_cast<double>(valid_bins) / static_cast<double>(accumulated.ranges.size());
-    if (coverage < minimum_coverage_) {
+    if (!ready_ && coverage < minimum_coverage_) {
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 3000,
         "Accumulating scans: %zu frames, %zu/%zu valid bins (%.1f%%), need %.1f%%",
         frames_.size(), valid_bins, accumulated.ranges.size(), coverage * 100.0,
         minimum_coverage_ * 100.0);
       return;
+    }
+
+    if (!ready_) {
+      ready_ = true;
+      RCLCPP_INFO(
+        get_logger(),
+        "Scan accumulator warmed up with %zu frames and %.1f%% valid-bin coverage",
+        frames_.size(), coverage * 100.0);
     }
 
     scan_pub_->publish(accumulated);
@@ -248,6 +257,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub_;
   std::deque<TimedPoints> frames_;
+  bool ready_{false};
 };
 
 int main(int argc, char ** argv)
