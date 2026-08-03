@@ -56,6 +56,12 @@
   inflation, `BaseObstacle.scale: 0.10`, no smoother in the BT, and disabled
   per-trajectory debug logging. Recovery now attempts a collision-checked full
   `360 degree` scan spin before clearing and replanning; reverse stays disabled.
+* Diagnosed goals that visually reached the destination but kept `/plan` active.
+  The strict `0.15 m / 0.20 rad` goal checker left Nav2 chasing final heading
+  until the XY-only progress checker fired. Increased completion tolerance to
+  `0.25 m / 0.50 rad`, matched DWB XY tolerance, and reduced final-rotation
+  slowing. Recovery now permits one full scan only and gives that `6.28 rad`
+  spin 20 seconds instead of the previous 10-second timeout.
 
 ## Point-LIO Phase B scan accumulation - 2026-08-03
 

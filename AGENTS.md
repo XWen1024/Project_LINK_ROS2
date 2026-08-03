@@ -320,6 +320,13 @@ midpoint tuning therefore uses `BaseObstacle`, a `0.40 m` inflation radius with
 a `0.10 m / 20 s` progress check. Do not re-enable `BackUp` unless a verified
 rear obstacle sensor is integrated.
 
+RViz navigation goal completion uses `0.25 m` XY and `0.50 rad` yaw tolerance.
+The earlier `0.15 m / 0.20 rad` checker kept a visible path active after the
+robot was practically at the destination, then allowed the XY-only progress
+checker to trigger recovery while DWB chased the final orientation. A recovery
+now attempts at most one full scan turn, with a 20-second allowance so a
+`6.28 rad` spin at the configured speed can actually finish.
+
 ## Direct RViz A-To-B Loop Notes
 
 This project currently has a tiny direct-drive test script:

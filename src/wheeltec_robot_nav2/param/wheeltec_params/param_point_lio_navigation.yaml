@@ -80,8 +80,9 @@ controller_server:
 
     goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
-      xy_goal_tolerance: 0.15
-      yaw_goal_tolerance: 0.20
+      # RViz goals are considered reached without chasing the last few cm/degrees.
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.50
       stateful: true
 
     FollowPath:
@@ -108,8 +109,8 @@ controller_server:
       linear_granularity: 0.03
       angular_granularity: 0.025
       transform_tolerance: 0.20
-      xy_goal_tolerance: 0.15
-      trans_stopped_velocity: 0.05
+      xy_goal_tolerance: 0.25
+      trans_stopped_velocity: 0.08
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: [RotateToGoal, Oscillation, BaseObstacle, GoalAlign, PathAlign, PathDist, GoalDist]
@@ -122,7 +123,7 @@ controller_server:
       PathDist.scale: 32.0
       GoalDist.scale: 16.0
       RotateToGoal.scale: 32.0
-      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.slowing_factor: 3.0
       RotateToGoal.lookahead_time: -1.0
 
 local_costmap:

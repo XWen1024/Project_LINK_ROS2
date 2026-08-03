@@ -5,7 +5,7 @@
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <RecoveryNode number_of_retries="3" name="NavigateRecovery">
+    <RecoveryNode number_of_retries="1" name="NavigateRecovery">
       <PipelineSequence name="NavigateThroughPoses">
         <RateController hz="0.333">
           <RecoveryNode number_of_retries="1" name="ComputePathThroughPoses">
@@ -35,7 +35,7 @@
           <ClearEntireCostmap name="ClearGlobalCostmap-BeforeScan"
                               service_name="global_costmap/clear_entirely_global_costmap"/>
           <Fallback name="SpinIfSafeOtherwiseWait">
-            <Spin spin_dist="6.28"/>
+            <Spin spin_dist="6.28" time_allowance="20"/>
             <Wait wait_duration="1"/>
           </Fallback>
           <ClearEntireCostmap name="ClearLocalCostmap-AfterScan"

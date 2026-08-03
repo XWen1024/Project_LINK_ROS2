@@ -474,6 +474,13 @@ gives more weight to geometric path distance than to small grid-cell heading
 changes. The collision-checked smoother was removed after it repeatedly rejected
 otherwise usable NavFn paths.
 
+Goal completion is intentionally practical for this low-speed prototype:
+`0.25 m` position tolerance and `0.50 rad` heading tolerance. This prevents the
+path from remaining active while the robot repeatedly corrects the last few
+centimeters or degrees. Recovery is limited to one collision-checked full scan
+turn, with a 20-second allowance; it cannot perform a second automatic circle or
+reverse the robot.
+
 `robot_state_publisher` expands the package xacro and is the only sensor static
 TF authority. Neither Point-LIO nor `unilidar_p2s.launch.py` publishes duplicate
 sensor transforms.
