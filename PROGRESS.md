@@ -19,6 +19,16 @@
   follower, and velocity smoother loaded successfully. `/navigate_to_pose` is
   available, the global costmap loaded `158 x 174` cells at `0.05 m/pixel`, and
   a four-second idle check observed no `/cmd_vel` message.
+* Diagnosed an all-white local costmap. Raw scan stayed current, but a long-running
+  Point-LIO session had accumulated about `21 s` of odometry timestamp lag, so
+  `/scan_accumulated` stopped. Saved the occupancy map to
+  `/home/wte/maps/point_lio_nav2_pre_restart_20260803_2312.yaml`, restarted Phase
+  B, and restored raw/projected LIO lag to about `0.03 s`.
+* Explicitly set the costmap LaserScan height range to `-0.1..2.0 m`; Humble had
+  otherwise filtered scans transformed from the elevated `base_link`. Reduced
+  the local rolling window from `4 x 4 m` to `3 x 3 m` while retaining `0.05 m`
+  resolution. Verification found 69 lethal and 986 inflated cells instead of an
+  all-free grid.
 
 ## Point-LIO Phase B scan accumulation - 2026-08-03
 

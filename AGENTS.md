@@ -278,6 +278,18 @@ smoother configured and reached `active`; `/navigate_to_pose` is available. The
 global costmap loaded the live map at `158 x 174` cells with `0.05 m` resolution,
 and no `/cmd_vel` message was observed without a goal.
 
+During the first costmap visualization, long-running Point-LIO accumulated about
+`21 s` of odometry timestamp lag while raw `/scan` remained current. Save the
+map before restarting Phase B if this recurs; the restart restored raw/projected
+odom lag to about `0.03 s`. The saved occupancy map from this incident is
+`/home/wte/maps/point_lio_nav2_pre_restart_20260803_2312.yaml`.
+
+The local obstacle source must explicitly accept `-0.1..2.0 m` height because
+`base_link` is above `base_footprint`. Without this range, Humble filtered every
+LaserScan point and published an all-free local costmap. The verified local
+window is `3 x 3 m` at `0.05 m`; a stationary sample contained 69 lethal and 986
+inflated cells.
+
 ## Direct RViz A-To-B Loop Notes
 
 This project currently has a tiny direct-drive test script:

@@ -441,6 +441,17 @@ and velocity smoother loaded successfully; `/navigate_to_pose` is available.
 The global costmap accepted the live map at `158 x 174` cells and `0.05 m/pixel`.
 A four-second idle check observed no `/cmd_vel` message, so no goal was executed.
 
+If the local costmap is entirely white, first check timestamp lag rather than
+changing its resolution. One long-running Point-LIO session fell about `21 s`
+behind the live scan; restarting Phase B restored LIO lag to about `0.03 s`. Its
+map was preserved at
+`/home/wte/maps/point_lio_nav2_pre_restart_20260803_2312.yaml` before restart.
+
+The local window is now `3 x 3 m` (`60 x 60` cells at `0.05 m`). The obstacle
+source explicitly accepts `-0.1..2.0 m` height so scans expressed from elevated
+`base_link` are not filtered out. The first verified frame contained 69 lethal
+and 986 inflated cells, confirming that local obstacle marking is active.
+
 `robot_state_publisher` expands the package xacro and is the only sensor static
 TF authority. Neither Point-LIO nor `unilidar_p2s.launch.py` publishes duplicate
 sensor transforms.
