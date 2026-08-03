@@ -136,8 +136,9 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      footprint: "[[-0.20, -0.175], [-0.20, 0.175], [0.20, 0.175], [0.20, -0.175]]"
-      footprint_padding: 0.02
+      # Conservative measured outer envelope: 0.51 m long x 0.41 m wide.
+      footprint: "[[-0.255, -0.205], [-0.255, 0.205], [0.255, 0.205], [0.255, -0.205]]"
+      footprint_padding: 0.01
       plugins: [obstacle_layer, inflation_layer]
       obstacle_layer:
         plugin: nav2_costmap_2d::ObstacleLayer
@@ -172,8 +173,9 @@ global_costmap:
       transform_tolerance: 0.20
       resolution: 0.05
       track_unknown_space: true
-      footprint: "[[-0.20, -0.175], [-0.20, 0.175], [0.20, 0.175], [0.20, -0.175]]"
-      footprint_padding: 0.02
+      # Keep global and local collision geometry identical.
+      footprint: "[[-0.255, -0.205], [-0.255, 0.205], [0.255, 0.205], [0.255, -0.205]]"
+      footprint_padding: 0.01
       plugins: [static_layer, obstacle_layer, inflation_layer]
       static_layer:
         plugin: nav2_costmap_2d::StaticLayer

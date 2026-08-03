@@ -427,7 +427,8 @@ cd /home/wte/wheeltec_robot
 This does not start AMCL, map_server, another slam_toolbox, or another odometry
 publisher. It consumes the live `/map`, `/odom_lio`, `/scan_accumulated`, and
 `map -> odom -> base_footprint` chain. Initial limits are `0.18 m/s` linear and
-`0.60 rad/s` angular with the measured `0.40 x 0.35 m` chassis footprint.
+`0.60 rad/s` angular with the conservative measured `0.51 x 0.41 m` chassis
+footprint.
 
 Stop `scripts/c63_keyboard_teleop.sh` before starting this wrapper: keyboard
 teleop publishes zero `/cmd_vel` messages continuously and would fight Nav2.
@@ -451,6 +452,11 @@ The local window is now `3 x 3 m` (`60 x 60` cells at `0.05 m`). The obstacle
 source explicitly accepts `-0.1..2.0 m` height so scans expressed from elevated
 `base_link` are not filtered out. The first verified frame contained 69 lethal
 and 986 inflated cells, confirming that local obstacle marking is active.
+
+The chassis outer envelope was subsequently measured as approximately `0.51 m`
+long, `0.41 m` wide, and `0.82 m` high. The previous model was only
+`0.40 x 0.35 m`. URDF and both costmaps now use the measured length/width, with
+`0.01 m` padding per side for an effective `0.53 x 0.43 m` collision envelope.
 
 `robot_state_publisher` expands the package xacro and is the only sensor static
 TF authority. Neither Point-LIO nor `unilidar_p2s.launch.py` publishes duplicate

@@ -50,6 +50,10 @@ Nav2 configuration, message packages, and integration launch/config files.
 - Previous Orin workspace backup: `/home/wte/wheeltec_robot_backup_20260627_1250`.
 - Base controller: STM32-based Wheeltec chassis controller.
 - Chassis: differential AGV base, current configured `car_mode: mini_diff`.
+- Conservative measured outer envelope on 2026-08-03: `0.51 m` long,
+  `0.41 m` wide, and `0.82 m` high. The canonical URDF and live Nav2 footprint
+  use this length/width; `0.01 m` Nav2 padding gives an effective `0.53 x 0.43 m`
+  collision envelope.
 - C63A ROS serial link: `/dev/wheeltec_controller` at `115200`; observed as
   `1a86:55d4` on `/dev/ttyACM0`.
 - Lidar: Unitree L1 / UniLidar for the target SLAM route; current Wheeltec config
@@ -265,7 +269,7 @@ cd /home/wte/wheeltec_robot
 It starts no AMCL, map server, slam_toolbox, lidar, robot description, odometry,
 or base node. The live `/map` and `map -> odom -> base_footprint` chain remain
 owned by Phase B. Nav2 uses `/odom_lio` and `/scan_accumulated` with the physical
-`0.40 x 0.35 m` footprint and conservative first-test velocity limits.
+`0.51 x 0.41 m` measured footprint and conservative first-test velocity limits.
 
 The keyboard teleop publishes `/cmd_vel` continuously, including zero commands,
 so the wrapper refuses to start while it is running. Starting Nav2 does not send
@@ -289,6 +293,12 @@ The local obstacle source must explicitly accept `-0.1..2.0 m` height because
 LaserScan point and published an all-free local costmap. The verified local
 window is `3 x 3 m` at `0.05 m`; a stationary sample contained 69 lethal and 986
 inflated cells.
+
+The initial `0.40 x 0.35 m` model was smaller than the measured outer envelope,
+especially in length. The current footprint is centered on `base_footprint` at
+`+/-0.255 m` longitudinal and `+/-0.205 m` lateral, with `0.01 m` padding. If
+corner clearance remains asymmetric, measure front/rear distance from the real
+drive-wheel midpoint rather than enlarging the centered rectangle blindly.
 
 ## Direct RViz A-To-B Loop Notes
 

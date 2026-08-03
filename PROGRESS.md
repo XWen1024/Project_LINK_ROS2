@@ -9,7 +9,7 @@
   slam_toolbox, sensor driver, odometry, robot description, or base node, so the
   live Phase B `map -> odom -> base_footprint` ownership remains unchanged.
 * Added Point-LIO navigation parameters using `/odom_lio`,
-  `/scan_accumulated`, the measured `0.40 x 0.35 m` footprint, DWB/NavFn, and
+  `/scan_accumulated`, the initial `0.40 x 0.35 m` footprint, DWB/NavFn, and
   conservative initial limits of `0.18 m/s` and `0.60 rad/s`.
 * Added `start_point_lio_nav2_tmux.sh`. It waits for the live map/odom/scan,
   monitors Nav2 lifecycle and costmaps, sends no goal itself, and refuses to run
@@ -29,6 +29,11 @@
   the local rolling window from `4 x 4 m` to `3 x 3 m` while retaining `0.05 m`
   resolution. Verification found 69 lethal and 986 inflated cells instead of an
   all-free grid.
+* User measurement found a conservative outer envelope of `0.51 x 0.41 x 0.82 m`.
+  Updated the canonical URDF from `0.40 x 0.35 m` to `0.51 x 0.41 m`; the existing
+  vertical geometry already totals about `0.8235 m`. Updated local/global Nav2
+  footprints to the measured rectangle with `0.01 m` padding, producing an
+  effective `0.53 x 0.43 m` collision envelope.
 
 ## Point-LIO Phase B scan accumulation - 2026-08-03
 

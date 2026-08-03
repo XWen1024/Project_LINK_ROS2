@@ -1,8 +1,9 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="patrol_robot_vertical">
 
-  <xacro:property name="base_length" value="0.400"/>
-  <xacro:property name="base_width" value="0.350"/>
+  <!-- Conservative measured outer envelope, including protruding hardware. -->
+  <xacro:property name="base_length" value="0.510"/>
+  <xacro:property name="base_width" value="0.410"/>
   <xacro:property name="base_box_height" value="0.745"/>
   <xacro:property name="base_ground_clearance" value="0.0785"/>
 
