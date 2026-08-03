@@ -374,7 +374,7 @@ the union of 30 frames covered about `46.1%`. This explains why RViz with LaserS
 Decay Time 3 showed a clean outline while slam_toolbox produced an unrelated map:
 RViz was overlaying many TF-compensated frames, but slam_toolbox received each
 fragment separately. Phase B now keeps `/scan` for inspection and feeds
-slam_toolbox from `/scan_accumulated`, produced by a 1.5-second rolling,
+slam_toolbox from `/scan_accumulated`, produced by a 3-second rolling,
 TF-compensated accumulator with 4 cm spatial deduplication and a 35% valid-bin
 startup threshold. Tune `config/laser_scan_accumulator.yaml` before changing
 slam_toolbox matching parameters.
