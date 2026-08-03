@@ -47,7 +47,7 @@ def generate_launch_description():
                     "use_sim_time": use_sim_time,
                     "params_file": params_file,
                     "autostart": autostart,
-                    "use_composition": "false",
+                    "use_composition": "False",
                     "use_respawn": use_respawn,
                     "log_level": log_level,
                 }.items(),
