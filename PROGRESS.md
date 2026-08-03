@@ -13,7 +13,7 @@
   timestamp, keeps a rolling window, spatially deduplicates it, transforms it
   back into the current `base_link`, and publishes a re-binned
   `/scan_accumulated` only after minimum angular coverage is reached.
-* Initial parameters are a `3.0 s` window, `0.04 m` voxel size, and `0.35`
+* Initial parameters are a `3.0 s` window, `0.04 m` voxel size, and `0.25`
   minimum coverage. Raw `/scan` remains available for RViz and diagnosis;
   Point-LIO Phase B slam_toolbox now subscribes to `/scan_accumulated`.
 

@@ -76,7 +76,7 @@ public:
     output_frame_ = declare_parameter<std::string>("output_frame", "base_link");
     window_duration_ = declare_parameter<double>("window_duration", 3.0);
     voxel_size_ = declare_parameter<double>("voxel_size", 0.04);
-    minimum_coverage_ = declare_parameter<double>("minimum_coverage", 0.35);
+    minimum_coverage_ = declare_parameter<double>("minimum_coverage", 0.25);
     transform_timeout_ = declare_parameter<double>("transform_timeout", 0.15);
 
     if (window_duration_ <= 0.0) {
