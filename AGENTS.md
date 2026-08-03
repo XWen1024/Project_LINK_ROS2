@@ -6,22 +6,21 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
-- Current phase: Point-LIO planar pose correction passes stationary, low-speed
-  in-place-turn, and straight-line checks. Phase B now runs with the canonical
-  URDF/TF chain. Its sparse per-frame 2D projection is now being replaced by a
-  motion-compensated rolling scan for slam_toolbox.
+- Current phase: Point-LIO Phase B produces a usable live map through the
+  motion-compensated scan accumulator. The user has explicitly advanced the
+  milestone to Nav2 bringup against the live slam_toolbox map.
 - The minimum loop is: save a good map, save named voice waypoints, dry-run
   ASR/LLM/TTS, enable direct point-to-point drive, validate visual grasp alone,
   then allow voice fetch.
 - Immediate order of work:
   1. Keep the working `rf2o + EKF + slam_toolbox` route as the fallback.
-  2. Validate `/scan_accumulated` coverage and Point-LIO Phase B map quality.
-  3. Tune the 2D height slice only if the accumulated scan remains noisy.
-  4. Use `scripts/site_map_and_save.sh --restart` to make/save the site map.
-  5. Use `scripts/site_waypoints.sh` to write the voice waypoint JSON.
-  6. Use `scripts/start_site_voice_stack.sh --restart` for dry-run voice tests.
-  7. Add `--enable-motion` and then `--enable-visual-grasp` only after each
-     subsystem is independently safe.
+  2. Use `start_point_lio_nav2_tmux.sh --restart` to start Nav2 only.
+  3. Validate both costmaps and path planning before sending a motion goal.
+  4. Stop keyboard teleop before any Nav2 goal; only one `/cmd_vel` publisher may
+     control the base during the supervised low-speed navigation test.
+  5. Tune the 2D height slice only if navigation costmaps are materially harmed.
+  6. Save a good map and named voice waypoints after the navigation check.
+  7. Add voice motion and visual grasp only after each subsystem is safe.
 
 ## Project Summary
 
@@ -124,6 +123,10 @@ Nav2 configuration, message packages, and integration launch/config files.
   window, `0.04 m` voxel, and `25%` startup threshold, it warmed at `25.3%`,
   stabilized around `29%` coverage while stationary, and published at about
   `9.49 Hz`. slam_toolbox registered the accumulated sensor successfully.
+- A first user-driven mapping lap produced coherent rooms, corridors, and major
+  wall outlines. Remaining edge speckle is acceptable for initial Nav2 costmap
+  validation and should be handled conservatively by the footprint/inflation
+  layers before further height-slice tuning.
 - C63A base serial return data was confirmed on 2026-07-11 after power cycling:
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
 - The C63A base is integrated into the known-good rf2o SLAM bringup:
@@ -249,6 +252,25 @@ Do not blindly launch overlapping TF publishers. In particular, avoid running
 multiple EKF/odom publishers that all claim `odom -> base_footprint`. Point-LIO
 owns only `lio_odom -> lio_base`; `lio_planar_projection` owns the planar base
 TF in the Point-LIO stack.
+
+## Point-LIO Live Nav2
+
+Use the Nav2-only wrapper while Point-LIO Phase B is already healthy:
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_point_lio_nav2_tmux.sh --restart
+```
+
+It starts no AMCL, map server, slam_toolbox, lidar, robot description, odometry,
+or base node. The live `/map` and `map -> odom -> base_footprint` chain remain
+owned by Phase B. Nav2 uses `/odom_lio` and `/scan_accumulated` with the physical
+`0.40 x 0.35 m` footprint and conservative first-test velocity limits.
+
+The keyboard teleop publishes `/cmd_vel` continuously, including zero commands,
+so the wrapper refuses to start while it is running. Starting Nav2 does not send
+a goal or a nonzero command. Before using RViz `2D Goal Pose`, verify lifecycle
+nodes and costmaps, clear the robot area, and keep the physical E-stop ready.
 
 ## Direct RViz A-To-B Loop Notes
 

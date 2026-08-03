@@ -384,6 +384,11 @@ then stabilized around `29%` while stationary. `/scan_accumulated` published at
 about `9.49 Hz`, and slam_toolbox registered it as its laser sensor. The stack is
 therefore ready for the next supervised in-place-turn/map visual comparison.
 
+A subsequent user-driven lap produced a usable structural map: the major walls,
+rooms, and corridor boundaries are coherent. Small edge speckles remain around
+cluttered areas, but they are acceptable for a first conservative Nav2 costmap
+test and do not justify retuning Point-LIO before navigation bringup.
+
 The tmux session is `project_link_point_lio` and contains:
 
 - `lidar`: Unitree L1 / UniLidar driver
@@ -410,6 +415,26 @@ source scripts/project_link_env.sh
 ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py
 ```
 
+### Nav2 against the live Point-LIO map
+
+With Phase B still running, start only the Nav2 planning/control stack:
+
+```bash
+cd /home/wte/wheeltec_robot
+./start_point_lio_nav2_tmux.sh --restart
+```
+
+This does not start AMCL, map_server, another slam_toolbox, or another odometry
+publisher. It consumes the live `/map`, `/odom_lio`, `/scan_accumulated`, and
+`map -> odom -> base_footprint` chain. Initial limits are `0.18 m/s` linear and
+`0.60 rad/s` angular with the measured `0.40 x 0.35 m` chassis footprint.
+
+Stop `scripts/c63_keyboard_teleop.sh` before starting this wrapper: keyboard
+teleop publishes zero `/cmd_vel` messages continuously and would fight Nav2.
+The wrapper starts no goal and sends no nonzero velocity by itself. Inspect the
+local/global costmaps first; use RViz `2D Goal Pose` only with a clear test area
+and a physical E-stop ready.
+
 `robot_state_publisher` expands the package xacro and is the only sensor static
 TF authority. Neither Point-LIO nor `unilidar_p2s.launch.py` publishes duplicate
 sensor transforms.
@@ -434,8 +459,8 @@ owns the projected base TF.
 - Lidar-only check: connect only lidar and validate `/scan` plus RViz2 display.
 - Lidar SLAM check: connect lidar, publish robot description TF, then run the
   current SLAM launch. This can test whether laser odometry is viable.
-- Full current SLAM check: connect lidar plus STM32 base controller so `/odom` is
-  available. Do not start Nav2 and do not publish `/cmd_vel`.
+- SLAM-only check: connect lidar plus STM32 base controller so `/odom` is
+  available. Keep Nav2 stopped and do not publish `/cmd_vel` during that check.
 - C63A base handoff and keyboard teleop details are in
   `docs/C63A_BASE_AND_SLAM_HANDOFF.md`.
 - Differential keyboard teleop helper:

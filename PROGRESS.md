@@ -1,5 +1,20 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## Point-LIO live-map Nav2 bringup - 2026-08-03
+
+* Reviewed the first user-driven accumulated-scan map. Major room, corridor, and
+  wall geometry is coherent; remaining clutter-edge speckle is acceptable for a
+  conservative initial Nav2 costmap test.
+* Added a Nav2-only Point-LIO launch. It deliberately starts no AMCL, map server,
+  slam_toolbox, sensor driver, odometry, robot description, or base node, so the
+  live Phase B `map -> odom -> base_footprint` ownership remains unchanged.
+* Added Point-LIO navigation parameters using `/odom_lio`,
+  `/scan_accumulated`, the measured `0.40 x 0.35 m` footprint, DWB/NavFn, and
+  conservative initial limits of `0.18 m/s` and `0.60 rad/s`.
+* Added `start_point_lio_nav2_tmux.sh`. It waits for the live map/odom/scan,
+  monitors Nav2 lifecycle and costmaps, sends no goal itself, and refuses to run
+  while the 20 Hz keyboard teleop is still publishing `/cmd_vel`.
+
 ## Point-LIO Phase B scan accumulation - 2026-08-03
 
 * Diagnosed the mismatch between the excellent RViz LaserScan outline at Decay
