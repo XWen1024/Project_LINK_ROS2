@@ -42,6 +42,8 @@ Nav2 configuration, message packages, and integration launch/config files.
 ## Hardware Context
 
 - Main onboard computer: Jetson Orin Nano.
+- Default SSH target: `wte@orin`. Use this hostname instead of a fixed IP for
+  repository runbooks, helper scripts, and interactive hardware work.
 - Orin workspace path: `/home/wte/wheeltec_robot`.
 - Previous Orin workspace backup: `/home/wte/wheeltec_robot_backup_20260627_1250`.
 - Base controller: STM32-based Wheeltec chassis controller.
@@ -282,7 +284,7 @@ asks for persistent shell configuration.
   1. Edit and test in the local Windows repository.
   2. Commit the coherent change locally.
   3. Push to GitHub.
-  4. SSH to Orin and update with `git pull --ff-only`.
+  4. SSH to `wte@orin` and update with `git pull --ff-only`.
 - Use smaller, more frequent commits when a change creates a useful rollback
   point, such as launch changes, hardware bringup scripts, configs, or docs that
   change operating procedure.

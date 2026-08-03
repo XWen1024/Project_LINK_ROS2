@@ -7,18 +7,19 @@
     lio_base_frame: "lio_base"
     base_frame: "base_footprint"
 
-    # This is a fixed alignment between the Point-LIO world frame and the
-    # project odom frame. Tune only yaw after a straight-line chassis test.
-    odom_to_lio_odom_yaw: 1.135
+    # Reset after correcting the installed sensor-frame transform. Tune only
+    # after the new stationary, in-place-turn, and straight-line tests pass.
+    odom_to_lio_odom_yaw: 0.0
 
-    # Seeded from the inverse of the installed URDF chain:
-    # base_footprint -> base_link -> unilidar_link -> unilidar_imu.
-    # Refine these values only after the Phase A stationary/straight-line tests.
-    lio_to_base_x: 0.6285
-    lio_to_base_y: 0.0
-    lio_to_base_z: 0.19
+    # IMU/LIO body -> base_footprint, derived from the currently verified chain:
+    # base_footprint -> base_link -> unilidar_link -> corrected sensor axes,
+    # plus the Unitree factory LiDAR/IMU origin offset. The corrected sensor
+    # mounting is roll=pi, yaw=2.0112063268 relative to unilidar_link.
+    lio_to_base_x: -0.2602380722
+    lio_to_base_y: 0.5831816143
+    lio_to_base_z: -0.19667
     lio_to_base_roll: 0.0
-    lio_to_base_pitch: 1.5708
-    lio_to_base_yaw: 3.14159
+    lio_to_base_pitch: -1.5707963268
+    lio_to_base_yaw: 2.0112063268
 
     projected_z: 0.0

@@ -1,5 +1,11 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## Connection Default - 2026-08-03
+
+* Standardized the Orin SSH target as `wte@orin` instead of a fixed IP.
+* Updated the Windows keyboard teleop helper and repository operating notes to
+  use the hostname-based target.
+
 ## Current Status - 2026-07-11
 
 ### LLM Tool Calling ROS 2 voice orchestration

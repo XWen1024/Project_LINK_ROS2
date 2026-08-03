@@ -19,7 +19,7 @@ def generate_launch_description():
             DeclareLaunchArgument("lidar_tf_z", default_value="0"),
             DeclareLaunchArgument("lidar_tf_roll", default_value="3.14159"),
             DeclareLaunchArgument("lidar_tf_pitch", default_value="0.0"),
-            DeclareLaunchArgument("lidar_tf_yaw", default_value="0.44041"),
+            DeclareLaunchArgument("lidar_tf_yaw", default_value="2.0112063268"),
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",

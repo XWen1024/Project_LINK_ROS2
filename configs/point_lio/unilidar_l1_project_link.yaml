@@ -39,6 +39,9 @@
             gravity_align: true
             gravity: [0.0, 0.0, -9.810]
             gravity_init: [0.0, 0.0, -9.810]
+            # Unitree L1 factory LiDAR -> IMU calibration. The vendor states
+            # that the point-cloud and IMU axes are parallel; only the sensor
+            # origins differ by this millimetre-scale translation.
             extrinsic_T: [0.007698, 0.014655, -0.00667]
             extrinsic_R: [1.0, 0.0, 0.0,
                           0.0, 1.0, 0.0,

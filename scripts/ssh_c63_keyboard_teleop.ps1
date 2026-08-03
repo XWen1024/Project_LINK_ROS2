@@ -1,5 +1,5 @@
 param(
-  [string]$HostName = "192.168.3.246",
+  [string]$HostName = "orin",
   [string]$User = "wte",
   [string]$RemoteScript = "/tmp/c63_keyboard_teleop.sh",
   [string]$RemoteWorkspace = "/home/wte/wheeltec_robot"

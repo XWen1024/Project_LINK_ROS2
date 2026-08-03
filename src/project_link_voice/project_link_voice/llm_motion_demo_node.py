@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import glob
 import math
 import os
 import queue
@@ -390,6 +391,10 @@ class LlmMotionDemoNode(Node):
         configured = str(self.get_parameter("wakeup_serial_port").value).strip()
         if configured and configured.lower() != "auto":
             return configured
+        by_id_matches = sorted(glob.glob("/dev/serial/by-id/*WCH.CN_USB_Single_Serial_0004*"))
+        if by_id_matches:
+            self.get_logger().warn(f"Auto-selected iFlytek wake serial: {by_id_matches[0]}")
+            return by_id_matches[0]
         try:
             from serial.tools import list_ports
 

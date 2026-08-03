@@ -7,6 +7,7 @@ not Nav2. First prove base odom, lidar, TF, and mapping are stable.
 ## Current Hardware Facts
 
 - Onboard computer: Jetson Orin Nano.
+- Default SSH target: `wte@orin`.
 - Orin workspace: `/home/wte/wheeltec_robot`.
 - ROS 2 distro: Humble.
 - Base controller: Wheeltec C63A / STM32.
@@ -81,6 +82,12 @@ status frames. Power cycle C63A and re-check board mode, E-stop, and base power.
 ## Keyboard Base Test
 
 The repo provides a differential-drive SSH keyboard teleop helper.
+
+Verify the hostname-based connection first:
+
+```powershell
+ssh wte@orin
+```
 
 From Windows PowerShell:
 

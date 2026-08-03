@@ -408,6 +408,7 @@ owns the projected base TF.
 
 ## Hardware Test Strategy
 
+- Default Orin SSH target: `wte@orin`. Example: `ssh wte@orin`.
 - Lidar-only check: connect only lidar and validate `/scan` plus RViz2 display.
 - Lidar SLAM check: connect lidar, publish robot description TF, then run the
   current SLAM launch. This can test whether laser odometry is viable.
@@ -417,8 +418,8 @@ owns the projected base TF.
   `docs/C63A_BASE_AND_SLAM_HANDOFF.md`.
 - Differential keyboard teleop helper:
   `scripts/ssh_c63_keyboard_teleop.ps1` starts `/tmp/c63_keyboard_teleop.sh` on
-  Orin over SSH. It publishes `/cmd_vel`, uses dead-man behavior, and exits with
-  a stop command.
+  `wte@orin` over SSH by default. It publishes `/cmd_vel`, uses dead-man
+  behavior, and exits with a stop command.
 - Safety default: lift the wheels, disconnect motor power, or keep a person ready
   at the E-stop before any command that could move the base.
 

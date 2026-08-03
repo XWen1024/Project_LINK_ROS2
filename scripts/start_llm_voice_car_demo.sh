@@ -67,7 +67,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$WORKSPACE"
+set +u
 source scripts/project_link_env.sh
+set -u
 
 if [[ -f "$VOICE_ENV" ]]; then
   # shellcheck disable=SC1090

@@ -72,7 +72,7 @@
     注意：unilidar_lidar（驱动发布的点云坐标系）不在 URDF 里声明。
     它由 unilidar_p2s.launch.py 里的 static_transform_publisher 在运行时动态发布：
       unilidar_link  →  unilidar_lidar
-      roll: 3.14159（倒装翻转补偿）  yaw: 0.44041（安装偏转补偿，勿改）
+      roll: 3.14159（倒装翻转补偿）  yaw: 2.0112063268（现场确认的安装偏转）
   -->
 
 </robot>
