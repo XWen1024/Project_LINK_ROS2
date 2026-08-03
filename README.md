@@ -435,6 +435,12 @@ The wrapper starts no goal and sends no nonzero velocity by itself. Inspect the
 local/global costmaps first; use RViz `2D Goal Pose` only with a clear test area
 and a physical E-stop ready.
 
+The first Orin bringup reached `active` for all managed Nav2 nodes. DWB, NavFn,
+the local/global costmaps, recovery behaviors, BT Navigator, waypoint follower,
+and velocity smoother loaded successfully; `/navigate_to_pose` is available.
+The global costmap accepted the live map at `158 x 174` cells and `0.05 m/pixel`.
+A four-second idle check observed no `/cmd_vel` message, so no goal was executed.
+
 `robot_state_publisher` expands the package xacro and is the only sensor static
 TF authority. Neither Point-LIO nor `unilidar_p2s.launch.py` publishes duplicate
 sensor transforms.

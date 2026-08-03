@@ -272,6 +272,12 @@ so the wrapper refuses to start while it is running. Starting Nav2 does not send
 a goal or a nonzero command. Before using RViz `2D Goal Pose`, verify lifecycle
 nodes and costmaps, clear the robot area, and keep the physical E-stop ready.
 
+The first live-map Nav2 bringup passed on Orin on 2026-08-03. DWB, NavFn, both
+costmap layers, behavior plugins, BT Navigator, waypoint follower, and velocity
+smoother configured and reached `active`; `/navigate_to_pose` is available. The
+global costmap loaded the live map at `158 x 174` cells with `0.05 m` resolution,
+and no `/cmd_vel` message was observed without a goal.
+
 ## Direct RViz A-To-B Loop Notes
 
 This project currently has a tiny direct-drive test script:

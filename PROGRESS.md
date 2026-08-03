@@ -14,6 +14,11 @@
 * Added `start_point_lio_nav2_tmux.sh`. It waits for the live map/odom/scan,
   monitors Nav2 lifecycle and costmaps, sends no goal itself, and refuses to run
   while the 20 Hz keyboard teleop is still publishing `/cmd_vel`.
+* Built and started the live-map Nav2 stack on Orin. All managed nodes reached
+  `active`; DWB, NavFn, both costmaps, behavior plugins, BT Navigator, waypoint
+  follower, and velocity smoother loaded successfully. `/navigate_to_pose` is
+  available, the global costmap loaded `158 x 174` cells at `0.05 m/pixel`, and
+  a four-second idle check observed no `/cmd_vel` message.
 
 ## Point-LIO Phase B scan accumulation - 2026-08-03
 
