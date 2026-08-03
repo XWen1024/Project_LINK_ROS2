@@ -22,7 +22,7 @@ is not Nav2: keep SLAM/TF running, click A and B in RViz, and send low-speed
 
 ## Current Status
 
-- Date: 2026-07-11.
+- Date: 2026-08-03.
 - Main onboard computer: Jetson Orin Nano.
 - Orin workspace: `/home/wte/wheeltec_robot`.
 - Old Orin workspace backup: `/home/wte/wheeltec_robot_backup_20260627_1250`.
@@ -32,10 +32,9 @@ is not Nav2: keep SLAM/TF running, click A and B in RViz, and send low-speed
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` return at about `20 Hz` after the
   C63A board is healthy.
 - Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
-- Current priority: Point-LIO Phase A coordinate validation. The known-good
-  rf2o/EKF/SLAM route remains the fallback; Point-LIO will not be used for map
-  building or direct A-to-B motion until its planar base TF passes hardware
-  validation.
+- Current priority: finish Point-LIO straight-line validation and then rerun
+  Phase B mapping. The corrected planar base TF has passed stationary and
+  low-speed in-place-turn hardware checks; rf2o/EKF/SLAM remains the fallback.
 
 ## Repository Layout
 
@@ -344,11 +343,16 @@ roll and pitch near zero. Tune the versioned
 `configs/point_lio/lio_planar_projection.yaml` only after a stationary and
 straight-line chassis check.
 
-The initial Orin Phase A bringup was verified on 2026-07-11: cloud is about
-`9.8 Hz`, IMU about `249 Hz`, and raw/projected odom plus registered cloud are
-at lidar cadence. The projected TF correctly has zero z/roll/pitch. Its initial
-yaw is about `-65 degrees`, so perform a low-speed straight-line calibration and
-adjust only `odom_to_lio_odom_yaw` before any Phase B map test.
+The corrected Phase A mounting/projection baseline was verified on 2026-08-03:
+cloud is about `9.5 Hz`, IMU about `247 Hz`, and raw/projected odom plus
+registered cloud are at lidar cadence. The installed sensor correction is roll
+`3.14159`, pitch `0.0`, yaw `2.0112063268`. Unitree's factory LiDAR/IMU axes are
+parallel, so Point-LIO retains identity `extrinsic_R` and the factory
+millimetre-scale translation. The corrected planar transform reduced the false
+lever arm from about `0.94 m` to about `0.20 m`, matching the real `0.19 m`
+forward mounting. Stationary jitter is centimetre-scale and a supervised
+90-degree in-place turn matched the physical turn without tracing a large arc.
+Straight-line scale/lateral-drift validation is still required.
 
 Phase B, Point-LIO odometry plus `slam_toolbox` 2D map, is blocked until the
 Phase A checks above pass:
@@ -358,11 +362,10 @@ cd /home/wte/wheeltec_robot
 ./start_point_lio_tmux.sh --restart --with-2d-map
 ```
 
-The initial Phase B bringup was verified on 2026-07-11 without Nav2 or motion
-commands: `/scan` runs at about `9.6 Hz`, `/map` publishes an occupancy grid,
-and `map -> odom -> base_footprint` is continuous. The initial yaw alignment is
-`odom_to_lio_odom_yaw: 1.135`; refine it only after a real straight-line chassis
-check.
+The previous Phase B bringup produced `/scan`, `/map`, and a continuous
+`map -> odom -> base_footprint`, but it used the superseded mounting transform.
+The old `odom_to_lio_odom_yaw: 1.135` value has been reset to `0.0`; rerun Phase
+B only after the corrected straight-line chassis check.
 
 The tmux session is `project_link_point_lio` and contains:
 
@@ -390,11 +393,11 @@ The tmux script waits for real `/unilidar/cloud` and `/unilidar/imu` messages
 before starting Point-LIO. This avoids judging the stack while the lidar driver is
 visible in the ROS graph but has not produced data yet.
 
-To tune point-cloud direction, override the static TF values when starting tmux:
+The verified default point-cloud direction is:
 
 ```bash
-LIDAR_TF_YAW=0.0 ./start_point_lio_tmux.sh --restart --with-2d-map
-LIDAR_TF_YAW=3.14159 ./start_point_lio_tmux.sh --restart --with-2d-map
+LIDAR_TF_ROLL=3.14159 LIDAR_TF_PITCH=0.0 LIDAR_TF_YAW=2.0112063268 \
+  ./start_point_lio_tmux.sh --restart
 ```
 
 Use `LIDAR_TF_ROLL`, `LIDAR_TF_PITCH`, and `LIDAR_TF_YAW` for orientation

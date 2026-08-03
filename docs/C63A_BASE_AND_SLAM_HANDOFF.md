@@ -188,6 +188,16 @@ This route also uses the C63A `/odom` as an EKF input in
 
 ### Current Candidate: Point-LIO
 
+Verified mounting/projection baseline from 2026-08-03:
+
+- static sensor correction: roll `3.14159`, pitch `0.0`, yaw `2.0112063268`;
+- Point-LIO keeps Unitree's factory identity LiDAR/IMU rotation and calibrated
+  millimetre-scale translation;
+- corrected planar pose passes stationary and low-speed 90-degree in-place-turn
+  checks without the previous large circular trajectory;
+- straight-line scale and lateral-drift validation remains required before the
+  next Phase B map run.
+
 Phase A, odometry only:
 
 ```bash

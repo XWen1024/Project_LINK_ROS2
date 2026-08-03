@@ -6,18 +6,19 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
-- Current phase: SLAM-first validation has a known-good rf2o fallback; the next
-  user-requested milestone is site voice mobile-manipulation bringup with no
-  Nav2, planning, costmaps, or obstacle avoidance.
+- Current phase: Point-LIO planar pose correction now passes stationary and
+  low-speed in-place-turn hardware checks; validate straight-line motion and
+  Phase B mapping before returning to site voice mobile-manipulation bringup.
 - The minimum loop is: save a good map, save named voice waypoints, dry-run
   ASR/LLM/TTS, enable direct point-to-point drive, validate visual grasp alone,
   then allow voice fetch.
 - Immediate order of work:
-  1. Keep the working `rf2o + EKF + slam_toolbox` route as the pose source.
-  2. Use `scripts/site_map_and_save.sh --restart` to make/save the site map.
-  3. Use `scripts/site_waypoints.sh` to write the voice waypoint JSON.
-  4. Use `scripts/start_site_voice_stack.sh --restart` for dry-run voice tests.
-  5. Add `--enable-motion` and then `--enable-visual-grasp` only after each
+  1. Keep the working `rf2o + EKF + slam_toolbox` route as the fallback.
+  2. Validate Point-LIO straight-line scale/lateral drift, then Phase B mapping.
+  3. Use `scripts/site_map_and_save.sh --restart` to make/save the site map.
+  4. Use `scripts/site_waypoints.sh` to write the voice waypoint JSON.
+  5. Use `scripts/start_site_voice_stack.sh --restart` for dry-run voice tests.
+  6. Add `--enable-motion` and then `--enable-visual-grasp` only after each
      subsystem is independently safe.
 
 ## Project Summary
@@ -95,12 +96,18 @@ Nav2 configuration, message packages, and integration launch/config files.
   `/unilidar/imu` at about 249 Hz, `/odom_lio_raw`, `/odom_lio`, and
   `/point_lio/cloud_registered` at lidar cadence. The raw output has a single
   Point-LIO publisher and the planar output has a single adapter publisher.
-- The projected `odom -> base_footprint` TF has verified `z=0`, roll `0`, and
-  pitch `0`. Its observed yaw is about `-65 degrees` before the required
-  straight-line calibration; do not treat that yaw as a final chassis heading.
-- The initial yaw alignment was set to `1.135 rad` on 2026-07-11. In Point-LIO
-  Phase B, `/scan`, `/map`, and `map -> odom -> base_footprint` were verified;
-  the projected stationary yaw is now about `-0.5 degrees`.
+- On 2026-08-03 the visually verified sensor correction became roll `pi`, pitch
+  `0`, yaw `2.0112063268 rad` (`115.234 degrees`). Unitree's factory LiDAR/IMU
+  axes remain parallel, so Point-LIO keeps identity `extrinsic_R` and the vendor
+  millimetre-scale `extrinsic_T`.
+- The corrected IMU/LIO-body to `base_footprint` transform is versioned in
+  `lio_planar_projection.yaml`. It reduced the false planar lever arm from about
+  `0.94 m` to about `0.20 m`, matching the physical `0.19 m` forward mounting.
+  Stationary output has only centimetre-scale jitter and a supervised low-speed
+  90-degree in-place turn matched the physical motion without the previous large
+  circular path. The old `odom_to_lio_odom_yaw: 1.135` calibration is invalid
+  after this correction and has been reset to `0.0`; straight-line calibration
+  remains required.
 - C63A base serial return data was confirmed on 2026-07-11 after power cycling:
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
 - The C63A base is integrated into the known-good rf2o SLAM bringup:
@@ -215,7 +222,8 @@ In Phase B, `start_point_lio_tmux.sh --with-2d-map` sets
 
 Point-cloud direction is tuned through `LIDAR_TF_ROLL`, `LIDAR_TF_PITCH`, and
 `LIDAR_TF_YAW` on the tmux script. Defaults are roll `3.14159`, pitch `0.0`, yaw
-`0.44041`. Keep these values synchronized between Point-LIO Phase A and Phase B.
+`2.0112063268`. Keep these values synchronized between Point-LIO Phase A and
+Phase B.
 
 Do not blindly launch overlapping TF publishers. In particular, avoid running
 multiple EKF/odom publishers that all claim `odom -> base_footprint`. Point-LIO

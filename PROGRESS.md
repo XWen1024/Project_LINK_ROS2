@@ -6,6 +6,27 @@
 * Updated the Windows keyboard teleop helper and repository operating notes to
   use the hostname-based target.
 
+## Point-LIO mounting and planar pose correction - 2026-08-03
+
+* Visually verified the Unitree L1 point-cloud mounting correction at roll
+  `3.14159`, pitch `0.0`, yaw `2.0112063268` (`115.234 degrees`).
+* Confirmed from the Unitree SDK that point-cloud and IMU axes are parallel.
+  Point-LIO therefore retains identity `extrinsic_R` and the vendor calibration
+  `extrinsic_T: [0.007698, 0.014655, -0.00667]`.
+* Re-derived the Point-LIO IMU/body to `base_footprint` transform from the
+  verified runtime TF, the `0.19 m` forward and `0.6285 m` height mounting, and
+  the factory LiDAR/IMU origin offset.
+* New planar projection seed:
+  * translation `[-0.2602380722, 0.5831816143, -0.19667]`
+  * RPY `[0.0, -1.5707963268, 2.0112063268]`
+  * world yaw alignment reset from the obsolete `1.135` value to `0.0`.
+* Temporary `/tmp` deployment on Orin reduced the false planar lever arm from
+  about `0.94 m` to about `0.20 m`, matching the real `0.19 m` sensor offset.
+* Hardware validation passed for stationary behaviour and a supervised
+  low-speed 90-degree in-place turn. The previous large circular trajectory is
+  gone; only small stationary jitter remains. Straight-line scale and lateral
+  drift validation are the next acceptance checks before rerunning Phase B.
+
 ## Current Status - 2026-07-11
 
 ### LLM Tool Calling ROS 2 voice orchestration
@@ -102,15 +123,9 @@
     `lio_planar_projection` publisher.
   * raw TF retains the expected 3D LIO attitude; projected
     `odom -> base_footprint` is verified at `z=0`, roll `0`, pitch `0`.
-* The remaining Phase A calibration item is chassis heading: the initial
-  projected yaw is about `-65 degrees` while stationary. Perform the low-speed
-  straight-line test, then tune only `odom_to_lio_odom_yaw` and, if needed, the
-  versioned LIO-to-base offsets in `configs/point_lio/lio_planar_projection.yaml`.
-* The initial stationary correction was applied as
-  `odom_to_lio_odom_yaw: 1.135`. Point-LIO Phase B was then brought up without
-  Nav2 or `/cmd_vel`: `/scan` ran at about `9.6 Hz`, `/map` published a real
-  occupancy grid, and `map -> odom -> base_footprint` was continuous. The
-  projected yaw is now about `-0.5 degrees` while stationary.
+* The earlier `odom_to_lio_odom_yaw: 1.135` calibration was derived before the
+  installed sensor/body transform was corrected and is superseded by the
+  2026-08-03 baseline above.
 
 ### Direct RViz A-to-B loop requested
 
