@@ -379,6 +379,11 @@ TF-compensated accumulator with 4 cm spatial deduplication and a 25% valid-bin
 startup threshold. Tune `config/laser_scan_accumulator.yaml` before changing
 slam_toolbox matching parameters.
 
+The first Orin validation of this route warmed up at `25.3%` valid-bin coverage,
+then stabilized around `29%` while stationary. `/scan_accumulated` published at
+about `9.49 Hz`, and slam_toolbox registered it as its laser sensor. The stack is
+therefore ready for the next supervised in-place-turn/map visual comparison.
+
 The tmux session is `project_link_point_lio` and contains:
 
 - `lidar`: Unitree L1 / UniLidar driver

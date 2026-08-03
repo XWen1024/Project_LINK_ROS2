@@ -16,6 +16,11 @@
 * Initial parameters are a `3.0 s` window, `0.04 m` voxel size, and `0.25`
   minimum coverage. Raw `/scan` remains available for RViz and diagnosis;
   Point-LIO Phase B slam_toolbox now subscribes to `/scan_accumulated`.
+* Rebuilt and restarted Point-LIO Phase B on Orin. The accumulator warmed at
+  `25.3%`, stabilized around `29%` stationary coverage, and published at about
+  `9.49 Hz`; slam_toolbox registered the accumulated laser sensor successfully.
+  Removed two stale `/tmp/project_link_scan_frame_stats.py` diagnostic processes
+  left by the earlier scan statistics run.
 
 ## Connection Default - 2026-08-03
 

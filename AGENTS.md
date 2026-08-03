@@ -120,6 +120,10 @@ Nav2 configuration, message packages, and integration launch/config files.
   Decay Time 3 looks complete because it motion-compensates and overlays about
   30 frames, reaching about `46.1%` union coverage. slam_toolbox must therefore
   consume the TF-compensated rolling `/scan_accumulated`, not each raw fragment.
+- The accumulator was built and field-started on Orin. With the final `3.0 s`
+  window, `0.04 m` voxel, and `25%` startup threshold, it warmed at `25.3%`,
+  stabilized around `29%` coverage while stationary, and published at about
+  `9.49 Hz`. slam_toolbox registered the accumulated sensor successfully.
 - C63A base serial return data was confirmed on 2026-07-11 after power cycling:
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
 - The C63A base is integrated into the known-good rf2o SLAM bringup:
