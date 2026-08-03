@@ -64,8 +64,8 @@ Nav2 configuration, message packages, and integration launch/config files.
 
 - `turn_on_wheeltec_robot`: base serial node, robot description launch, lidar
   launch, EKF launch, and current SLAM launch entrypoints.
-- `wheeltec_nav2`: migrated Nav2 launch/config package. It builds, but Nav2 is not
-  the current validation target.
+- `wheeltec_nav2`: live Point-LIO Nav2 launch/config package and the current
+  supervised navigation validation target.
 - `wheeltec_slam_toolbox`: slam_toolbox configs and launch wrappers.
 - `rf2o_laser_odometry`: laser-scan odometry package.
 - `serial`: vendored serial library in `src/depend/serial_ros2`.
@@ -300,6 +300,22 @@ especially in length. The current footprint is centered on `base_footprint` at
 corner clearance remains asymmetric, measure front/rear distance from the real
 drive-wheel midpoint rather than enlarging the centered rectangle blindly.
 
+The live-map navigation tree is
+`behavior_trees/point_lio_safe_replanning.xml`. It checks path validity at 2 Hz
+but keeps a still-valid path instead of replacing it every second as the online
+map expands. Newly computed paths are smoothed before DWB. Recovery may clear
+costmaps, spin in place, or wait; it must never command reverse because the
+current chassis has no reliable rear obstacle coverage. DWB also has
+`min_vel_x: 0.0`, and the velocity smoother has no negative linear limit.
+
+The first path-following diagnosis found small backtracking segments in raw
+NavFn plans, repeated global-map resize events, `No valid trajectories` from
+the DWB obstacle critic, and false/late `Failed to make progress` recoveries.
+The current conservative tuning uses the rectangular `ObstacleFootprint` critic,
+a `0.50 m` inflation radius with `2.5` cost scaling, a smoothed stable path, and
+a `0.10 m / 20 s` progress check. Do not re-enable `BackUp` unless a verified
+rear obstacle sensor is integrated.
+
 ## Direct RViz A-To-B Loop Notes
 
 This project currently has a tiny direct-drive test script:
@@ -344,8 +360,8 @@ asks for persistent shell configuration.
 
 ## Safety Rules
 
-- Do not start Nav2 during the current SLAM-first phase unless the user explicitly
-  changes the plan.
+- Do not start Nav2 automatically during hardware bringup. The user has enabled
+  supervised low-speed Nav2 validation only after Point-LIO Phase B is healthy.
 - Do not publish `/cmd_vel` during hardware bringup unless the robot is safe:
   wheels lifted, motor power disconnected, or a person is ready at the E-stop.
 - Prefer read-only checks first: `--show-args`, `ros2 topic list`, `ros2 topic hz`,

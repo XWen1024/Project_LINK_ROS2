@@ -1,0 +1,60 @@
+<!--
+  Point-LIO live-map navigation tree for the Project LINK differential base.
+
+  The global path is kept while it remains valid, which avoids making DWB chase
+  small one-hertz changes from an expanding online SLAM map. A blocked path is
+  checked twice per second, replanned, and smoothed before it reaches the local
+  controller.
+
+  Recovery motion is intentionally forward-safe: clear costmaps, spin in place,
+  or wait. There is no BackUp action because the current robot has no reliable
+  rear obstacle coverage.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="4" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithStableReplanning">
+        <RateController hz="2.0">
+          <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPath">
+            <Fallback>
+              <ReactiveSequence>
+                <Inverter>
+                  <GlobalUpdatedGoal/>
+                </Inverter>
+                <IsPathValid path="{path}"/>
+              </ReactiveSequence>
+              <Sequence>
+                <ComputePathToPose goal="{goal}" path="{raw_path}" planner_id="GridBased"/>
+                <SmoothPath unsmoothed_path="{raw_path}"
+                            smoothed_path="{path}"
+                            smoother_id="simple_smoother"
+                            max_smoothing_duration="0.30"
+                            check_for_collisions="true"/>
+              </Sequence>
+            </Fallback>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context"
+                                service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context"
+                              service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="ForwardSafeRecoveryActions">
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree"
+                                service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree"
+                                service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Spin spin_dist="1.57"/>
+          <Wait wait_duration="5"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

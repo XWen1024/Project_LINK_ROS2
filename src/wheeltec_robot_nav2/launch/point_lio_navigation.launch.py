@@ -15,15 +15,22 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from nav2_common.launch import RewrittenYaml
 
 
 def generate_launch_description():
     nav2_bringup_dir = get_package_share_directory("nav2_bringup")
+    wheeltec_nav2_dir = get_package_share_directory("wheeltec_nav2")
     default_params = os.path.join(
-        get_package_share_directory("wheeltec_nav2"),
+        wheeltec_nav2_dir,
         "param",
         "wheeltec_params",
         "param_point_lio_navigation.yaml",
+    )
+    safe_behavior_tree = os.path.join(
+        wheeltec_nav2_dir,
+        "behavior_trees",
+        "point_lio_safe_replanning.xml",
     )
 
     use_sim_time = LaunchConfiguration("use_sim_time")
@@ -31,6 +38,13 @@ def generate_launch_description():
     autostart = LaunchConfiguration("autostart")
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
+    configured_params = RewrittenYaml(
+        source_file=params_file,
+        param_rewrites={
+            "default_nav_to_pose_bt_xml": safe_behavior_tree,
+        },
+        convert_types=True,
+    )
 
     return LaunchDescription(
         [
@@ -45,7 +59,7 @@ def generate_launch_description():
                 ),
                 launch_arguments={
                     "use_sim_time": use_sim_time,
-                    "params_file": params_file,
+                    "params_file": configured_params,
                     "autostart": autostart,
                     "use_composition": "False",
                     "use_respawn": use_respawn,

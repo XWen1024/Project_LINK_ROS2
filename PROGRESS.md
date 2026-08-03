@@ -34,6 +34,20 @@
   vertical geometry already totals about `0.8235 m`. Updated local/global Nav2
   footprints to the measured rectangle with `0.01 m` padding, producing an
   effective `0.53 x 0.43 m` collision envelope.
+* Diagnosed repeated live navigation failures. The global planner did replan at
+  1 Hz, but online-map resize events repeatedly changed reachability; raw NavFn
+  paths also contained short backtracking segments. DWB sometimes rejected all
+  619 sampled trajectories as obstacle collisions, and the progress checker
+  aborted after less than `0.15 m` translation in 15 seconds. The default Nav2
+  recovery tree then performed the observed spin/wait/reverse sequence.
+* Added `point_lio_safe_replanning.xml`: it checks path validity at 2 Hz, retains
+  a valid path, replans and smooths only when required, and limits recovery to
+  costmap clearing, spin, and wait. `BackUp` and negative linear velocity are
+  removed because the chassis has no reliable rear obstacle coverage.
+* Tuned live-map navigation away from wall shortcuts and grid-level steering
+  oscillation: both inflation layers are `0.50 m` with cost scaling `2.5`, DWB
+  uses the rectangular `ObstacleFootprint` critic, alignment lookahead is
+  `0.20 m`, and progress checking is relaxed to `0.10 m` within 20 seconds.
 
 ## Point-LIO Phase B scan accumulation - 2026-08-03
 
