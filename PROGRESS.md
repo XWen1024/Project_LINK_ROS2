@@ -44,6 +44,8 @@
   a valid path, replans and smooths only when required, and limits recovery to
   costmap clearing, spin, and wait. `BackUp` and negative linear velocity are
   removed because the chassis has no reliable rear obstacle coverage.
+  Added the matching no-reverse multi-pose tree because Humble preloads both
+  navigator trees during lifecycle activation even for a single RViz goal.
 * Tuned live-map navigation away from wall shortcuts and grid-level steering
   oscillation: both inflation layers are `0.50 m` with cost scaling `2.5`, DWB
   uses the rectangular `ObstacleFootprint` critic, alignment lookahead is

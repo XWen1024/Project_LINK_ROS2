@@ -300,12 +300,13 @@ especially in length. The current footprint is centered on `base_footprint` at
 corner clearance remains asymmetric, measure front/rear distance from the real
 drive-wheel midpoint rather than enlarging the centered rectangle blindly.
 
-The live-map navigation tree is
-`behavior_trees/point_lio_safe_replanning.xml`. It checks path validity at 2 Hz
-but keeps a still-valid path instead of replacing it every second as the online
-map expands. Newly computed paths are smoothed before DWB. Recovery may clear
-costmaps, spin in place, or wait; it must never command reverse because the
-current chassis has no reliable rear obstacle coverage. DWB also has
+The live-map navigation trees are
+`behavior_trees/point_lio_safe_replanning.xml` and its multi-pose companion
+`point_lio_safe_through_poses.xml`. The single-goal tree checks path validity at
+2 Hz but keeps a still-valid path instead of replacing it every second as the
+online map expands. Newly computed paths are smoothed before DWB. Recovery may
+clear costmaps, spin in place, or wait; it must never command reverse because
+the current chassis has no reliable rear obstacle coverage. DWB also has
 `min_vel_x: 0.0`, and the velocity smoother has no negative linear limit.
 
 The first path-following diagnosis found small backtracking segments in raw

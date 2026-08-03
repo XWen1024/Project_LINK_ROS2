@@ -32,6 +32,11 @@ def generate_launch_description():
         "behavior_trees",
         "point_lio_safe_replanning.xml",
     )
+    safe_through_poses_tree = os.path.join(
+        wheeltec_nav2_dir,
+        "behavior_trees",
+        "point_lio_safe_through_poses.xml",
+    )
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     params_file = LaunchConfiguration("params_file")
@@ -42,6 +47,7 @@ def generate_launch_description():
         source_file=params_file,
         param_rewrites={
             "default_nav_to_pose_bt_xml": safe_behavior_tree,
+            "default_nav_through_poses_bt_xml": safe_through_poses_tree,
         },
         convert_types=True,
     )
