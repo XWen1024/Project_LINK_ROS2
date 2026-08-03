@@ -32,10 +32,10 @@ is not Nav2: keep SLAM/TF running, click A and B in RViz, and send low-speed
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` return at about `20 Hz` after the
   C63A board is healthy.
 - Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
-- Current priority: rerun Point-LIO Phase B mapping with the canonical URDF/TF
-  chain. The corrected planar base TF has passed stationary, low-speed
-  in-place-turn, and straight-line hardware checks; rf2o/EKF/SLAM remains the
-  fallback.
+- Current priority: inspect Point-LIO Phase B map quality and tune the 2D height
+  slice. The corrected planar base TF has passed stationary, low-speed
+  in-place-turn, and straight-line checks, and Phase B runs with the canonical
+  URDF/TF chain; rf2o/EKF/SLAM remains the fallback.
 
 ## Repository Layout
 
@@ -362,10 +362,11 @@ cd /home/wte/wheeltec_robot
 ./start_point_lio_tmux.sh --restart --with-2d-map
 ```
 
-The previous Phase B bringup produced `/scan`, `/map`, and a continuous
-`map -> odom -> base_footprint`, but it used the superseded mounting transform.
-The old `odom_to_lio_odom_yaw: 1.135` value has been reset to `0.0`; the next
-Phase B run validates the corrected canonical URDF/TF chain.
+The canonical-URDF Phase B bringup was verified on Orin on 2026-08-03: `/scan`
+runs at about `9.34 Hz`, `/odom_lio` at about `9.31 Hz`, `/map` publishes, and
+`map -> odom -> base_footprint` is continuous. No separate lidar static-TF node
+is present. The next check is map quality while driving, followed by height-slice
+tuning if the registered 3D cloud is clean but the 2D occupancy map is noisy.
 
 The tmux session is `project_link_point_lio` and contains:
 

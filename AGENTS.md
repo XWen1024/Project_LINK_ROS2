@@ -6,15 +6,15 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
-- Current phase: Point-LIO planar pose correction now passes stationary,
-  low-speed in-place-turn, and straight-line hardware checks. The immediate
-  task is Phase B mapping validation before returning to site voice bringup.
+- Current phase: Point-LIO planar pose correction passes stationary, low-speed
+  in-place-turn, and straight-line checks. Phase B now runs with the canonical
+  URDF/TF chain; inspect map quality and tune the 2D slice before site bringup.
 - The minimum loop is: save a good map, save named voice waypoints, dry-run
   ASR/LLM/TTS, enable direct point-to-point drive, validate visual grasp alone,
   then allow voice fetch.
 - Immediate order of work:
   1. Keep the working `rf2o + EKF + slam_toolbox` route as the fallback.
-  2. Validate Point-LIO Phase B mapping with the canonical URDF/TF chain.
+  2. Inspect Point-LIO Phase B map quality and tune the 2D height slice.
   3. Use `scripts/site_map_and_save.sh --restart` to make/save the site map.
   4. Use `scripts/site_waypoints.sh` to write the voice waypoint JSON.
   5. Use `scripts/start_site_voice_stack.sh --restart` for dry-run voice tests.
@@ -108,6 +108,11 @@ Nav2 configuration, message packages, and integration launch/config files.
   circular path. The old `odom_to_lio_odom_yaw: 1.135` calibration is invalid
   after this correction and has been reset to `0.0`. The subsequent supervised
   straight-line test also matched the physical chassis motion.
+- After the canonical package xacro became the sole sensor TF authority, Phase B
+  was rebuilt and verified on Orin: `/scan` is about `9.34 Hz`, `/odom_lio` about
+  `9.31 Hz`, `/map` publishes, and `map -> base_footprint` is continuous. The only
+  `/tf_static` publishers are `robot_state_publisher` and the intentional
+  `odom -> lio_odom` world-alignment publisher.
 - C63A base serial return data was confirmed on 2026-07-11 after power cycling:
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
 - The C63A base is integrated into the known-good rf2o SLAM bringup:

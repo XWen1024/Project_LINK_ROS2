@@ -32,6 +32,10 @@
   URDF duplicates were removed. `robot_state_publisher` now expands the installed
   xacro, including the full LiDAR/IMU chain, and the Point-LIO and scan launches
   no longer publish duplicate sensor static transforms.
+* Rebuilt the package on Orin and launched Phase B with the canonical TF tree:
+  `/scan` ran at about `9.34 Hz`, `/odom_lio` at about `9.31 Hz`, `/map` published,
+  and `map -> base_footprint` remained continuous with only small stationary
+  jitter. `/tf_static` has no duplicate lidar mounting publisher.
 
 ## Current Status - 2026-07-11
 
