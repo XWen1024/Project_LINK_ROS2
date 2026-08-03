@@ -1,5 +1,14 @@
 /**:
     ros__parameters:
+        # Real-time defaults for the Orin. Phase A keeps 3D publishers enabled;
+        # Phase B additionally sets odom_only=true in start_point_lio_tmux.sh.
+        point_filter_num: 2
+        filter_size_surf: 0.15
+        filter_size_map: 0.15
+        cube_side_length: 150.0
+        max_lidar_buffer_size: 2
+        max_imu_buffer_size: 2000
+
         common:
             lid_topic: "/unilidar/cloud"
             imu_topic: "/unilidar/imu"
@@ -35,7 +44,7 @@
             plane_thr: 0.1
             match_s: 81.0
             fov_degree: 180.0
-            det_range: 100.0
+            det_range: 40.0
             gravity_align: true
             gravity: [0.0, 0.0, -9.810]
             gravity_init: [0.0, 0.0, -9.810]

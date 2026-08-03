@@ -448,6 +448,31 @@ behind the live scan; restarting Phase B restored LIO lag to about `0.03 s`. Its
 map was preserved at
 `/home/wte/maps/point_lio_nav2_pre_restart_20260803_2312.yaml` before restart.
 
+This lag is a throughput backlog, not a network delay or a fixed clock offset:
+the lidar supplied about `9.6 Hz` while delayed Point-LIO output had fallen to
+about `8.5 Hz`, so an unbounded queue grew every second. The repository now has
+two controls for it. Phase B starts Point-LIO in `odom_only` mode with point
+filter `2`, `0.15 m` surface/map voxels, a `150 m` local cube, and `40 m`
+detection range. The external source patch then caps the LiDAR/IMU queues and
+ROS QoS depths so overload drops stale input instead of increasing latency.
+
+After updating the Orin repository, apply and build the external-source change:
+
+```bash
+cd /home/wte/wheeltec_robot
+./scripts/apply_point_lio_realtime_patch.sh --check
+./scripts/apply_point_lio_realtime_patch.sh
+
+cd /home/wte/point_lio_ws
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select point_lio
+```
+
+The patch script preserves unrelated changes in the external dirty checkout and
+is safe to run again after it has been applied. Normal Phase B no longer expects
+`/point_lio/cloud_registered`; use Phase A or set `POINT_LIO_ODOM_ONLY=false`
+only when deliberate 3D RViz output is needed.
+
 The local window is now `3 x 3 m` (`60 x 60` cells at `0.05 m`). The obstacle
 source explicitly accepts `-0.1..2.0 m` height so scans expressed from elevated
 `base_link` are not filtered out. The first verified frame contained 69 lethal

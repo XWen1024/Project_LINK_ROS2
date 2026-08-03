@@ -1,5 +1,40 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## Point-LIO real-time backlog control - 2026-08-04
+
+* Confirmed the recurring delay is processing backlog rather than network or
+  clock offset. `/unilidar/cloud` was about `9.6 Hz` while delayed `/odom_lio`
+  was about `8.5 Hz`; restart immediately returned lag to about `0.03 s`.
+* Added an Orin real-time profile. Phase B now defaults to `odom_only=true`,
+  point filter `2`, `0.15 m` surface/map voxels, `150 m` local cube, and `40 m`
+  detection range. Phase A still defaults to `odom_only=false` for 3D RViz
+  inspection. Normal Phase B monitoring no longer waits for registered clouds.
+* Added the versioned external-source patch
+  `patches/point_lio/0001-bound-realtime-queues.patch` and idempotent application
+  script `scripts/apply_point_lio_realtime_patch.sh`. It bounds LiDAR input to 2
+  frames and IMU input to 2000 messages, drops oldest stale data, keeps time and
+  LiDAR buffers synchronized, resets an active stale LiDAR measurement, reduces
+  subscription/publisher queue depths, fixes fractional LiDAR timestamps, and
+  emits throttled queue/backlog/drop diagnostics.
+* The patch was checked against the current external
+  `/home/wte/point_lio_ws/src/point_lio/src/laserMapping.cpp` while the Orin was
+  online. Per user direction, it was not applied or built because the Orin was
+  then shut down; deployment and hardware verification remain pending.
+
+### TODO - Point-LIO Phase 3 endurance validation
+
+Do not run this automatically during ordinary bringup. After the Orin is back
+online and the Phase 1/2 changes are applied and built, run three separate tests:
+
+- Phase A for 30 minutes.
+- Phase B for 30 minutes.
+- Phase B plus Nav2 for 30 minutes.
+
+Pass criteria: timestamp lag remains below `0.2 s` and does not grow
+monotonically, the internal LiDAR queue remains at or below 2 frames, and
+`/odom_lio` stays near the roughly `9.5 Hz` LiDAR cadence. Record drop counts and
+CPU/memory/temperature observations for each test.
+
 ## Point-LIO live-map Nav2 bringup - 2026-08-03
 
 * Reviewed the first user-driven accumulated-scan map. Major room, corridor, and

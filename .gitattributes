@@ -10,3 +10,4 @@
 *.xml text eol=lf
 *.urdf text eol=lf
 *.xacro text eol=lf
+*.patch text eol=lf

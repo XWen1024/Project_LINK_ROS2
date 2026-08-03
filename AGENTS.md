@@ -6,21 +6,25 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
-- Current phase: Point-LIO Phase B produces a usable live map through the
-  motion-compensated scan accumulator. The user has explicitly advanced the
-  milestone to Nav2 bringup against the live slam_toolbox map.
+- Current phase: Point-LIO Phase B and Nav2 are usable, but a long-running
+  Point-LIO process can fall behind live sensor time. Repository-owned Phase B
+  load shedding and a versioned bounded-queue patch are now the immediate
+  stabilization milestone.
 - The minimum loop is: save a good map, save named voice waypoints, dry-run
   ASR/LLM/TTS, enable direct point-to-point drive, validate visual grasp alone,
   then allow voice fetch.
 - Immediate order of work:
   1. Keep the working `rf2o + EKF + slam_toolbox` route as the fallback.
-  2. Use `start_point_lio_nav2_tmux.sh --restart` to start Nav2 only.
-  3. Validate both costmaps and path planning before sending a motion goal.
-  4. Stop keyboard teleop before any Nav2 goal; only one `/cmd_vel` publisher may
+  2. Apply `scripts/apply_point_lio_realtime_patch.sh` to the external Point-LIO
+     checkout, rebuild it, and start Phase B with `start_point_lio_tmux.sh`.
+  3. Confirm LIO timestamp lag remains bounded before starting Nav2.
+  4. Use `start_point_lio_nav2_tmux.sh --restart` to start Nav2 only.
+  5. Validate both costmaps and path planning before sending a motion goal.
+  6. Stop keyboard teleop before any Nav2 goal; only one `/cmd_vel` publisher may
      control the base during the supervised low-speed navigation test.
-  5. Tune the 2D height slice only if navigation costmaps are materially harmed.
-  6. Save a good map and named voice waypoints after the navigation check.
-  7. Add voice motion and visual grasp only after each subsystem is safe.
+  7. Tune the 2D height slice only if navigation costmaps are materially harmed.
+  8. Save a good map and named voice waypoints after the navigation check.
+  9. Add voice motion and visual grasp only after each subsystem is safe.
 
 ## Project Summary
 
@@ -242,6 +246,23 @@ Point-LIO Phase B adds:
 -> slam_toolbox
 -> /map and map -> odom TF
 ```
+
+Phase B defaults to the Orin real-time profile: `odom_only=true`, input point
+filter `2`, surface/map voxels `0.15 m`, local cube `150 m`, and detection range
+`40 m`. It therefore does not publish registered/map point clouds or `/path_lio`
+during normal 2D mapping/navigation. Phase A keeps `odom_only=false` so the raw
+3D outputs remain available for deliberate RViz inspection. All values can be
+overridden with the `POINT_LIO_*` environment variables documented by
+`start_point_lio_tmux.sh --help`.
+
+The external Point-LIO checkout must also carry the repository-owned patch
+`patches/point_lio/0001-bound-realtime-queues.patch`. Apply it only through
+`scripts/apply_point_lio_realtime_patch.sh`; the script is idempotent and does
+not reset unrelated changes in the dirty external checkout. The patch limits
+the internal LiDAR queue to 2 frames and IMU queue to 2000 messages, drops stale
+oldest data, reduces ROS QoS/publisher depths, fixes fractional LiDAR time, and
+prints throttled queue/backlog diagnostics. Point-LIO source remains outside
+this repository at `/home/wte/point_lio_ws/src/point_lio`.
 
 The accumulator keeps raw `/scan` for RViz/debug, transforms every finite scan
 endpoint into `odom` at its source timestamp, maintains a short rolling window,

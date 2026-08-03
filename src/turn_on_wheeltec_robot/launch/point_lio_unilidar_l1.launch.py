@@ -36,6 +36,11 @@ def generate_launch_description():
     config_file = LaunchConfiguration("config_file")
     projection_config_file = LaunchConfiguration("projection_config_file")
     odom_only = LaunchConfiguration("odom_only")
+    point_filter_num = LaunchConfiguration("point_filter_num")
+    filter_size_surf = LaunchConfiguration("filter_size_surf")
+    filter_size_map = LaunchConfiguration("filter_size_map")
+    cube_side_length = LaunchConfiguration("cube_side_length")
+    det_range = LaunchConfiguration("det_range")
     enable_slam_toolbox = LaunchConfiguration("enable_slam_toolbox")
     use_imu_as_input = LaunchConfiguration("use_imu_as_input")
     point_lio_node = Node(
@@ -50,11 +55,12 @@ def generate_launch_description():
                 "prop_at_freq_of_imu": True,
                 "check_satu": True,
                 "init_map_size": 10,
-                "point_filter_num": 1,
+                "point_filter_num": point_filter_num,
                 "space_down_sample": True,
-                "filter_size_surf": 0.1,
-                "filter_size_map": 0.1,
-                "cube_side_length": 1000.0,
+                "filter_size_surf": filter_size_surf,
+                "filter_size_map": filter_size_map,
+                "cube_side_length": cube_side_length,
+                "mapping.det_range": det_range,
                 "runtime_pos_log_enable": False,
                 "odom_only": odom_only,
                 "odom_header_frame_id": "lio_odom",
@@ -137,6 +143,31 @@ def generate_launch_description():
                     "If true, Point-LIO suppresses registered cloud/path output and "
                     "only publishes odometry. Keep false for RViz 3D inspection."
                 ),
+            ),
+            DeclareLaunchArgument(
+                "point_filter_num",
+                default_value="2",
+                description="Keep one point out of every N input points.",
+            ),
+            DeclareLaunchArgument(
+                "filter_size_surf",
+                default_value="0.15",
+                description="Surface voxel size in metres.",
+            ),
+            DeclareLaunchArgument(
+                "filter_size_map",
+                default_value="0.15",
+                description="Map voxel size in metres.",
+            ),
+            DeclareLaunchArgument(
+                "cube_side_length",
+                default_value="150.0",
+                description="Local Point-LIO map cube side length in metres.",
+            ),
+            DeclareLaunchArgument(
+                "det_range",
+                default_value="40.0",
+                description="Point-LIO detection range in metres.",
             ),
             DeclareLaunchArgument(
                 "enable_slam_toolbox",
