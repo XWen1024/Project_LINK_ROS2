@@ -195,8 +195,9 @@ Verified mounting/projection baseline from 2026-08-03:
   millimetre-scale translation;
 - corrected planar pose passes stationary and low-speed 90-degree in-place-turn
   checks without the previous large circular trajectory;
-- straight-line scale and lateral-drift validation remains required before the
-  next Phase B map run.
+- straight-line scale, lateral drift, and heading also pass the physical test;
+- the installed package xacro is the only sensor static TF authority. Point-LIO
+  and pointcloud-to-laserscan do not publish duplicate mounting transforms.
 
 Phase A, odometry only:
 

@@ -24,8 +24,14 @@
   about `0.94 m` to about `0.20 m`, matching the real `0.19 m` sensor offset.
 * Hardware validation passed for stationary behaviour and a supervised
   low-speed 90-degree in-place turn. The previous large circular trajectory is
-  gone; only small stationary jitter remains. Straight-line scale and lateral
-  drift validation are the next acceptance checks before rerunning Phase B.
+  gone; only small stationary jitter remains. The user subsequently confirmed
+  that the straight-line scale, lateral drift, and heading also match the real
+  chassis motion.
+* Consolidated robot description and sensor TF ownership into the package xacro
+  `src/turn_on_wheeltec_robot/urdf/patrol_robot.urdf.xacro`. Root-level generated
+  URDF duplicates were removed. `robot_state_publisher` now expands the installed
+  xacro, including the full LiDAR/IMU chain, and the Point-LIO and scan launches
+  no longer publish duplicate sensor static transforms.
 
 ## Current Status - 2026-07-11
 

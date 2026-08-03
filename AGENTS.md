@@ -6,15 +6,15 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
-- Current phase: Point-LIO planar pose correction now passes stationary and
-  low-speed in-place-turn hardware checks; validate straight-line motion and
-  Phase B mapping before returning to site voice mobile-manipulation bringup.
+- Current phase: Point-LIO planar pose correction now passes stationary,
+  low-speed in-place-turn, and straight-line hardware checks. The immediate
+  task is Phase B mapping validation before returning to site voice bringup.
 - The minimum loop is: save a good map, save named voice waypoints, dry-run
   ASR/LLM/TTS, enable direct point-to-point drive, validate visual grasp alone,
   then allow voice fetch.
 - Immediate order of work:
   1. Keep the working `rf2o + EKF + slam_toolbox` route as the fallback.
-  2. Validate Point-LIO straight-line scale/lateral drift, then Phase B mapping.
+  2. Validate Point-LIO Phase B mapping with the canonical URDF/TF chain.
   3. Use `scripts/site_map_and_save.sh --restart` to make/save the site map.
   4. Use `scripts/site_waypoints.sh` to write the voice waypoint JSON.
   5. Use `scripts/start_site_voice_stack.sh --restart` for dry-run voice tests.
@@ -106,8 +106,8 @@ Nav2 configuration, message packages, and integration launch/config files.
   Stationary output has only centimetre-scale jitter and a supervised low-speed
   90-degree in-place turn matched the physical motion without the previous large
   circular path. The old `odom_to_lio_odom_yaw: 1.135` calibration is invalid
-  after this correction and has been reset to `0.0`; straight-line calibration
-  remains required.
+  after this correction and has been reset to `0.0`. The subsequent supervised
+  straight-line test also matched the physical chassis motion.
 - C63A base serial return data was confirmed on 2026-07-11 after power cycling:
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
 - The C63A base is integrated into the known-good rf2o SLAM bringup:
@@ -202,11 +202,13 @@ Point-LIO Phase A data flow:
 The raw Point-LIO pose is intentionally not a planar chassis frame. The adapter
 publishes `odom -> lio_odom` as a static alignment, then dynamically publishes
 `lio_base -> base_footprint` so the composed base TF has `z=0`, `roll=0`, and
-`pitch=0`. Tune only the versioned projection YAML after the stationary and
-straight-line hardware checks.
+`pitch=0`.
 
-Phase A also publishes the static TF `unilidar_link -> unilidar_lidar` from
-`point_lio_unilidar_l1.launch.py`, because `unilidar_p2s.launch.py` is not running.
+The single sensor-mounting TF authority is the installed package xacro:
+`src/turn_on_wheeltec_robot/urdf/patrol_robot.urdf.xacro`. It publishes the full
+`base_footprint -> base_link -> unilidar_link -> unilidar_lidar -> unilidar_imu`
+chain through `robot_state_publisher`. Point-LIO and pointcloud-to-laserscan must
+not publish duplicate sensor static transforms.
 
 Point-LIO Phase B adds:
 
@@ -216,14 +218,9 @@ Point-LIO Phase B adds:
 -> /map and map -> odom TF
 ```
 
-In Phase B, `start_point_lio_tmux.sh --with-2d-map` sets
-`publish_lidar_static_tf:=false` for the Point-LIO launch because
-`unilidar_p2s.launch.py` already publishes the same static TF.
-
-Point-cloud direction is tuned through `LIDAR_TF_ROLL`, `LIDAR_TF_PITCH`, and
-`LIDAR_TF_YAW` on the tmux script. Defaults are roll `3.14159`, pitch `0.0`, yaw
-`2.0112063268`. Keep these values synchronized between Point-LIO Phase A and
-Phase B.
+The verified sensor direction and Unitree LiDAR/IMU origin offset are versioned
+only in the canonical xacro. Change that file and revalidate Phase A if the
+physical mounting changes.
 
 Do not blindly launch overlapping TF publishers. In particular, avoid running
 multiple EKF/odom publishers that all claim `odom -> base_footprint`. Point-LIO

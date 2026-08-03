@@ -32,9 +32,10 @@ is not Nav2: keep SLAM/TF running, click A and B in RViz, and send low-speed
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` return at about `20 Hz` after the
   C63A board is healthy.
 - Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
-- Current priority: finish Point-LIO straight-line validation and then rerun
-  Phase B mapping. The corrected planar base TF has passed stationary and
-  low-speed in-place-turn hardware checks; rf2o/EKF/SLAM remains the fallback.
+- Current priority: rerun Point-LIO Phase B mapping with the canonical URDF/TF
+  chain. The corrected planar base TF has passed stationary, low-speed
+  in-place-turn, and straight-line hardware checks; rf2o/EKF/SLAM remains the
+  fallback.
 
 ## Repository Layout
 
@@ -350,9 +351,8 @@ registered cloud are at lidar cadence. The installed sensor correction is roll
 parallel, so Point-LIO retains identity `extrinsic_R` and the factory
 millimetre-scale translation. The corrected planar transform reduced the false
 lever arm from about `0.94 m` to about `0.20 m`, matching the real `0.19 m`
-forward mounting. Stationary jitter is centimetre-scale and a supervised
-90-degree in-place turn matched the physical turn without tracing a large arc.
-Straight-line scale/lateral-drift validation is still required.
+forward mounting. Stationary jitter is centimetre-scale; supervised 90-degree
+in-place-turn and straight-line tests both matched the physical chassis motion.
 
 Phase B, Point-LIO odometry plus `slam_toolbox` 2D map, is blocked until the
 Phase A checks above pass:
@@ -364,8 +364,8 @@ cd /home/wte/wheeltec_robot
 
 The previous Phase B bringup produced `/scan`, `/map`, and a continuous
 `map -> odom -> base_footprint`, but it used the superseded mounting transform.
-The old `odom_to_lio_odom_yaw: 1.135` value has been reset to `0.0`; rerun Phase
-B only after the corrected straight-line chassis check.
+The old `odom_to_lio_odom_yaw: 1.135` value has been reset to `0.0`; the next
+Phase B run validates the corrected canonical URDF/TF chain.
 
 The tmux session is `project_link_point_lio` and contains:
 
@@ -376,7 +376,14 @@ The tmux session is `project_link_point_lio` and contains:
   `/odom_lio_raw`, `/odom_lio`, `/point_lio/cloud_registered`, `/scan`, `/map`,
   and the raw/projected TF chain
 
-Manual Point-LIO launch:
+Manual Point-LIO launch requires the canonical robot description in a separate
+terminal:
+
+```bash
+cd /home/wte/wheeltec_robot
+source scripts/project_link_env.sh
+ros2 launch turn_on_wheeltec_robot robot_mode_description.launch.py
+```
 
 ```bash
 cd /home/wte/wheeltec_robot
@@ -384,25 +391,18 @@ source scripts/project_link_env.sh
 ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py
 ```
 
-In Phase A, this launch publishes the static TF `unilidar_link -> unilidar_lidar`
-because `unilidar_p2s.launch.py` is not running. In Phase B, the tmux script sets
-`publish_lidar_static_tf:=false` because `unilidar_p2s.launch.py` already owns the
-same static TF.
+`robot_state_publisher` expands the package xacro and is the only sensor static
+TF authority. Neither Point-LIO nor `unilidar_p2s.launch.py` publishes duplicate
+sensor transforms.
 
 The tmux script waits for real `/unilidar/cloud` and `/unilidar/imu` messages
 before starting Point-LIO. This avoids judging the stack while the lidar driver is
 visible in the ROS graph but has not produced data yet.
 
-The verified default point-cloud direction is:
-
-```bash
-LIDAR_TF_ROLL=3.14159 LIDAR_TF_PITCH=0.0 LIDAR_TF_YAW=2.0112063268 \
-  ./start_point_lio_tmux.sh --restart
-```
-
-Use `LIDAR_TF_ROLL`, `LIDAR_TF_PITCH`, and `LIDAR_TF_YAW` for orientation
-corrections. Use `LIDAR_TF_X`, `LIDAR_TF_Y`, and `LIDAR_TF_Z` only for small frame
-offset corrections between `unilidar_link` and the driver frame `unilidar_lidar`.
+The single authoritative model is
+`src/turn_on_wheeltec_robot/urdf/patrol_robot.urdf.xacro`. It contains the
+verified mounting pose, driver-frame correction, and Unitree factory IMU origin
+offset. Rebuild the package after changing it.
 
 Do not run `rf2o_slam_toolbox.launch.py` at the same time as the Point-LIO launch.
 Only one node stack should publish `odom -> base_footprint`. In the Point-LIO

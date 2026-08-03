@@ -38,40 +38,6 @@ def generate_launch_description():
     odom_only = LaunchConfiguration("odom_only")
     enable_slam_toolbox = LaunchConfiguration("enable_slam_toolbox")
     use_imu_as_input = LaunchConfiguration("use_imu_as_input")
-    publish_lidar_static_tf = LaunchConfiguration("publish_lidar_static_tf")
-    lidar_tf_x = LaunchConfiguration("lidar_tf_x")
-    lidar_tf_y = LaunchConfiguration("lidar_tf_y")
-    lidar_tf_z = LaunchConfiguration("lidar_tf_z")
-    lidar_tf_roll = LaunchConfiguration("lidar_tf_roll")
-    lidar_tf_pitch = LaunchConfiguration("lidar_tf_pitch")
-    lidar_tf_yaw = LaunchConfiguration("lidar_tf_yaw")
-
-    unilidar_static_tf_node = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="point_lio_unilidar_tf_broadcaster",
-        output="screen",
-        condition=IfCondition(publish_lidar_static_tf),
-        arguments=[
-            "--x",
-            lidar_tf_x,
-            "--y",
-            lidar_tf_y,
-            "--z",
-            lidar_tf_z,
-            "--roll",
-            lidar_tf_roll,
-            "--pitch",
-            lidar_tf_pitch,
-            "--yaw",
-            lidar_tf_yaw,
-            "--frame-id",
-            "unilidar_link",
-            "--child-frame-id",
-            "unilidar_lidar",
-        ],
-    )
-
     point_lio_node = Node(
         package="point_lio",
         executable="pointlio_mapping",
@@ -182,21 +148,6 @@ def generate_launch_description():
                 default_value="false",
                 description="Point-LIO algorithm switch; keep false for first Unitree L1 pass.",
             ),
-            DeclareLaunchArgument(
-                "publish_lidar_static_tf",
-                default_value="true",
-                description=(
-                    "Publish unilidar_link -> unilidar_lidar for Phase A. Set false "
-                    "when unilidar_p2s.launch.py is already publishing the same TF."
-                ),
-            ),
-            DeclareLaunchArgument("lidar_tf_x", default_value="0"),
-            DeclareLaunchArgument("lidar_tf_y", default_value="0"),
-            DeclareLaunchArgument("lidar_tf_z", default_value="0"),
-            DeclareLaunchArgument("lidar_tf_roll", default_value="3.14159"),
-            DeclareLaunchArgument("lidar_tf_pitch", default_value="0.0"),
-            DeclareLaunchArgument("lidar_tf_yaw", default_value="2.0112063268"),
-            unilidar_static_tf_node,
             point_lio_node,
             lio_planar_projection_node,
             slam_toolbox_node,

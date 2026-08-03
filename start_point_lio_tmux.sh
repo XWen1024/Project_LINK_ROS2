@@ -9,12 +9,6 @@ LIDAR_PORT="${UNILIDAR_PORT:-/dev/unilidar}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
 ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
 WAIT_FOR_LIDAR_TIMEOUT="${WAIT_FOR_LIDAR_TIMEOUT:-30}"
-LIDAR_TF_X="${LIDAR_TF_X:-0}"
-LIDAR_TF_Y="${LIDAR_TF_Y:-0}"
-LIDAR_TF_Z="${LIDAR_TF_Z:-0}"
-LIDAR_TF_ROLL="${LIDAR_TF_ROLL:-3.14159}"
-LIDAR_TF_PITCH="${LIDAR_TF_PITCH:-0.0}"
-LIDAR_TF_YAW="${LIDAR_TF_YAW:-2.0112063268}"
 
 ATTACH=1
 CLEAN=0
@@ -45,8 +39,7 @@ Environment overrides:
   ROS_DOMAIN_ID               default: 42
   ROS_LOCALHOST_ONLY          default: 0
   WAIT_FOR_LIDAR_TIMEOUT      default: 30
-  LIDAR_TF_X/Y/Z              default: 0 / 0 / 0
-  LIDAR_TF_ROLL/PITCH/YAW     default: 3.14159 / 0.0 / 2.0112063268
+  Sensor mounting TF is owned by the canonical package xacro.
 EOF
 }
 
@@ -188,16 +181,15 @@ tmux new-session -d -s "$SESSION" -n lidar
 lidar_cmd="cd '$UNILIDAR_WS' && export ROS_DOMAIN_ID='$ROS_DOMAIN_ID' ROS_LOCALHOST_ONLY='$ROS_LOCALHOST_ONLY' && source /opt/ros/humble/setup.bash && source install/setup.bash && ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args -p port:='$LIDAR_PORT'"
 description_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && ros2 launch turn_on_wheeltec_robot robot_mode_description.launch.py"
 wait_lidar_cmd="wait_for_topic() { local topic=\"\$1\"; local timeout_s=\"\$2\"; echo \"[wait] Waiting for one message on \${topic} for up to \${timeout_s}s...\"; timeout \"\${timeout_s}\" ros2 topic echo --once \"\${topic}\" --field header >/dev/null; }; wait_for_topic /unilidar/cloud '$WAIT_FOR_LIDAR_TIMEOUT' && wait_for_topic /unilidar/imu '$WAIT_FOR_LIDAR_TIMEOUT'"
-lidar_tf_args="lidar_tf_x:=$LIDAR_TF_X lidar_tf_y:=$LIDAR_TF_Y lidar_tf_z:=$LIDAR_TF_Z lidar_tf_roll:=$LIDAR_TF_ROLL lidar_tf_pitch:=$LIDAR_TF_PITCH lidar_tf_yaw:=$LIDAR_TF_YAW"
-scan_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && $wait_lidar_cmd && ros2 launch turn_on_wheeltec_robot unilidar_p2s.launch.py $lidar_tf_args"
-lio_launch_args="enable_slam_toolbox:=false publish_lidar_static_tf:=true $lidar_tf_args"
+scan_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && $wait_lidar_cmd && ros2 launch turn_on_wheeltec_robot unilidar_p2s.launch.py"
+lio_launch_args="enable_slam_toolbox:=false"
 check_topics="/unilidar/cloud /unilidar/imu /odom_lio_raw /odom_lio /point_lio/cloud_registered"
 if [[ "$WITH_2D_MAP" -eq 1 ]]; then
-  lio_launch_args="enable_slam_toolbox:=true publish_lidar_static_tf:=false $lidar_tf_args"
+  lio_launch_args="enable_slam_toolbox:=true"
   check_topics="$check_topics /scan /map"
 fi
 lio_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && $wait_lidar_cmd && ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py $lio_launch_args"
-check_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && echo 'Mode: Point-LIO Phase A raw 3D LIO plus planar base projection. Do not use --with-2d-map until Phase A TF validation passes.'; if [[ '$WITH_2D_MAP' -eq 1 ]]; then echo 'Mode: Point-LIO Phase B odometry + 2D map.'; fi; while true; do clear; date; echo; echo 'Nodes:'; ros2 node list 2>/dev/null | sort || true; echo; for topic in $check_topics; do echo \"=== \$topic ===\"; timeout -s INT 4 ros2 topic hz \"\$topic\" 2>&1 | grep -E 'average rate|WARNING|error|does not appear' | tail -n 3 || true; done; echo; echo 'TF lio_odom -> lio_base (raw 3D):'; timeout -s INT 4 ros2 run tf2_ros tf2_echo lio_odom lio_base 2>&1 | head -n 14 || true; echo; echo 'TF odom -> base_footprint (projected planar):'; timeout -s INT 4 ros2 run tf2_ros tf2_echo odom base_footprint 2>&1 | head -n 14 || true; if [[ '$WITH_2D_MAP' -eq 1 ]]; then echo; echo 'TF map -> odom:'; timeout -s INT 4 ros2 run tf2_ros tf2_echo map odom 2>&1 | head -n 14 || true; fi; echo; echo \"TF tuning: LIDAR_TF_ROLL=$LIDAR_TF_ROLL LIDAR_TF_PITCH=$LIDAR_TF_PITCH LIDAR_TF_YAW=$LIDAR_TF_YAW\"; echo 'Ctrl-C stops this monitor only. Use tmux kill-session -t $SESSION to stop all panes.'; sleep 5; done"
+check_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && echo 'Mode: Point-LIO Phase A raw 3D LIO plus planar base projection. Do not use --with-2d-map until Phase A TF validation passes.'; if [[ '$WITH_2D_MAP' -eq 1 ]]; then echo 'Mode: Point-LIO Phase B odometry + 2D map.'; fi; while true; do clear; date; echo; echo 'Nodes:'; ros2 node list 2>/dev/null | sort || true; echo; for topic in $check_topics; do echo \"=== \$topic ===\"; timeout -s INT 4 ros2 topic hz \"\$topic\" 2>&1 | grep -E 'average rate|WARNING|error|does not appear' | tail -n 3 || true; done; echo; echo 'TF lio_odom -> lio_base (raw 3D):'; timeout -s INT 4 ros2 run tf2_ros tf2_echo lio_odom lio_base 2>&1 | head -n 14 || true; echo; echo 'TF odom -> base_footprint (projected planar):'; timeout -s INT 4 ros2 run tf2_ros tf2_echo odom base_footprint 2>&1 | head -n 14 || true; if [[ '$WITH_2D_MAP' -eq 1 ]]; then echo; echo 'TF map -> odom:'; timeout -s INT 4 ros2 run tf2_ros tf2_echo map odom 2>&1 | head -n 14 || true; fi; echo; echo 'Sensor mounting TF source: turn_on_wheeltec_robot/urdf/patrol_robot.urdf.xacro'; echo 'Ctrl-C stops this monitor only. Use tmux kill-session -t $SESSION to stop all panes.'; sleep 5; done"
 
 send "$SESSION:lidar" "$lidar_cmd"
 

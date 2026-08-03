@@ -35,6 +35,7 @@
   <depend>nav_msgs</depend>
   <depend>ackermann_msgs</depend>
   <depend>wheeltec_robot_msg</depend>
+  <exec_depend>xacro</exec_depend>
   <test_depend>boost</test_depend>
   <export>
     <build_type>ament_cmake</build_type>

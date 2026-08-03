@@ -11,10 +11,9 @@
     # after the new stationary, in-place-turn, and straight-line tests pass.
     odom_to_lio_odom_yaw: 0.0
 
-    # IMU/LIO body -> base_footprint, derived from the currently verified chain:
-    # base_footprint -> base_link -> unilidar_link -> corrected sensor axes,
-    # plus the Unitree factory LiDAR/IMU origin offset. The corrected sensor
-    # mounting is roll=pi, yaw=2.0112063268 relative to unilidar_link.
+    # IMU/LIO body -> base_footprint, derived from the canonical URDF chain:
+    # base_footprint -> base_link -> unilidar_link -> unilidar_lidar
+    # -> unilidar_imu. Do not duplicate these values in another robot model.
     lio_to_base_x: -0.2602380722
     lio_to_base_y: 0.5831816143
     lio_to_base_z: -0.19667
