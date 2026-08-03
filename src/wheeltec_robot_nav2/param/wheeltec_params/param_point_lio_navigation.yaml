@@ -86,7 +86,7 @@ controller_server:
 
     FollowPath:
       plugin: dwb_core::DWBLocalPlanner
-      debug_trajectory_details: true
+      debug_trajectory_details: false
       min_vel_x: 0.0
       min_vel_y: 0.0
       max_vel_x: 0.18
@@ -112,8 +112,8 @@ controller_server:
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
       stateful: true
-      critics: [RotateToGoal, Oscillation, ObstacleFootprint, GoalAlign, PathAlign, PathDist, GoalDist]
-      ObstacleFootprint.scale: 0.05
+      critics: [RotateToGoal, Oscillation, BaseObstacle, GoalAlign, PathAlign, PathDist, GoalDist]
+      BaseObstacle.scale: 0.10
       # Follow the path position without chasing every grid-cell heading change.
       PathAlign.scale: 12.0
       PathAlign.forward_point_distance: 0.20
@@ -160,9 +160,9 @@ local_costmap:
           raytrace_max_range: 5.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
-        # Keep the global route and DWB trajectories away from wall shortcuts.
-        inflation_radius: 0.50
-        cost_scaling_factor: 2.5
+        # Midpoint between the permissive first pass and the over-conservative pass.
+        inflation_radius: 0.40
+        cost_scaling_factor: 3.5
       always_send_full_costmap: true
 
 global_costmap:
@@ -202,8 +202,8 @@ global_costmap:
           raytrace_max_range: 10.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
-        inflation_radius: 0.50
-        cost_scaling_factor: 2.5
+        inflation_radius: 0.40
+        cost_scaling_factor: 3.5
       always_send_full_costmap: true
 
 planner_server:

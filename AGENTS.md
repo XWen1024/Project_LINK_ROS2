@@ -304,16 +304,19 @@ The live-map navigation trees are
 `behavior_trees/point_lio_safe_replanning.xml` and its multi-pose companion
 `point_lio_safe_through_poses.xml`. The single-goal tree checks path validity at
 2 Hz but keeps a still-valid path instead of replacing it every second as the
-online map expands. Newly computed paths are smoothed before DWB. Recovery may
-clear costmaps, spin in place, or wait; it must never command reverse because
-the current chassis has no reliable rear obstacle coverage. DWB also has
+online map expands. Recovery clears both costmaps, attempts a collision-checked
+full `360 degree` scan spin, clears again, and replans; it must never command
+reverse because the current chassis has no reliable rear obstacle coverage. DWB also has
 `min_vel_x: 0.0`, and the velocity smoother has no negative linear limit.
 
 The first path-following diagnosis found small backtracking segments in raw
 NavFn plans, repeated global-map resize events, `No valid trajectories` from
 the DWB obstacle critic, and false/late `Failed to make progress` recoveries.
-The current conservative tuning uses the rectangular `ObstacleFootprint` critic,
-a `0.50 m` inflation radius with `2.5` cost scaling, a smoothed stable path, and
+The first corrective pass proved too conservative: full-footprint DWB checking
+rejected all 619 trajectories in several open-looking cases, and collision-
+checked smoothing repeatedly rejected otherwise usable NavFn paths. The current
+midpoint tuning therefore uses `BaseObstacle`, a `0.40 m` inflation radius with
+`3.5` cost scaling, no path smoothing, stable validity-triggered replanning, and
 a `0.10 m / 20 s` progress check. Do not re-enable `BackUp` unless a verified
 rear obstacle sensor is integrated.
 

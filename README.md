@@ -460,18 +460,19 @@ long, `0.41 m` wide, and `0.82 m` high. The previous model was only
 
 The current behavior tree validates the active path at 2 Hz and replans only
 when that path becomes invalid or the goal changes. This keeps DWB from chasing
-small one-hertz path changes caused by an expanding online map. Every new NavFn
-path is passed through `simple_smoother` before control. Recovery may clear both
-costmaps, spin `90 degrees`, or wait; reverse recovery is intentionally absent
+small one-hertz path changes caused by an expanding online map. Recovery clears
+both costmaps, attempts a collision-checked `360 degree` scan spin, clears again,
+and replans; reverse recovery is intentionally absent
 because the robot has no reliable rear obstacle view. Controller and velocity
 smoother linear minimums are both zero, so this configuration cannot request
 reverse motion.
 
-To discourage wall shortcuts, local and global inflation use a `0.50 m` radius
-and `2.5` cost scaling. DWB evaluates the full rectangular footprint, looks
-farther ahead for path alignment, and gives more weight to geometric path
-distance than to small grid-cell heading changes. If a wide route and a narrow
-route are both open, the wide route should now carry the lower total cost.
+To discourage wall shortcuts without closing usable gray corridors, local and
+global inflation use a `0.40 m` radius and `3.5` cost scaling. DWB uses the more
+permissive `BaseObstacle` critic, looks farther ahead for path alignment, and
+gives more weight to geometric path distance than to small grid-cell heading
+changes. The collision-checked smoother was removed after it repeatedly rejected
+otherwise usable NavFn paths.
 
 `robot_state_publisher` expands the package xacro and is the only sensor static
 TF authority. Neither Point-LIO nor `unilidar_p2s.launch.py` publishes duplicate

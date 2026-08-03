@@ -50,6 +50,12 @@
   oscillation: both inflation layers are `0.50 m` with cost scaling `2.5`, DWB
   uses the rectangular `ObstacleFootprint` critic, alignment lookahead is
   `0.20 m`, and progress checking is relaxed to `0.10 m` within 20 seconds.
+* Hardware retest showed that pass was over-conservative. `ObstacleFootprint`
+  repeatedly rejected all 619 DWB samples, and collision-checked smoothing often
+  rejected paths that NavFn could otherwise use. Rebalanced to `0.40 m / 3.5`
+  inflation, `BaseObstacle.scale: 0.10`, no smoother in the BT, and disabled
+  per-trajectory debug logging. Recovery now attempts a collision-checked full
+  `360 degree` scan spin before clearing and replanning; reverse stays disabled.
 
 ## Point-LIO Phase B scan accumulation - 2026-08-03
 

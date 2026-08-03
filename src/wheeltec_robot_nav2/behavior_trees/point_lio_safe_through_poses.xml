@@ -5,22 +5,17 @@
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <RecoveryNode number_of_retries="4" name="NavigateRecovery">
+    <RecoveryNode number_of_retries="3" name="NavigateRecovery">
       <PipelineSequence name="NavigateThroughPoses">
         <RateController hz="0.333">
-          <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPathThroughPoses">
+          <RecoveryNode number_of_retries="1" name="ComputePathThroughPoses">
             <Sequence>
               <RemovePassedGoals input_goals="{goals}"
                                  output_goals="{goals}"
                                  radius="0.7"/>
               <ComputePathThroughPoses goals="{goals}"
-                                       path="{raw_path}"
+                                       path="{path}"
                                        planner_id="GridBased"/>
-              <SmoothPath unsmoothed_path="{raw_path}"
-                          smoothed_path="{path}"
-                          smoother_id="simple_smoother"
-                          max_smoothing_duration="0.30"
-                          check_for_collisions="true"/>
             </Sequence>
             <ClearEntireCostmap name="ClearGlobalCostmap-Context"
                                 service_name="global_costmap/clear_entirely_global_costmap"/>
@@ -34,16 +29,20 @@
       </PipelineSequence>
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>
-        <RoundRobin name="ForwardSafeRecoveryActions">
-          <Sequence name="ClearingActions">
-            <ClearEntireCostmap name="ClearLocalCostmap-Subtree"
-                                service_name="local_costmap/clear_entirely_local_costmap"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree"
-                                service_name="global_costmap/clear_entirely_global_costmap"/>
-          </Sequence>
-          <Spin spin_dist="1.57"/>
-          <Wait wait_duration="5"/>
-        </RoundRobin>
+        <Sequence name="ScanAndRetryWithoutReverse">
+          <ClearEntireCostmap name="ClearLocalCostmap-BeforeScan"
+                              service_name="local_costmap/clear_entirely_local_costmap"/>
+          <ClearEntireCostmap name="ClearGlobalCostmap-BeforeScan"
+                              service_name="global_costmap/clear_entirely_global_costmap"/>
+          <Fallback name="SpinIfSafeOtherwiseWait">
+            <Spin spin_dist="6.28"/>
+            <Wait wait_duration="1"/>
+          </Fallback>
+          <ClearEntireCostmap name="ClearLocalCostmap-AfterScan"
+                              service_name="local_costmap/clear_entirely_local_costmap"/>
+          <ClearEntireCostmap name="ClearGlobalCostmap-AfterScan"
+                              service_name="global_costmap/clear_entirely_global_costmap"/>
+        </Sequence>
       </ReactiveFallback>
     </RecoveryNode>
   </BehaviorTree>
