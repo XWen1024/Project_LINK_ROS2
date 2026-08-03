@@ -1,8 +1,17 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    accumulator_config = os.path.join(
+        get_package_share_directory("turn_on_wheeltec_robot"),
+        "config",
+        "laser_scan_accumulator.yaml",
+    )
+
     return LaunchDescription(
         [
             Node(
@@ -31,6 +40,13 @@ def generate_launch_description():
                         "reliability": "best_effort",
                     }
                 ],
+            ),
+            Node(
+                package="turn_on_wheeltec_robot",
+                executable="laser_scan_accumulator",
+                name="laser_scan_accumulator",
+                output="screen",
+                parameters=[accumulator_config],
             ),
         ]
     )

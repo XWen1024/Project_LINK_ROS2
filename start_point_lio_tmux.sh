@@ -22,7 +22,7 @@ Usage: ./start_point_lio_tmux.sh [options]
 Start Project LINK Point-LIO bringup in a tmux session.
 
 Options:
-  --with-2d-map  Also start pointcloud_to_laserscan and slam_toolbox.
+  --with-2d-map  Also start scan projection/accumulation and slam_toolbox.
   --restart      Stop the tmux session and clean known SLAM/lidar processes first.
   --clean        Clean known SLAM/lidar processes before starting.
   --stop         Stop only the tmux session.
@@ -98,6 +98,7 @@ clean_ros_processes() {
   pkill -f 'unitree_lidar_ros2_node' || true
   pkill -f 'unilidar_p2s.launch.py' || true
   pkill -f 'pointcloud_to_laserscan_node' || true
+  pkill -f 'laser_scan_accumulator' || true
   pkill -f 'unilidar_tf_broadcaster' || true
   pkill -f 'robot_mode_description.launch.py' || true
   pkill -f 'robot_state_publisher' || true
@@ -186,7 +187,7 @@ lio_launch_args="enable_slam_toolbox:=false"
 check_topics="/unilidar/cloud /unilidar/imu /odom_lio_raw /odom_lio /point_lio/cloud_registered"
 if [[ "$WITH_2D_MAP" -eq 1 ]]; then
   lio_launch_args="enable_slam_toolbox:=true"
-  check_topics="$check_topics /scan /map"
+  check_topics="$check_topics /scan /scan_accumulated /map"
 fi
 lio_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && $wait_lidar_cmd && ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py $lio_launch_args"
 check_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && echo 'Mode: Point-LIO Phase A raw 3D LIO plus planar base projection. Do not use --with-2d-map until Phase A TF validation passes.'; if [[ '$WITH_2D_MAP' -eq 1 ]]; then echo 'Mode: Point-LIO Phase B odometry + 2D map.'; fi; while true; do clear; date; echo; echo 'Nodes:'; ros2 node list 2>/dev/null | sort || true; echo; for topic in $check_topics; do echo \"=== \$topic ===\"; timeout -s INT 4 ros2 topic hz \"\$topic\" 2>&1 | grep -E 'average rate|WARNING|error|does not appear' | tail -n 3 || true; done; echo; echo 'TF lio_odom -> lio_base (raw 3D):'; timeout -s INT 4 ros2 run tf2_ros tf2_echo lio_odom lio_base 2>&1 | head -n 14 || true; echo; echo 'TF odom -> base_footprint (projected planar):'; timeout -s INT 4 ros2 run tf2_ros tf2_echo odom base_footprint 2>&1 | head -n 14 || true; if [[ '$WITH_2D_MAP' -eq 1 ]]; then echo; echo 'TF map -> odom:'; timeout -s INT 4 ros2 run tf2_ros tf2_echo map odom 2>&1 | head -n 14 || true; fi; echo; echo 'Sensor mounting TF source: turn_on_wheeltec_robot/urdf/patrol_robot.urdf.xacro'; echo 'Ctrl-C stops this monitor only. Use tmux kill-session -t $SESSION to stop all panes.'; sleep 5; done"

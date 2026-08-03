@@ -1,0 +1,10 @@
+laser_scan_accumulator:
+  ros__parameters:
+    input_scan_topic: /scan
+    output_scan_topic: /scan_accumulated
+    fixed_frame: odom
+    output_frame: base_link
+    window_duration: 1.5
+    voxel_size: 0.04
+    minimum_coverage: 0.35
+    transform_timeout: 0.15

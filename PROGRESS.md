@@ -1,5 +1,22 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## Point-LIO Phase B scan accumulation - 2026-08-03
+
+* Diagnosed the mismatch between the excellent RViz LaserScan outline at Decay
+  Time 3 and the poor slam_toolbox occupancy map. A single `/scan` averaged only
+  `128.9/723` valid bins (`17.8%`) and about 57 disconnected valid segments;
+  across 30 frames the union reached `333/723` bins (`46.1%`).
+* Confirmed that stationary `map -> odom` remained essentially identity, so the
+  primary problem was fragmented per-frame scan input rather than the corrected
+  Point-LIO pose or TF tree.
+* Added `laser_scan_accumulator`, which transforms each scan into `odom` at its
+  timestamp, keeps a rolling window, spatially deduplicates it, transforms it
+  back into the current `base_link`, and publishes a re-binned
+  `/scan_accumulated` only after minimum angular coverage is reached.
+* Initial parameters are a `1.5 s` window, `0.04 m` voxel size, and `0.35`
+  minimum coverage. Raw `/scan` remains available for RViz and diagnosis;
+  Point-LIO Phase B slam_toolbox now subscribes to `/scan_accumulated`.
+
 ## Connection Default - 2026-08-03
 
 * Standardized the Orin SSH target as `wte@orin` instead of a fixed IP.

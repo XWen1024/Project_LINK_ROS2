@@ -6,7 +6,7 @@ Phase A preserves Point-LIO's 3D pose and derives a planar base pose:
   -> lio_planar_projection /odom_lio and odom -> base_footprint
 
 Phase B can additionally run slam_toolbox with enable_slam_toolbox:=true:
-  /scan + Point-LIO TF -> slam_toolbox -> /map and map -> odom
+  /scan_accumulated + Point-LIO TF -> slam_toolbox -> /map and map -> odom
 """
 
 import os
@@ -88,7 +88,7 @@ def generate_launch_description():
         condition=IfCondition(enable_slam_toolbox),
         parameters=[
             {
-                "scan_topic": "/scan",
+                "scan_topic": "/scan_accumulated",
                 "odom_frame": "odom",
                 "map_frame": "map",
                 "base_frame": "base_footprint",
@@ -141,7 +141,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "enable_slam_toolbox",
                 default_value="false",
-                description="Run slam_toolbox on /scan using Point-LIO TF.",
+                description="Run slam_toolbox on /scan_accumulated using Point-LIO TF.",
             ),
             DeclareLaunchArgument(
                 "use_imu_as_input",

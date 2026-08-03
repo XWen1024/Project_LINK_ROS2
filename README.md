@@ -32,10 +32,11 @@ is not Nav2: keep SLAM/TF running, click A and B in RViz, and send low-speed
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` return at about `20 Hz` after the
   C63A board is healthy.
 - Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
-- Current priority: inspect Point-LIO Phase B map quality and tune the 2D height
-  slice. The corrected planar base TF has passed stationary, low-speed
-  in-place-turn, and straight-line checks, and Phase B runs with the canonical
-  URDF/TF chain; rf2o/EKF/SLAM remains the fallback.
+- Current priority: validate the motion-compensated `/scan_accumulated` input in
+  Point-LIO Phase B, then tune the 2D height slice only if necessary. The
+  corrected planar base TF has passed stationary, low-speed in-place-turn, and
+  straight-line checks, and Phase B runs with the canonical URDF/TF chain;
+  rf2o/EKF/SLAM remains the fallback.
 
 ## Repository Layout
 
@@ -365,16 +366,28 @@ cd /home/wte/wheeltec_robot
 The canonical-URDF Phase B bringup was verified on Orin on 2026-08-03: `/scan`
 runs at about `9.34 Hz`, `/odom_lio` at about `9.31 Hz`, `/map` publishes, and
 `map -> odom -> base_footprint` is continuous. No separate lidar static-TF node
-is present. The next check is map quality while driving, followed by height-slice
-tuning if the registered 3D cloud is clean but the 2D occupancy map is noisy.
+is present.
+
+The raw height-sliced scan is intentionally sparse: a measured frame averaged
+about `129/723` valid bins (`17.8%`) in roughly 57 disconnected segments, while
+the union of 30 frames covered about `46.1%`. This explains why RViz with LaserScan
+Decay Time 3 showed a clean outline while slam_toolbox produced an unrelated map:
+RViz was overlaying many TF-compensated frames, but slam_toolbox received each
+fragment separately. Phase B now keeps `/scan` for inspection and feeds
+slam_toolbox from `/scan_accumulated`, produced by a 1.5-second rolling,
+TF-compensated accumulator with 4 cm spatial deduplication and a 35% valid-bin
+startup threshold. Tune `config/laser_scan_accumulator.yaml` before changing
+slam_toolbox matching parameters.
 
 The tmux session is `project_link_point_lio` and contains:
 
 - `lidar`: Unitree L1 / UniLidar driver
-- `robot`: robot description, plus `/scan` conversion when `--with-2d-map` is used
+- `robot`: robot description, `/scan` conversion, and `/scan_accumulated` when
+  `--with-2d-map` is used
 - `lio`: `point_lio_unilidar_l1.launch.py`
 - `check`: live monitor for `/unilidar/cloud`, `/unilidar/imu`,
-  `/odom_lio_raw`, `/odom_lio`, `/point_lio/cloud_registered`, `/scan`, `/map`,
+  `/odom_lio_raw`, `/odom_lio`, `/point_lio/cloud_registered`, `/scan`,
+  `/scan_accumulated`, `/map`,
   and the raw/projected TF chain
 
 Manual Point-LIO launch requires the canonical robot description in a separate

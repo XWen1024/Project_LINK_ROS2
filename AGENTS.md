@@ -8,17 +8,19 @@ file together with `PROGRESS.md` and `README.md`.
 
 - Current phase: Point-LIO planar pose correction passes stationary, low-speed
   in-place-turn, and straight-line checks. Phase B now runs with the canonical
-  URDF/TF chain; inspect map quality and tune the 2D slice before site bringup.
+  URDF/TF chain. Its sparse per-frame 2D projection is now being replaced by a
+  motion-compensated rolling scan for slam_toolbox.
 - The minimum loop is: save a good map, save named voice waypoints, dry-run
   ASR/LLM/TTS, enable direct point-to-point drive, validate visual grasp alone,
   then allow voice fetch.
 - Immediate order of work:
   1. Keep the working `rf2o + EKF + slam_toolbox` route as the fallback.
-  2. Inspect Point-LIO Phase B map quality and tune the 2D height slice.
-  3. Use `scripts/site_map_and_save.sh --restart` to make/save the site map.
-  4. Use `scripts/site_waypoints.sh` to write the voice waypoint JSON.
-  5. Use `scripts/start_site_voice_stack.sh --restart` for dry-run voice tests.
-  6. Add `--enable-motion` and then `--enable-visual-grasp` only after each
+  2. Validate `/scan_accumulated` coverage and Point-LIO Phase B map quality.
+  3. Tune the 2D height slice only if the accumulated scan remains noisy.
+  4. Use `scripts/site_map_and_save.sh --restart` to make/save the site map.
+  5. Use `scripts/site_waypoints.sh` to write the voice waypoint JSON.
+  6. Use `scripts/start_site_voice_stack.sh --restart` for dry-run voice tests.
+  7. Add `--enable-motion` and then `--enable-visual-grasp` only after each
      subsystem is independently safe.
 
 ## Project Summary
@@ -113,6 +115,11 @@ Nav2 configuration, message packages, and integration launch/config files.
   `9.31 Hz`, `/map` publishes, and `map -> base_footprint` is continuous. The only
   `/tf_static` publishers are `robot_state_publisher` and the intentional
   `odom -> lio_odom` world-alignment publisher.
+- Phase B diagnostics found that a raw `/scan` frame has only about `129/723`
+  valid angular bins (`17.8%`) split into roughly 57 disconnected segments. RViz
+  Decay Time 3 looks complete because it motion-compensates and overlays about
+  30 frames, reaching about `46.1%` union coverage. slam_toolbox must therefore
+  consume the TF-compensated rolling `/scan_accumulated`, not each raw fragment.
 - C63A base serial return data was confirmed on 2026-07-11 after power cycling:
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` publish at about 20 Hz.
 - The C63A base is integrated into the known-good rf2o SLAM bringup:
@@ -218,10 +225,17 @@ not publish duplicate sensor static transforms.
 Point-LIO Phase B adds:
 
 ```text
-/scan + Point-LIO odom TF
+/scan + timestamped Point-LIO odom TF
+-> laser_scan_accumulator
+-> /scan_accumulated
 -> slam_toolbox
 -> /map and map -> odom TF
 ```
+
+The accumulator keeps raw `/scan` for RViz/debug, transforms every finite scan
+endpoint into `odom` at its source timestamp, maintains a short rolling window,
+then transforms and re-bins the points into the current `base_link`. Do not
+replace it with a base-frame-only decay buffer; that smears walls while moving.
 
 The verified sensor direction and Unitree LiDAR/IMU origin offset are versioned
 only in the canonical xacro. Change that file and revalidate Phase A if the
