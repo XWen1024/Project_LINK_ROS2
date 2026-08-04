@@ -49,6 +49,7 @@ set +u
 source scripts/project_link_env.sh
 source install/setup.bash
 set -u
+export RMW_IMPLEMENTATION="${PROJECT_LINK_UWB_RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
 
 if [[ -z "${PROJECT_LINK_UWB_TAG_ADDRESS:-}" ]]; then
   echo "Set PROJECT_LINK_UWB_TAG_ADDRESS in the local shell; do not commit it." >&2
@@ -107,6 +108,7 @@ printf -v launch_command ' %q' "${launch_args[@]}"
 tmux new-session -d -s "$SESSION" -n bootstrap
 tmux set-environment -t "$SESSION" PROJECT_LINK_UWB_TAG_ADDRESS "$PROJECT_LINK_UWB_TAG_ADDRESS"
 tmux set-environment -t "$SESSION" PROJECT_LINK_UWB_DEVICE "$PROJECT_LINK_UWB_DEVICE"
+tmux set-environment -t "$SESSION" RMW_IMPLEMENTATION "$RMW_IMPLEMENTATION"
 tmux new-window -t "$SESSION" -n uwb
 tmux send-keys -t "$SESSION:uwb" \
   "cd '$WORKSPACE' && source scripts/project_link_env.sh && source install/setup.bash && ros2 launch project_link_uwb_navigation uwb_navigation.launch.py$launch_command" C-m

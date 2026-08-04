@@ -9,6 +9,7 @@ set +u
 source scripts/project_link_env.sh
 source install/setup.bash
 set -u
+export RMW_IMPLEMENTATION="${PROJECT_LINK_UWB_RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
 
 case "$COMMAND" in
   status)

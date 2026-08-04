@@ -127,6 +127,10 @@ digits-only private tag address as a string, as required by the decoder. The
 Action Goal carries only summon/follow mode; the configured observation source
 remains enforced inside the local ROS safety layer.
 
+The UWB launch and operator commands default to `rmw_cyclonedds_cpp` to avoid a
+Humble Fast DDS custom-Action history allocation defect on the current Orin.
+Navigation Two remains on Fast DDS and interoperates over DDS domain 42.
+
 ## Build On Orin
 
 ```bash

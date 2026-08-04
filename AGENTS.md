@@ -424,6 +424,9 @@ now attempts at most one full scan turn, with a 20-second allowance so a
 - Keep `PersonNavigation.action`'s Goal free of dynamic strings on the current
   Humble Orin. Fast DDS rejected the redundant caller-facing `source_id` before
   the goal reached the server; source selection remains local and config-bound.
+- The UWB launch and operator scripts default only their own processes to
+  `rmw_cyclonedds_cpp`. Do not change the Navigation Two middleware globally;
+  Cyclone/Fast DDS interoperability on domain 42 preserves the Nav2 boundary.
 - On the current Orin, build the two UWB packages without `--symlink-install`.
   `setuptools 82` rejects Humble colcon's legacy `setup.py develop --editable`;
   normal install mode is verified and avoids changing the global Python stack.

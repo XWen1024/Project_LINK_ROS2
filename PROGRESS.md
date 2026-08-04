@@ -67,6 +67,10 @@
   Humble Fast DDS rejected the dynamic string payload with a fixed 19-byte
   reader history. The serial decoder still filters the private tag, and the
   navigation server still accepts only its configured observation `source_id`.
+* Isolated the UWB launch and operator CLI on `rmw_cyclonedds_cpp` by default.
+  Navigation Two remains on Fast DDS; standard DDS discovery keeps the two
+  stacks interoperable while avoiding the Orin Fast DDS custom-Action history
+  allocation defect. `PROJECT_LINK_UWB_RMW_IMPLEMENTATION` remains overridable.
 * Unitree L1 diagnostics ruled out USB bandwidth. After a hardware reconnect the
   CP2104 bridge was healthy but the lidar remained in standby; the official SDK
   example's explicit `STANDBY -> NORMAL` sequence immediately restored firmware
