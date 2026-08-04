@@ -6,10 +6,12 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
-- Current phase: Point-LIO Phase B and Nav2 are usable, but a long-running
-  Point-LIO process can fall behind live sensor time. Repository-owned Phase B
-  load shedding and a versioned bounded-queue patch are now the immediate
-  stabilization milestone.
+- Current phase: Point-LIO Phase B, live slam_toolbox mapping, C63A velocity
+  feedback, and Nav2 are running as a known-good supervised navigation stack.
+  The immediate milestone is repeatable field operation through the Navigation
+  Two scripts, followed by incremental path/clearance tuning and endurance tests.
+- The durable Navigation2 handoff is `docs/NAVIGATION_TWO_HANDOFF.md`. Keep it
+  synchronized with this file and `PROGRESS.md` when navigation behavior changes.
 - The minimum loop is: save a good map, save named voice waypoints, dry-run
   ASR/LLM/TTS, enable direct point-to-point drive, validate visual grasp alone,
   then allow voice fetch.
@@ -25,6 +27,16 @@ file together with `PROGRESS.md` and `README.md`.
   7. Tune the 2D height slice only if navigation costmaps are materially harmed.
   8. Save a good map and named voice waypoints after the navigation check.
   9. Add voice motion and visual grasp only after each subsystem is safe.
+
+Navigation Two convenience entrypoints are repository-root scripts:
+
+- `navigation_two_start.sh` / `navigation_two_start_navigation.sh`: base + live
+  Point-LIO map + Nav2, with no goal sent.
+- `navigation_two_start_mapping.sh`: base + live map, with Nav2 stopped for
+  keyboard teleop.
+- `navigation_two_save_map.sh`: occupancy map plus best-effort posegraph save.
+- `navigation_two_status.sh`: consolidated read-only tmux monitor.
+- `navigation_two_stop.sh`: publish zero velocity, then stop the full stack.
 
 ## Project Summary
 

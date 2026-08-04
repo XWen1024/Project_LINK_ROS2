@@ -417,6 +417,26 @@ ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py
 
 ### Nav2 against the live Point-LIO map
 
+The maintained operational handoff is
+`docs/NAVIGATION_TWO_HANDOFF.md`. The command-only quick reference is
+`docs/NAVIGATION_TWO_COMMANDS.md`.
+
+Repository-root convenience scripts provide the normal field workflow:
+
+```bash
+./navigation_two_start_mapping.sh --restart
+./navigation_two_start_navigation.sh --restart
+./navigation_two_save_map.sh --name site_map
+./navigation_two_status.sh
+./navigation_two_stop.sh
+```
+
+The mapping entrypoint stops Nav2 before keyboard teleop can be used. The full
+navigation entrypoint starts/reuses C63A, Point-LIO Phase B, slam_toolbox, and
+Nav2 in dependency order, but sends no goal or nonzero velocity. The save helper
+uses a separate tmux session and saves both occupancy output and a best-effort
+slam_toolbox posegraph.
+
 With Phase B still running, start only the Nav2 planning/control stack:
 
 ```bash

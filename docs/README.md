@@ -12,4 +12,6 @@ slam_nav2.md
 manipulation.md
 voice_service.md
 roadmap.md
+NAVIGATION_TWO_HANDOFF.md
+NAVIGATION_TWO_COMMANDS.md
 ```

@@ -1,5 +1,17 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## Navigation Two handoff and one-command tooling - 2026-08-04
+
+* Extracted the current Point-LIO/slam_toolbox/Nav2 architecture, verified
+  parameters, TF ownership, known fixes, RViz displays, troubleshooting flow,
+  safety rules, and endurance TODO into `docs/NAVIGATION_TWO_HANDOFF.md`.
+* Added `docs/NAVIGATION_TWO_COMMANDS.md` as a command-only quick reference with
+  no explanatory content.
+* Added repository-root tmux workflow scripts for full navigation, mapping-only,
+  occupancy/posegraph saving, consolidated status monitoring, and safe stop.
+  Mapping mode stops Nav2 before keyboard teleop; navigation mode requires real
+  C63A `/odom`, starts no goal, and preserves Point-LIO TF ownership.
+
 ## Nav2 path-reference velocity fix - 2026-08-04
 
 * Investigated the report that the physical robot treated the correct green
@@ -37,10 +49,11 @@
   LiDAR buffers synchronized, resets an active stale LiDAR measurement, reduces
   subscription/publisher queue depths, fixes fractional LiDAR timestamps, and
   emits throttled queue/backlog/drop diagnostics.
-* The patch was checked against the current external
-  `/home/wte/point_lio_ws/src/point_lio/src/laserMapping.cpp` while the Orin was
-  online. Per user direction, it was not applied or built because the Orin was
-  then shut down; deployment and hardware verification remain pending.
+* The patch was checked against and later applied to the current external
+  `/home/wte/point_lio_ws/src/point_lio/src/laserMapping.cpp` without resetting
+  its unrelated dirty changes. `point_lio` and the repository integration package
+  built successfully. Phase B plus Nav2 then held `/odom_lio` delay near `0.03 s`,
+  with roughly `9.6 Hz` lidar/odom/accumulated-scan output and no monotonic lag.
 
 ### TODO - Point-LIO Phase 3 endurance validation
 
