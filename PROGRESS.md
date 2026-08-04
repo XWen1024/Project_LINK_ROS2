@@ -55,6 +55,16 @@
   capture received 34,110 bytes and parsed 288/288 valid frames (`28.8 Hz`) with
   no disconnects. Reflashing is no longer indicated; corrected udev deployment
   and ROS shadow ingestion are the next checks.
+* Fixed UWB shadow startup so the real tmux node window is created only after
+  the private device/tag environment is set on the session. Readiness now waits
+  for a real observation instead of a one-shot status message. Added Nav2's
+  `behavior_server` beside `velocity_smoother` to the expected velocity-publisher
+  set; unrelated publishers still fail live goals closed.
+* Unitree L1 diagnostics ruled out USB bandwidth. After a hardware reconnect the
+  CP2104 bridge was healthy but the lidar remained in standby; the official SDK
+  example's explicit `STANDBY -> NORMAL` sequence immediately restored firmware
+  `1.0.3`, cloud output, and IMU output. A durable ROS-driver wake patch remains
+  required so future power cycles do not need the example program.
 
 ## Navigation Two handoff and one-command tooling - 2026-08-04
 

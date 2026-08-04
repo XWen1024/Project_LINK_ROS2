@@ -119,6 +119,11 @@ Live operation is documented and gated in
 `docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md`; do not enable it before measured
 four-direction calibration and stop/takeover tests.
 
+The launcher passes the private tag and exact device through tmux session
+environment, then waits for a real observation. Nav2's own `velocity_smoother`
+and `behavior_server` are accepted motion-path publishers; any unrelated
+`/cmd_vel` publisher still rejects a live UWB request.
+
 ## Build On Orin
 
 ```bash

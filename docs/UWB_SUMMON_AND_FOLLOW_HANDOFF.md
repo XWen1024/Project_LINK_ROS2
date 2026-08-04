@@ -209,6 +209,10 @@ export PROJECT_LINK_UWB_TAG_ADDRESS='<private-a16>'
   --restart
 ```
 
+启动器先创建 bootstrap window，把私有 tag 和设备路径写入 tmux session，再创建
+真正的 `uwb` window，避免已经启动的 shell 读取不到环境。ready 门等待持续的
+`/uwb/person_observation`，不依赖可能被晚订阅者错过的一次性状态消息。
+
 测试召唤目标：
 
 ```bash

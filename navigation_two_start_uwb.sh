@@ -104,15 +104,17 @@ if [[ -n "$PARAMS_FILE" ]]; then
   launch_args+=("params_file:=$PARAMS_FILE")
 fi
 printf -v launch_command ' %q' "${launch_args[@]}"
-tmux new-session -d -s "$SESSION" -n uwb
+tmux new-session -d -s "$SESSION" -n bootstrap
 tmux set-environment -t "$SESSION" PROJECT_LINK_UWB_TAG_ADDRESS "$PROJECT_LINK_UWB_TAG_ADDRESS"
 tmux set-environment -t "$SESSION" PROJECT_LINK_UWB_DEVICE "$PROJECT_LINK_UWB_DEVICE"
+tmux new-window -t "$SESSION" -n uwb
 tmux send-keys -t "$SESSION:uwb" \
   "cd '$WORKSPACE' && source scripts/project_link_env.sh && source install/setup.bash && ros2 launch project_link_uwb_navigation uwb_navigation.launch.py$launch_command" C-m
+tmux kill-window -t "$SESSION:bootstrap"
 
 for _attempt in $(seq 1 30); do
   if timeout 2 ros2 action list 2>/dev/null | grep -qx '/uwb_navigation/person_navigation' &&
-    timeout 2 ros2 topic echo --once /uwb/status >/dev/null 2>&1; then
+    timeout 2 ros2 topic echo --once /uwb/person_observation >/dev/null 2>&1; then
     echo "UWB Navigation is ready in $MODE mode. No goal has been sent."
     echo "Commands: ./navigation_two_uwb.sh status|summon|follow|stop"
     if [[ "$ATTACH" -eq 1 ]]; then

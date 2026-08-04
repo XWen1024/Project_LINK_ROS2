@@ -414,6 +414,10 @@ now attempts at most one full scan turn, with a 20-second allowance so a
   calibration YAML marked `valid`, the exact stable BU04 device, and a private
   tag address supplied through `PROJECT_LINK_UWB_TAG_ADDRESS`.
 - `navigation_two_uwb.sh status|summon|follow|stop` is the operator entrypoint.
+- The UWB launcher creates a bootstrap tmux window, sets the private device/tag
+  environment on the session, then creates the real node window so the values
+  are inherited without appearing in the launch command. Readiness requires a
+  real `/uwb/person_observation`, not a one-shot status message.
 - On the current Orin, build the two UWB packages without `--symlink-install`.
   `setuptools 82` rejects Humble colcon's legacy `setup.py develop --editable`;
   normal install mode is verified and avoids changing the global Python stack.
@@ -426,6 +430,8 @@ now attempts at most one full scan turn, with a 20-second allowance so a
 - Automatic loss-search is disabled in the first ROS 2 version. Loss cancels the
   Nav2 goal and stops; add bounded Nav2 Spin only after rear-sector PDoA and
   cancellation behavior are evidenced.
+- Nav2's expected `/cmd_vel` publishers are `velocity_smoother` and
+  `behavior_server`; any publisher outside that set still rejects live UWB goals.
 
 ## Direct RViz A-To-B Loop Notes
 
