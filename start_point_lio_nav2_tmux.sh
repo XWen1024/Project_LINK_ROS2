@@ -16,6 +16,7 @@ Usage: ./start_point_lio_nav2_tmux.sh [options]
 Start Nav2 only, reusing an already-running Point-LIO Phase B mapping stack.
 This script starts no AMCL, map_server, slam_toolbox, lidar, odometry, or base.
 It does not send a navigation goal or a nonzero velocity command.
+The C63A base node must already publish /odom for chassis velocity feedback.
 
 Options:
   --restart    Stop the Nav2 tmux session and known Nav2-only processes first.
@@ -92,7 +93,7 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   exit 0
 fi
 
-wait_cmd="wait_for_topic() { local topic=\"\$1\"; echo \"[wait] \${topic}\"; timeout '$WAIT_TIMEOUT' ros2 topic echo --once \"\${topic}\" --field header >/dev/null; }; wait_for_topic /map && wait_for_topic /odom_lio && wait_for_topic /scan_accumulated"
+wait_cmd="wait_for_topic() { local topic=\"\$1\"; echo \"[wait] \${topic}\"; timeout '$WAIT_TIMEOUT' ros2 topic echo --once \"\${topic}\" --field header >/dev/null; }; wait_for_topic /map && wait_for_topic /odom_lio && wait_for_topic /odom && wait_for_topic /scan_accumulated"
 nav_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && $wait_cmd && ros2 launch wheeltec_nav2 point_lio_navigation.launch.py"
 check_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && while true; do clear; date; echo 'Nav2 lifecycle:'; for node in controller_server smoother_server planner_server behavior_server bt_navigator waypoint_follower velocity_smoother; do printf '%-24s ' \"\$node\"; timeout 3 ros2 lifecycle get /\"\$node\" 2>/dev/null || true; done; echo; echo 'Costmaps:'; for topic in /local_costmap/costmap /global_costmap/costmap; do echo \"=== \$topic ===\"; timeout -s INT 4 ros2 topic hz \"\$topic\" 2>&1 | grep -E 'average rate|WARNING|does not appear' | tail -n 2 || true; done; echo; echo 'No goal is sent by this script. Stop keyboard teleop before using 2D Goal Pose.'; sleep 5; done"
 

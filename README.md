@@ -492,6 +492,17 @@ because the robot has no reliable rear obstacle view. Controller and velocity
 smoother linear minimums are both zero, so this configuration cannot request
 reverse motion.
 
+Nav2 pose and velocity intentionally come from different sources. Pose is still
+the Point-LIO-owned `map -> odom -> base_footprint` TF, but DWB and the behavior
+tree read chassis-frame velocity from C63A `/odom`. Do not use `/odom_lio` as the
+controller velocity source: Point-LIO's state velocity is expressed in its world
+frame and the planar adapter previously copied it directly into an Odometry
+child-frame twist. A stationary sample consequently reported about `0.020 m/s`
+forward and `-0.037 m/s` lateral motion. The differential controller now uses
+C63A twist and clamps lateral velocity noise because the base is nonholonomic.
+Start `base_serial.launch.py` before the Nav2-only wrapper; the wrapper waits for
+a real `/odom` message and otherwise refuses to bring up the controller.
+
 To discourage wall shortcuts without closing usable gray corridors, local and
 global inflation use a `0.40 m` radius and `3.5` cost scaling. DWB uses the more
 permissive `BaseObstacle` critic, looks farther ahead for path alignment, and

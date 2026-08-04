@@ -289,8 +289,20 @@ cd /home/wte/wheeltec_robot
 
 It starts no AMCL, map server, slam_toolbox, lidar, robot description, odometry,
 or base node. The live `/map` and `map -> odom -> base_footprint` chain remain
-owned by Phase B. Nav2 uses `/odom_lio` and `/scan_accumulated` with the physical
+owned by Phase B. Nav2 uses Point-LIO TF for pose, C63A `/odom` only for
+chassis-frame velocity, and `/scan_accumulated` for obstacles, with the physical
 `0.51 x 0.41 m` measured footprint and conservative first-test velocity limits.
+
+Do not switch Nav2 velocity feedback back to `/odom_lio` without first fixing
+the projected twist semantics. Point-LIO stores linear velocity in its world
+frame while `nav_msgs/Odometry.twist` is expected in the child/body frame; the
+current projection preserves pose correctly but does not make that raw twist a
+valid differential-drive velocity. C63A `/odom` supplies body-frame twist while
+Point-LIO remains the sole navigation pose/TF source.
+
+Because the Nav2-only wrapper does not start the chassis, start
+`base_serial.launch.py` separately before it. The wrapper now waits for real
+`/odom` in addition to `/map`, `/odom_lio`, and `/scan_accumulated`.
 
 The keyboard teleop publishes `/cmd_vel` continuously, including zero commands,
 so the wrapper refuses to start while it is running. Starting Nav2 does not send

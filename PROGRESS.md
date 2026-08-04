@@ -1,5 +1,26 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## Nav2 path-reference velocity fix - 2026-08-04
+
+* Investigated the report that the physical robot treated the correct green
+  global Path like its right-hand edge. The canonical URDF body and both Nav2
+  footprints are symmetric around `base_footprint`; no lateral visual/collision
+  offset is configured there.
+* Latest Nav2 logs primarily showed repeated `Failed to make progress`, not a
+  planner-side collision rejection. A stationary comparison exposed a concrete
+  controller input error: C63A `/odom` reported zero linear velocity while
+  `/odom_lio` reported about `x=0.020 m/s`, `y=-0.037 m/s`.
+* Point-LIO state propagation stores linear velocity in the world frame, but the
+  planar adapter copied the raw twist into an Odometry message whose child is
+  `base_footprint`. DWB therefore seeded trajectories from a false lateral/body
+  velocity. Nav2 now keeps Point-LIO TF as its pose source but uses C63A `/odom`
+  for velocity feedback. Differential-drive lateral noise is clamped to zero.
+* If the same route still shows a fixed half-width physical offset while the
+  RViz robot model itself remains centered on the local plan, the next
+  calibration is the real LiDAR lateral mount offset (`lidar_offset_y`), which
+  is currently assumed to be exactly zero. Do not guess that value from one wall
+  contact; measure it or fit it from a controlled in-place rotation.
+
 ## Point-LIO real-time backlog control - 2026-08-04
 
 * Confirmed the recurring delay is processing backlog rather than network or
