@@ -421,6 +421,9 @@ now attempts at most one full scan turn, with a 20-second allowance so a
 - Keep the launch-time private tag wrapped in a string-typed `ParameterValue`;
   ROS launch otherwise infers digits-only addresses as integers and the serial
   node rejects the parameter before opening the BU04 stream.
+- Keep `PersonNavigation.action`'s operator-facing `source_id` bounded. An
+  unbounded Action string triggered a Fast DDS reader-history allocation error
+  on the current Humble Orin before the summon/follow goal reached the server.
 - On the current Orin, build the two UWB packages without `--symlink-install`.
   `setuptools 82` rejects Humble colcon's legacy `setup.py develop --editable`;
   normal install mode is verified and avoids changing the global Python stack.
