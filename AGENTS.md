@@ -45,6 +45,10 @@ Navigation Two convenience entrypoints are repository-root scripts:
 - `navigation_two_status.sh`: consolidated read-only tmux monitor.
 - `navigation_two_stop.sh`: publish zero velocity, then stop the full stack.
 
+All Navigation Two topic gates must retry discovery until their deadline. A
+single `timeout ros2 topic echo` is insufficient because `ros2 topic echo` exits
+immediately when a newly launched publisher's type has not reached the graph yet.
+
 ## Project Summary
 
 Project LINK / Lingxi is a ROS 2 eldercare mobile manipulation robot prototype.
@@ -410,6 +414,9 @@ now attempts at most one full scan turn, with a 20-second allowance so a
   calibration YAML marked `valid`, the exact stable BU04 device, and a private
   tag address supplied through `PROJECT_LINK_UWB_TAG_ADDRESS`.
 - `navigation_two_uwb.sh status|summon|follow|stop` is the operator entrypoint.
+- On the current Orin, build the two UWB packages without `--symlink-install`.
+  `setuptools 82` rejects Humble colcon's legacy `setup.py develop --editable`;
+  normal install mode is verified and avoids changing the global Python stack.
 - UWB never publishes `/cmd_vel`; only Nav2 `velocity_smoother` may own that
   topic. People too close, stale UWB/TF, serial loss, Nav2 failure, cancellation
   failure, or an extra velocity publisher must cancel/abort fail-closed.

@@ -131,10 +131,14 @@ export PROJECT_LINK_UWB_DEVICE=/dev/uwb-bu04
 cd /home/wte/wheeltec_robot
 source /opt/ros/humble/setup.bash
 sudo apt install python3-serial
-colcon build --symlink-install --packages-select \
+colcon build --packages-select \
   project_link_uwb_interfaces project_link_uwb_navigation
 source install/setup.bash
 ```
+
+当前 Orin 的 `setuptools 82` 与 Humble colcon 的 Python `--symlink-install`
+路径不兼容，会报 `setup.py develop --editable`。这两个 UWB 包使用上面的普通安装
+构建；不要为了它们降级系统 Python 环境。
 
 MCP 是可选依赖，建议放在项目虚拟环境中：
 

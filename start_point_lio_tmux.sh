@@ -193,7 +193,7 @@ tmux new-session -d -s "$SESSION" -n lidar
 
 lidar_cmd="cd '$UNILIDAR_WS' && export ROS_DOMAIN_ID='$ROS_DOMAIN_ID' ROS_LOCALHOST_ONLY='$ROS_LOCALHOST_ONLY' && source /opt/ros/humble/setup.bash && source install/setup.bash && ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args -p port:='$LIDAR_PORT'"
 description_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && ros2 launch turn_on_wheeltec_robot robot_mode_description.launch.py"
-wait_lidar_cmd="wait_for_topic() { local topic=\"\$1\"; local timeout_s=\"\$2\"; echo \"[wait] Waiting for one message on \${topic} for up to \${timeout_s}s...\"; timeout \"\${timeout_s}\" ros2 topic echo --once \"\${topic}\" --field header >/dev/null; }; wait_for_topic /unilidar/cloud '$WAIT_FOR_LIDAR_TIMEOUT' && wait_for_topic /unilidar/imu '$WAIT_FOR_LIDAR_TIMEOUT'"
+wait_lidar_cmd="wait_for_topic() { local topic=\"\$1\"; local timeout_s=\"\$2\"; local deadline=\$((SECONDS + timeout_s)); echo \"[wait] Waiting for one message on \${topic} for up to \${timeout_s}s...\"; while (( SECONDS < deadline )); do if timeout 5 ros2 topic echo --once \"\${topic}\" --field header >/dev/null 2>&1; then return 0; fi; sleep 1; done; echo \"Timed out waiting for one message on \${topic} after \${timeout_s}s.\" >&2; return 1; }; wait_for_topic /unilidar/cloud '$WAIT_FOR_LIDAR_TIMEOUT' && wait_for_topic /unilidar/imu '$WAIT_FOR_LIDAR_TIMEOUT'"
 scan_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && $wait_lidar_cmd && ros2 launch turn_on_wheeltec_robot unilidar_p2s.launch.py"
 if [[ -z "$POINT_LIO_ODOM_ONLY" ]]; then
   if [[ "$WITH_2D_MAP" -eq 1 ]]; then

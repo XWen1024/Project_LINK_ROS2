@@ -63,8 +63,16 @@ fi
 
 wait_for_topic() {
   local topic="$1"
+  local deadline=$((SECONDS + WAIT_TIMEOUT))
   echo "[wait] $topic"
-  timeout "$WAIT_TIMEOUT" ros2 topic echo --once "$topic" >/dev/null
+  while (( SECONDS < deadline )); do
+    if timeout 5 ros2 topic echo --once "$topic" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Timed out waiting for one message on $topic after ${WAIT_TIMEOUT}s." >&2
+  return 1
 }
 
 wait_for_topic /local_costmap/costmap

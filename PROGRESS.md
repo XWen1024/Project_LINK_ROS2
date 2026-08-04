@@ -28,7 +28,10 @@
   shadow/live, MCP, failure behavior, and controlled field-validation gates.
 * Local verification passed 13 pure Python framing/protocol/geometry/policy tests,
   Python bytecode compilation, shell syntax checks, and `git diff --check`.
-  ROS 2 build and BU04/Orin hardware validation remain pending.
+  Orin then built both ROS 2 packages successfully in normal install mode and
+  repeated all 13 tests. `--symlink-install` is intentionally avoided for these
+  packages because the current `setuptools 82` rejects Humble colcon's legacy
+  `setup.py develop --editable` invocation.
 * BU04 was initially connected through its Type-C port marked `TTL` and identified
   as QinHeng CH340 `1a86:7523`. The Jetson kernel lacked CH341 support, so an
   upstream Linux 5.15 `ch341.c` module was compiled against the exact installed
@@ -54,6 +57,11 @@
   and ROS shadow ingestion are the next checks.
 
 ## Navigation Two handoff and one-command tooling - 2026-08-04
+
+* Fixed the Navigation Two topic gates to retry ROS graph discovery until their
+  configured deadline. The previous single `timeout ros2 topic echo` invocation
+  exited immediately when `/odom` or a sensor topic had not published its type
+  yet, even though the hardware node became healthy seconds later.
 
 * Extracted the current Point-LIO/slam_toolbox/Nav2 architecture, verified
   parameters, TF ownership, known fixes, RViz displays, troubleshooting flow,

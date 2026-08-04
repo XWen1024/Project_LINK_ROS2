@@ -90,10 +90,14 @@ Build the new packages on Orin:
 ```bash
 cd /home/wte/wheeltec_robot
 source /opt/ros/humble/setup.bash
-colcon build --symlink-install --packages-select \
+colcon build --packages-select \
   project_link_uwb_interfaces project_link_uwb_navigation
 source install/setup.bash
 ```
+
+The current Orin has `setuptools 82`, while Humble's colcon invokes the removed
+`setup.py develop --editable` path for ament Python packages under
+`--symlink-install`. Use the normal install build above for these UWB packages.
 
 Start Navigation Two first, then UWB shadow mode:
 
@@ -480,6 +484,10 @@ navigation entrypoint starts/reuses C63A, Point-LIO Phase B, slam_toolbox, and
 Nav2 in dependency order, but sends no goal or nonzero velocity. The save helper
 uses a separate tmux session and saves both occupancy output and a best-effort
 slam_toolbox posegraph.
+
+The startup topic gates retry ROS graph discovery until their deadline. This
+prevents normal USB and driver startup latency from causing an immediate false
+failure before `/odom`, Unitree data, or Point-LIO topics publish their types.
 
 With Phase B still running, start only the Nav2 planning/control stack:
 
