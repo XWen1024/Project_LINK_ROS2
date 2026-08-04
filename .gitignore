@@ -5,6 +5,9 @@ log/
 .vscode/
 .idea/
 
+# Independent upstream reference checkouts (keep their own Git history).
+/external/
+
 __pycache__/
 *.py[cod]
 *.pyo
@@ -25,3 +28,8 @@ __pycache__/
 *.tar.gz
 *.7z
 
+# Runtime settings written by the vendor Ai-Thinker PDoA desktop program.
+/PDOARTLSview_config.xml
+
+# Local document renders, extracted vendor tools, and hardware scratch captures.
+/tmp/

@@ -14,15 +14,15 @@ voice command
 -> TTS feedback
 ```
 
-The current engineering phase is narrower: **SLAM-first validation with a direct
-RViz A-to-B motion check**. The previous `rf2o + EKF + slam_toolbox` route now
-works in RViz2 and C63A base odom is integrated. The next requested minimum loop
-is not Nav2: keep SLAM/TF running, click A and B in RViz, and send low-speed
-`/cmd_vel` directly toward B with no planning or obstacle avoidance.
+The current engineering phase uses the verified Point-LIO + slam_toolbox + Nav2
+stack as the base for **BU03/BU04 UWB summon and person-following**. UWB produces
+the person's relative position; Project LINK transforms it into `map`, applies a
+bounded standoff policy, and submits only high-level Nav2 goals. It never becomes
+another `/cmd_vel` publisher.
 
 ## Current Status
 
-- Date: 2026-08-03.
+- Date: 2026-08-04.
 - Main onboard computer: Jetson Orin Nano.
 - Orin workspace: `/home/wte/wheeltec_robot`.
 - Old Orin workspace backup: `/home/wte/wheeltec_robot_backup_20260627_1250`.
@@ -32,11 +32,19 @@ is not Nav2: keep SLAM/TF running, click A and B in RViz, and send low-speed
   `/odom`, `/imu/data_raw`, and `/PowerVoltage` return at about `20 Hz` after the
   C63A board is healthy.
 - Known-good SLAM fallback: `rf2o + EKF + slam_toolbox`.
-- Current priority: validate the motion-compensated `/scan_accumulated` input in
-  Point-LIO Phase B, then tune the 2D height slice only if necessary. The
-  corrected planar base TF has passed stationary, low-speed in-place-turn, and
-  straight-line checks, and Phase B runs with the canonical URDF/TF chain;
-  rf2o/EKF/SLAM remains the fallback.
+- Current priority: validate UWB serial identity, installed coordinate axes and
+  mounting calibration in shadow mode, then execute supervised low-speed summon
+  and follow fault tests through the known-good Nav2 stack. The repository ships
+  with live UWB motion locked and an intentionally invalid calibration.
+- BU04 has separate physical data paths. The Type-C port marked `USB` is STM32
+  CDC `0483:5740` and is the verified measurement stream; the Type-C port marked
+  `TTL` is CH340 `1a86:7523` and is reserved for AT/configuration. Windows native
+  USB produced 289/289 valid framed JSON messages in 10 seconds (`28.9 Hz`). The
+  repository maps these to `/dev/uwb-bu04` and `/dev/uwb-bu04-at` respectively.
+  The saved PDoA base ID has also been repaired from `65535` to `1`. No firmware
+  reflash is needed. Orin also parsed 288/288 valid frames from native USB
+  `/dev/ttyACM1` in 10 seconds (`28.8 Hz`); the next gate is installing the stable
+  alias through the GitHub update flow and running ROS shadow validation.
 
 ## Repository Layout
 
@@ -58,6 +66,8 @@ Important handoff document:
 ```text
 docs/C63A_BASE_AND_SLAM_HANDOFF.md
 docs/SITE_VOICE_MOBILE_MANIPULATION_RUNBOOK.md
+docs/NAVIGATION_TWO_HANDOFF.md
+docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md
 ```
 
 Important ROS 2 packages:
@@ -69,7 +79,41 @@ wheeltec_slam_toolbox         slam_toolbox configs and wrappers
 rf2o_laser_odometry           Laser-scan odometry
 serial                        Vendored serial library
 wheeltec_robot_msg            Custom Wheeltec messages
+project_link_uwb_interfaces   UWB observation and summon/follow Action interfaces
+project_link_uwb_navigation   BU04 parser, calibration, Nav2 bridge, optional MCP
 ```
+
+## UWB Summon And Follow
+
+Build the new packages on Orin:
+
+```bash
+cd /home/wte/wheeltec_robot
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --packages-select \
+  project_link_uwb_interfaces project_link_uwb_navigation
+source install/setup.bash
+```
+
+Start Navigation Two first, then UWB shadow mode:
+
+```bash
+./navigation_two_start_navigation.sh --restart
+export PROJECT_LINK_UWB_TAG_ADDRESS='<private-a16>'
+./navigation_two_start_uwb.sh --shadow \
+  --device /dev/uwb-bu04 \
+  --params ~/.config/project_link/uwb_navigation.yaml \
+  --restart
+./navigation_two_uwb.sh summon
+# The follow command remains attached for feedback; stop it from another shell.
+./navigation_two_uwb.sh follow
+./navigation_two_uwb.sh stop
+```
+
+Shadow mode publishes `/uwb_navigation/proposed_goal` but sends no Nav2 goal.
+Live operation is documented and gated in
+`docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md`; do not enable it before measured
+four-direction calibration and stop/takeover tests.
 
 ## Build On Orin
 
@@ -83,7 +127,7 @@ source install/setup.bash
 Expected packages:
 
 ```bash
-ros2 pkg list | grep -E 'turn_on_wheeltec_robot|wheeltec_nav2|wheeltec_slam_toolbox|rf2o_laser_odometry|wheeltec_robot_msg|serial'
+ros2 pkg list | grep -E 'turn_on_wheeltec_robot|wheeltec_nav2|wheeltec_slam_toolbox|rf2o_laser_odometry|wheeltec_robot_msg|project_link_uwb|serial'
 ros2 pkg executables turn_on_wheeltec_robot
 ros2 pkg executables rf2o_laser_odometry
 ```

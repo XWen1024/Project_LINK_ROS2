@@ -17,8 +17,10 @@ set -u
 
 timeout 3 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{}' >/dev/null 2>&1 || true
 timeout 3 ros2 topic pub --once /cmd_vel_nav geometry_msgs/msg/Twist '{}' >/dev/null 2>&1 || true
+timeout 3 ros2 service call /uwb_navigation/stop std_srvs/srv/Trigger '{}' >/dev/null 2>&1 || true
 
 for session in \
+  "${PROJECT_LINK_UWB_TMUX_SESSION:-project_link_uwb_navigation}" \
   "${NAVIGATION_TWO_STATUS_SESSION:-project_link_navigation_two_status}" \
   "${NAVIGATION_TWO_SAVE_SESSION:-project_link_navigation_two_save}" \
   "${PROJECT_LINK_NAV2_TMUX_SESSION:-project_link_point_lio_nav2}" \
@@ -36,6 +38,9 @@ pkill -f '/nav2_bt_navigator/bt_navigator' || true
 pkill -f '/nav2_waypoint_follower/waypoint_follower' || true
 pkill -f '/nav2_velocity_smoother/velocity_smoother' || true
 pkill -f 'lifecycle_manager_navigation' || true
+pkill -f 'uwb_navigation.launch.py' || true
+pkill -f 'uwb_nav2_server' || true
+pkill -f 'uwb_serial_node' || true
 pkill -f 'point_lio_unilidar_l1.launch.py' || true
 pkill -f 'pointlio_mapping' || true
 pkill -f 'async_slam_toolbox_node' || true

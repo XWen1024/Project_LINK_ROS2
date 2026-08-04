@@ -1,0 +1,8 @@
+# BU04 measurement stream from the Type-C port marked USB. This is the STM32F103
+# native CDC ACM interface and is the only field-verified continuous PDoA stream.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", ENV{ID_PATH}=="platform-3610000.usb-usb-0:2.3:1.0", GROUP="dialout", MODE="0660", SYMLINK+="uwb-bu04"
+
+# BU04 AT/configuration port from the Type-C port marked TTL. The exact Jetson
+# kernel needs the separately installed CH341 module. Do not use this alias as
+# the ROS measurement stream: it answered AT commands but emitted no live PDoA.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", ENV{ID_PATH}=="platform-3610000.usb-usb-0:2.3:1.0", GROUP="dialout", MODE="0660", SYMLINK+="uwb-bu04-at"

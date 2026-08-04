@@ -34,6 +34,8 @@
 | `navigation_two_save_map.sh` | 保存 occupancy map，并尽力保存 slam_toolbox posegraph |
 | `navigation_two_status.sh` | 打开综合状态 tmux，检查 topic、LIO 频率、TF、动作和速度端点 |
 | `navigation_two_stop.sh` | 先发零速度，再停止 Navigation Two 全部 tmux 和节点 |
+| `navigation_two_start_uwb.sh` | 在健康 Nav2 上启动 UWB shadow/live 桥，不发送任务目标 |
+| `navigation_two_uwb.sh` | 查看状态或发送召唤、跟随、停止高层命令 |
 
 最短命令清单见 `docs/NAVIGATION_TWO_COMMANDS.md`。
 
@@ -350,6 +352,23 @@ posegraph 保存失败不会阻止 occupancy map 保存，具体输出在
 - 实车运动时保持急停或断电手段可用。
 - 当前后方没有可靠避障，不允许自动倒车。
 - 雷达停止转动、点云时间戳飞掉或定位跳变时立即停止目标并重启 Phase B。
+- UWB 召唤/跟随只允许调用 `/navigate_to_pose`，不得新增 `/cmd_vel` 发布者。
+- UWB shadow 是默认模式；live 需要有效实测标定和本地 `UWB-NAV2` 确认。
+- UWB 过期、TF 过期、串口断开、Nav2 失败或额外速度发布者出现时取消目标。
+
+## 12.1 UWB 可选叠加层
+
+UWB 不属于 Navigation Two 基础启动，必须在本栈健康后单独启动：
+
+```bash
+./navigation_two_start_uwb.sh --shadow \
+  --device /dev/uwb-bu04 \
+  --params ~/.config/project_link/uwb_navigation.yaml
+```
+
+数据流、协议、标定和现场门禁见 `docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md`。
+`navigation_two_stop.sh` 会先请求 `/uwb_navigation/stop`，再关闭 UWB、Nav2、
+Point-LIO 和底盘会话。
 
 ## 13. 后续 TODO
 

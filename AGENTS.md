@@ -8,8 +8,10 @@ file together with `PROGRESS.md` and `README.md`.
 
 - Current phase: Point-LIO Phase B, live slam_toolbox mapping, C63A velocity
   feedback, and Nav2 are running as a known-good supervised navigation stack.
-  The immediate milestone is repeatable field operation through the Navigation
-  Two scripts, followed by incremental path/clearance tuning and endurance tests.
+  The immediate software milestone is BU03/BU04 UWB summon and person-following
+  through Nav2, first in shadow mode and then through measured calibration and
+  supervised low-speed field gates. Navigation Two repeatability and endurance
+  remain prerequisites for UWB live motion.
 - The durable Navigation2 handoff is `docs/NAVIGATION_TWO_HANDOFF.md`. Keep it
   synchronized with this file and `PROGRESS.md` when navigation behavior changes.
 - The minimum loop is: save a good map, save named voice waypoints, dry-run
@@ -27,6 +29,11 @@ file together with `PROGRESS.md` and `README.md`.
   7. Tune the 2D height slice only if navigation costmaps are materially harmed.
   8. Save a good map and named voice waypoints after the navigation check.
   9. Add voice motion and visual grasp only after each subsystem is safe.
+  10. Build and test `project_link_uwb_interfaces` and
+      `project_link_uwb_navigation` offline, then validate BU04 serial and map
+      targets in shadow mode.
+  11. Do not enable UWB live motion until the BU04-to-`base_footprint`
+      calibration is operator-approved and stop/takeover fault tests pass.
 
 Navigation Two convenience entrypoints are repository-root scripts:
 
@@ -72,6 +79,23 @@ Nav2 configuration, message packages, and integration launch/config files.
   collision envelope.
 - C63A ROS serial link: `/dev/wheeltec_controller` at `115200`; observed as
   `1a86:55d4` on `/dev/ttyACM0`.
+- BU04 has two Type-C ports. The port marked `USB` is the STM32F103 native CDC
+  interface (`0483:5740`) and must own the ROS measurement alias
+  `/dev/uwb-bu04`. The port marked `TTL` is CH340 (`1a86:7523`) and is reserved
+  as `/dev/uwb-bu04-at` for AT/configuration work. The exact Jetson
+  `5.15.185-tegra` CH341 module remains installed for that optional TTL path.
+- BU04 firmware reports `V1.0.0`, PDoA mode, base role, JSON output, 100 ms
+  rate, filtering enabled, and one paired tag. The invalid saved `AncID:65535`
+  was replaced with `AncID:1`, network `0x1111`, and persisted with `AT+SAVE`.
+  A physical disconnect/reconnect proved that the cold boot loads the new
+  configuration and reports no firmware error bits. Windows testing then found
+  the root cause of the empty stream: CH340 `COM25` was the TTL/AT port, while
+  native USB `COM26` immediately emitted valid `JS + length + JSON` PDoA frames.
+  A Windows 10-second capture contained 289/289 valid frames (`28.9 Hz`). Orin
+  then enumerated the same port as `/dev/ttyACM1` with `0483:5740` on the expected
+  physical USB path and parsed 288/288 valid frames in 10 seconds (`28.8 Hz`).
+  Do not reflash; deploy the corrected udev rule through GitHub, then validate ROS
+  ingestion in shadow mode before any navigation action.
 - Lidar: Unitree L1 / UniLidar for the target SLAM route; current Wheeltec config
   also contains `lidar_type: ls_M10P_uart`.
 - Manipulator: SO-101, currently outside this ROS workspace's main SLAM task.
@@ -94,6 +118,10 @@ Nav2 configuration, message packages, and integration launch/config files.
   vision call, TTS alert, and Feishu bot notification bridge.
 - `project_link_visual_grasp`: headless Orin YOLO-World camera, SO-101 control,
   and visual-servo ROS services/actions.
+- `project_link_uwb_interfaces`: UWB observation message and long-running
+  summon/follow Action interface.
+- `project_link_uwb_navigation`: bounded BU04 serial decoder, calibration and
+  target policy, Nav2 rolling-goal server, and optional stdio MCP bridge.
 
 ## Known Good State
 
@@ -371,6 +399,26 @@ robot was practically at the destination, then allowed the XY-only progress
 checker to trigger recovery while DWB chased the final orientation. A recovery
 now attempts at most one full scan turn, with a 20-second allowance so a
 `6.28 rad` spin at the configured speed can actually finish.
+
+## UWB Summon And Follow
+
+- Durable handoff: `docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md`.
+- `navigation_two_start_uwb.sh` starts UWB ingestion and the guarded Nav2 bridge
+  only after Navigation Two is already healthy. It sends no goal itself.
+- Default mode is shadow: publish `/uwb_navigation/proposed_goal`, never call
+  Nav2. Live mode requires `--enable-motion --confirm-motion UWB-NAV2`, a local
+  calibration YAML marked `valid`, the exact stable BU04 device, and a private
+  tag address supplied through `PROJECT_LINK_UWB_TAG_ADDRESS`.
+- `navigation_two_uwb.sh status|summon|follow|stop` is the operator entrypoint.
+- UWB never publishes `/cmd_vel`; only Nav2 `velocity_smoother` may own that
+  topic. People too close, stale UWB/TF, serial loss, Nav2 failure, cancellation
+  failure, or an extra velocity publisher must cancel/abort fail-closed.
+- The repository calibration is intentionally invalid. Do not replace it with
+  guessed axes or mount offsets. Measure four directions and multiple distances,
+  validate map targets in shadow mode, then approve a local runtime file.
+- Automatic loss-search is disabled in the first ROS 2 version. Loss cancels the
+  Nav2 goal and stops; add bounded Nav2 Spin only after rear-sector PDoA and
+  cancellation behavior are evidenced.
 
 ## Direct RViz A-To-B Loop Notes
 

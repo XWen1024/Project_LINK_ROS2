@@ -1,0 +1,10 @@
+std_msgs/Header header
+string source_id
+uint64 tag_time_raw
+float64 x_m
+float64 y_m
+float64 range_m
+float64 coordinate_range_m
+float64 range_residual_m
+bool valid
+string rejection_reason

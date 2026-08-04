@@ -1,5 +1,58 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## UWB summon/follow ROS 2 and Nav2 migration - 2026-08-04
+
+* Imported the upstream `human-chocker-and-robot-dog/mcp-for-UWB` repository as
+  an independent reference checkout under `external/mcp-for-UWB` at commit
+  `d87ba69ad4ebfcfdcb3713c57230c607679bf502`.
+* Confirmed the upstream UWB portion is an approved BU03/BU04 design and an
+  implementation plan, not a completed runtime. Replaced its DimOS adapter with
+  the current Project LINK interfaces: Point-LIO/slam_toolbox
+  `map -> base_footprint` pose and Nav2 `NavigateToPose` execution.
+* Added `project_link_uwb_interfaces` with a normalized observation message and
+  a long-running `PersonNavigation` Action for summon/follow.
+* Added `project_link_uwb_navigation`: bounded `JS + hex length` framing, strict
+  JSON/tag/timestamp/residual validation, explicit installation calibration,
+  summon/follow holding policy, rolling-goal throttling, BU04 serial ingestion,
+  Nav2 Action adaptation, stop service, status/proposed-goal topics, and an
+  optional stdio FastMCP facade.
+* The UWB layer never publishes `/cmd_vel`. Live requests are rejected when the
+  calibration is not approved, Nav2 is unavailable, or an unexpected velocity
+  publisher exists. Too-close targets hold without reverse; stale UWB/TF and
+  navigation faults cancel the active Nav2 goal and fail closed.
+* Added `navigation_two_start_uwb.sh` and `navigation_two_uwb.sh`. Startup is
+  shadow by default and sends no goal. Live mode requires an explicit local
+  `UWB-NAV2` token, exact device path, private tag environment value, valid
+  runtime calibration, and no direct-drive/teleop process.
+* Added `docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md` with protocol, build, calibration,
+  shadow/live, MCP, failure behavior, and controlled field-validation gates.
+* Local verification passed 13 pure Python framing/protocol/geometry/policy tests,
+  Python bytecode compilation, shell syntax checks, and `git diff --check`.
+  ROS 2 build and BU04/Orin hardware validation remain pending.
+* BU04 was initially connected through its Type-C port marked `TTL` and identified
+  as QinHeng CH340 `1a86:7523`. The Jetson kernel lacked CH341 support, so an
+  upstream Linux 5.15 `ch341.c` module was compiled against the exact installed
+  `5.15.185-tegra` NVIDIA headers, installed with matching vermagic, loaded, and
+  verified. That interface is now reserved as `/dev/uwb-bu04-at`; C63A and
+  Unitree lidar aliases remain unchanged.
+* Official AT V1.0.6 queries confirmed firmware `V1.0.0`, PDoA mode, base role,
+  JSON output (`UserCmd:0`), `Rate:100`, filtering, and one paired tag. The
+  official Ai-Thinker desktop program states base IDs must be `1..4`, while the
+  device had `AncID:65535`. The approved repair saved `AncID:1` while preserving
+  network `0x1111`; a physical USB power cycle loaded it successfully, reported
+  `slot:1,addr:<redacted>`, and kept all five firmware error positions at zero.
+* The empty-stream root cause was the physical port, not firmware. Windows CH340
+  `COM25` reproduced the AT-only behavior, while moving the cable to the Type-C
+  port marked `USB` enumerated STM32 CDC `0483:5740` as `COM26` and immediately
+  produced `JS + four-hex-length + JSON` frames without an AT command. A 10-second
+  capture parsed 289 framed messages and 289 valid JSON messages (`28.9 Hz`).
+* Repository udev rules now reserve `/dev/uwb-bu04` for native STM32 USB and
+  `/dev/uwb-bu04-at` for CH340 TTL. Orin native USB subsequently enumerated as
+  `/dev/ttyACM1`, `0483:5740`, on the expected physical path. A 10-second Orin
+  capture received 34,110 bytes and parsed 288/288 valid frames (`28.8 Hz`) with
+  no disconnects. Reflashing is no longer indicated; corrected udev deployment
+  and ROS shadow ingestion are the next checks.
+
 ## Navigation Two handoff and one-command tooling - 2026-08-04
 
 * Extracted the current Point-LIO/slam_toolbox/Nav2 architecture, verified
