@@ -32,7 +32,7 @@
 | `navigation_two_start_navigation.sh` | 与 `navigation_two_start.sh` 相同，名称更明确 |
 | `navigation_two_start_mapping.sh` | 启动底盘和在线建图，并停止 Nav2，供键盘遥操建图 |
 | `navigation_two_save_map.sh` | 保存 occupancy map，并尽力保存 slam_toolbox posegraph |
-| `navigation_two_status.sh` | 打开综合状态 tmux，检查 topic、延迟、TF、动作和速度端点 |
+| `navigation_two_status.sh` | 打开综合状态 tmux，检查 topic、LIO 频率、TF、动作和速度端点 |
 | `navigation_two_stop.sh` | 先发零速度，再停止 Navigation Two 全部 tmux 和节点 |
 
 最短命令清单见 `docs/NAVIGATION_TWO_COMMANDS.md`。
