@@ -16,7 +16,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$WORKSPACE"
+set +u
 source scripts/project_link_env.sh
+set -u
 
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION" -n status

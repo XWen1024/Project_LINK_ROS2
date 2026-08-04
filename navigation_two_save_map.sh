@@ -32,7 +32,9 @@ if [[ ! "$MAP_BASENAME" =~ ^[A-Za-z0-9_./-]+$ ]]; then
 fi
 
 cd "$WORKSPACE"
+set +u
 source scripts/project_link_env.sh
+set -u
 mkdir -p "$(dirname "$MAP_BASENAME")"
 
 echo "[wait] /map"

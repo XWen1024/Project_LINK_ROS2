@@ -28,7 +28,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$WORKSPACE"
+set +u
 source scripts/project_link_env.sh
+set -u
 
 if pgrep -f 'c63_keyboard_teleop\..*\.py' >/dev/null 2>&1; then
   echo "Keyboard teleop is running. Stop it before starting Nav2." >&2

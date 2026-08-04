@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  echo "Usage: ./navigation_two_stop.sh"
+  exit 0
+elif [[ $# -gt 0 ]]; then
+  echo "Unknown option: $1" >&2
+  exit 2
+fi
+
 WORKSPACE="${PROJECT_LINK_WORKSPACE:-/home/wte/wheeltec_robot}"
 cd "$WORKSPACE"
+set +u
 source scripts/project_link_env.sh
+set -u
 
 timeout 3 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{}' >/dev/null 2>&1 || true
 timeout 3 ros2 topic pub --once /cmd_vel_nav geometry_msgs/msg/Twist '{}' >/dev/null 2>&1 || true

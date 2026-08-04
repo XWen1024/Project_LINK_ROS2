@@ -29,7 +29,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$WORKSPACE"
+set +u
 source scripts/project_link_env.sh
+set -u
 
 if ! command -v tmux >/dev/null 2>&1; then
   echo "tmux is required" >&2
