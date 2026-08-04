@@ -165,10 +165,6 @@ class UwbNav2Server(Node):
         if request.mode not in (PersonMode.SUMMON, PersonMode.FOLLOW):
             self.get_logger().error("Rejected unsupported UWB person-navigation mode.")
             return GoalResponse.REJECT
-        configured_source = str(self.get_parameter("source_id").value)
-        if request.source_id and request.source_id != configured_source:
-            self.get_logger().error("Rejected a person-navigation goal for an unconfigured source ID.")
-            return GoalResponse.REJECT
         try:
             self._policy_config().validate()
             self._calibration().validate(require_approved=bool(self.get_parameter("enable_motion").value))

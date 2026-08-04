@@ -124,7 +124,8 @@ environment, then waits for a real observation. Nav2's own `velocity_smoother`
 and `behavior_server` are accepted motion-path publishers; any unrelated
 publisher still rejects live UWB goals. The launch file explicitly preserves a
 digits-only private tag address as a string, as required by the decoder. The
-Action `source_id` is bounded to keep Humble Fast DDS goal allocation stable.
+Action Goal carries only summon/follow mode; the configured observation source
+remains enforced inside the local ROS safety layer.
 
 ## Build On Orin
 

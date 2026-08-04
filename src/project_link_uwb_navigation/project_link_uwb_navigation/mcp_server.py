@@ -47,12 +47,11 @@ class RosUwbBridge:
             raise TimeoutError("ROS 2 request timed out")
         return future.result()
 
-    def start(self, mode: int, source_id: str) -> dict:
+    def start(self, mode: int) -> dict:
         if not self.client.wait_for_server(timeout_sec=1.0):
             return {"accepted": False, "message": "UWB person-navigation action is unavailable."}
         goal = PersonNavigation.Goal()
         goal.mode = mode
-        goal.source_id = source_id
         handle = self._wait(self.client.send_goal_async(goal), 3.0)
         if handle is None or not handle.accepted:
             return {
@@ -86,15 +85,15 @@ def get_person_navigation_status() -> dict:
 
 
 @mcp.tool(name="uwb_summon_robot", structured_output=True)
-def summon_robot(source_id: str = "tag-1") -> dict:
+def summon_robot() -> dict:
     """Request a Nav2 summon task; the local ROS node must already be motion-enabled and calibrated."""
-    return bridge().start(1, source_id)
+    return bridge().start(1)
 
 
 @mcp.tool(name="uwb_start_following", structured_output=True)
-def start_following(source_id: str = "tag-1") -> dict:
+def start_following() -> dict:
     """Request continuous UWB following; MCP cannot bypass local calibration or motion gates."""
-    return bridge().start(2, source_id)
+    return bridge().start(2)
 
 
 @mcp.tool(name="uwb_stop_person_navigation", structured_output=True)

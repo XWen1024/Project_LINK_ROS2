@@ -2,7 +2,6 @@
 set -euo pipefail
 
 WORKSPACE="${PROJECT_LINK_WORKSPACE:-/home/wte/wheeltec_robot}"
-SOURCE_ID="${PROJECT_LINK_UWB_SOURCE_ID:-tag-1}"
 COMMAND="${1:-status}"
 
 cd "$WORKSPACE"
@@ -20,13 +19,13 @@ case "$COMMAND" in
     ros2 action send_goal --feedback \
       /uwb_navigation/person_navigation \
       project_link_uwb_interfaces/action/PersonNavigation \
-      "{mode: 1, source_id: '$SOURCE_ID'}"
+      "{mode: 1}"
     ;;
   follow)
     ros2 action send_goal --feedback \
       /uwb_navigation/person_navigation \
       project_link_uwb_interfaces/action/PersonNavigation \
-      "{mode: 2, source_id: '$SOURCE_ID'}"
+      "{mode: 2}"
     ;;
   stop)
     ros2 service call /uwb_navigation/stop std_srvs/srv/Trigger '{}'
