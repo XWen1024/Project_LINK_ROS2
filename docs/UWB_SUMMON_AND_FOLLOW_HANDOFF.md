@@ -209,6 +209,20 @@ export PROJECT_LINK_UWB_TAG_ADDRESS='<private-a16>'
   --restart
 ```
 
+单标签现场标定或 BU04 断电重启后，也可以使用仓库内的长期 shadow-only
+入口。它验证 STM32 USB `0483:5740`，只接受一个观测到的标签，地址仅保留在
+进程环境中且不会打印或写盘：
+
+```bash
+python3 scripts/start_uwb_shadow_auto_tag.py \
+  --device /dev/ttyACM1 \
+  --params ~/.config/project_link/uwb_navigation.yaml \
+  --restart
+```
+
+该入口没有 live 参数，不能启用运动。正式 live 仍必须显式提供私有标签、有效
+标定文件和 `UWB-NAV2` 操作员确认。
+
 启动器先创建 bootstrap window，把私有 tag 和设备路径写入 tmux session，再创建
 真正的 `uwb` window，避免已经启动的 shell 读取不到环境。ready 门等待持续的
 `/uwb/person_observation`，不依赖可能被晚订阅者错过的一次性状态消息。

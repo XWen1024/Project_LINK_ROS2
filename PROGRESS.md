@@ -71,6 +71,10 @@
   Navigation Two remains on Fast DDS; standard DDS discovery keeps the two
   stacks interoperable while avoiding the Orin Fast DDS custom-Action history
   allocation defect. `PROJECT_LINK_UWB_RMW_IMPLEMENTATION` remains overridable.
+* Added `scripts/start_uwb_shadow_auto_tag.py` as the durable post-power-cycle
+  calibration entrypoint. It verifies STM32 USB `0483:5740`, requires exactly
+  one observed tag, keeps the private address only in process environment, and
+  is structurally incapable of enabling live motion.
 * Unitree L1 diagnostics ruled out USB bandwidth. After a hardware reconnect the
   CP2104 bridge was healthy but the lidar remained in standby; the official SDK
   example's explicit `STANDBY -> NORMAL` sequence immediately restored firmware

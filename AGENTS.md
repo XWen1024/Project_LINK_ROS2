@@ -427,6 +427,9 @@ now attempts at most one full scan turn, with a 20-second allowance so a
 - The UWB launch and operator scripts default only their own processes to
   `rmw_cyclonedds_cpp`. Do not change the Navigation Two middleware globally;
   Cyclone/Fast DDS interoperability on domain 42 preserves the Nav2 boundary.
+- For single-tag shadow calibration after BU04 power cycles, use
+  `scripts/start_uwb_shadow_auto_tag.py`. It verifies native STM32 USB identity,
+  never prints/persists the private address, and cannot request live motion.
 - On the current Orin, build the two UWB packages without `--symlink-install`.
   `setuptools 82` rejects Humble colcon's legacy `setup.py develop --editable`;
   normal install mode is verified and avoids changing the global Python stack.

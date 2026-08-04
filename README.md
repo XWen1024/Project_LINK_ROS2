@@ -114,6 +114,18 @@ export PROJECT_LINK_UWB_TAG_ADDRESS='<private-a16>'
 ./navigation_two_uwb.sh stop
 ```
 
+For supervised single-tag calibration after a BU04 power cycle, the durable
+shadow-only helper discovers exactly one private tag without printing or saving
+its address:
+
+```bash
+python3 scripts/start_uwb_shadow_auto_tag.py \
+  --device /dev/ttyACM1 --restart
+```
+
+This helper cannot enable live motion. Live mode still requires an explicitly
+supplied private tag, operator confirmation, and an approved calibration file.
+
 Shadow mode publishes `/uwb_navigation/proposed_goal` but sends no Nav2 goal.
 Live operation is documented and gated in
 `docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md`; do not enable it before measured
