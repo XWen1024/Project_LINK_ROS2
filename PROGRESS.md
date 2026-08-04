@@ -75,6 +75,10 @@
   calibration entrypoint. It verifies STM32 USB `0483:5740`, requires exactly
   one observed tag, keeps the private address only in process environment, and
   is structurally incapable of enabling live motion.
+* Decoupled shadow ingestion from Navigation Two startup gates. Raw BU04
+  observations now run with the chassis, lidar, SLAM, map, and Nav2 absent;
+  those prerequisites remain mandatory only for live motion. Map-frame
+  summon/follow proposals still fail closed when their TF is unavailable.
 * Unitree L1 diagnostics ruled out USB bandwidth. After a hardware reconnect the
   CP2104 bridge was healthy but the lidar remained in standby; the official SDK
   example's explicit `STANDBY -> NORMAL` sequence immediately restored firmware

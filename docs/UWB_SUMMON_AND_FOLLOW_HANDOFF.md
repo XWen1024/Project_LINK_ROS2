@@ -223,6 +223,11 @@ python3 scripts/start_uwb_shadow_auto_tag.py \
 该入口没有 live 参数，不能启用运动。正式 live 仍必须显式提供私有标签、有效
 标定文件和 `UWB-NAV2` 操作员确认。
 
+Shadow 原始观测启动不依赖底盘、雷达、SLAM、`/map` 或 Nav2，可独立用于前后
+左右数据采集。没有 `map -> base_footprint` TF 时，`/uwb/person_observation`
+仍正常发布，但 summon/follow 不会伪造 map 目标；只有 live 模式检查完整的
+Navigation Two 前置条件。
+
 启动器先创建 bootstrap window，把私有 tag 和设备路径写入 tmux session，再创建
 真正的 `uwb` window，避免已经启动的 shell 读取不到环境。ready 门等待持续的
 `/uwb/person_observation`，不依赖可能被晚订阅者错过的一次性状态消息。

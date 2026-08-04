@@ -125,6 +125,9 @@ python3 scripts/start_uwb_shadow_auto_tag.py \
 
 This helper cannot enable live motion. Live mode still requires an explicitly
 supplied private tag, operator confirmation, and an approved calibration file.
+Standalone shadow does not require the chassis, lidar, SLAM, map, or Nav2 and is
+therefore the preferred four-direction raw UWB calibration mode. Summon/follow
+map goals still require a healthy `map -> base_footprint` transform.
 
 Shadow mode publishes `/uwb_navigation/proposed_goal` but sends no Nav2 goal.
 Live operation is documented and gated in

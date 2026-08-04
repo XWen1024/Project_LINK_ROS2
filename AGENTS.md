@@ -430,6 +430,9 @@ now attempts at most one full scan turn, with a 20-second allowance so a
 - For single-tag shadow calibration after BU04 power cycles, use
   `scripts/start_uwb_shadow_auto_tag.py`. It verifies native STM32 USB identity,
   never prints/persists the private address, and cannot request live motion.
+- Shadow startup must remain independent of chassis/SLAM/Nav2 health so raw
+  four-direction UWB calibration can run standalone. Only live motion performs
+  the full Navigation Two prerequisite gate; map goals still require map TF.
 - On the current Orin, build the two UWB packages without `--symlink-install`.
   `setuptools 82` rejects Humble colcon's legacy `setup.py develop --editable`;
   normal install mode is verified and avoids changing the global Python stack.

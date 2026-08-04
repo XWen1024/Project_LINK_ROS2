@@ -14,8 +14,9 @@ usage() {
   cat <<'EOF'
 Usage: ./navigation_two_start_uwb.sh [options]
 
-Start BU04 ingestion and UWB summon/follow on top of an already-healthy
-Navigation Two stack. No person-navigation goal is sent by this script.
+Start BU04 ingestion in standalone shadow mode or guarded live mode. Shadow can
+publish raw observations without the chassis, SLAM, or Nav2. No person-navigation
+goal is sent by this script.
 
 Options:
   --shadow                  Publish proposed goals only (default)
@@ -61,18 +62,22 @@ if [[ ! -e "$DEVICE" ]]; then
 fi
 export PROJECT_LINK_UWB_DEVICE="$DEVICE"
 
-for topic in /map /odom /odom_lio /scan_accumulated /local_costmap/costmap /global_costmap/costmap; do
-  if ! timeout 5 ros2 topic echo --once "$topic" >/dev/null 2>&1; then
-    echo "Navigation Two prerequisite is missing: $topic" >&2
-    exit 1
+check_navigation_two() {
+  local topic
+  for topic in /map /odom /odom_lio /scan_accumulated /local_costmap/costmap /global_costmap/costmap; do
+    if ! timeout 5 ros2 topic echo --once "$topic" >/dev/null 2>&1; then
+      echo "Navigation Two prerequisite is missing: $topic" >&2
+      return 1
+    fi
+  done
+  if ! timeout 5 ros2 action list 2>/dev/null | grep -qx '/navigate_to_pose'; then
+    echo "Nav2 action /navigate_to_pose is unavailable." >&2
+    return 1
   fi
-done
-if ! timeout 5 ros2 action list 2>/dev/null | grep -qx '/navigate_to_pose'; then
-  echo "Nav2 action /navigate_to_pose is unavailable." >&2
-  exit 1
-fi
+}
 
 if [[ "$MODE" == "live" ]]; then
+  check_navigation_two
   if [[ "$CONFIRM_MOTION" != "UWB-NAV2" ]]; then
     echo "Live mode requires --confirm-motion UWB-NAV2." >&2
     exit 1
@@ -118,6 +123,9 @@ for _attempt in $(seq 1 30); do
   if timeout 2 ros2 action list 2>/dev/null | grep -qx '/uwb_navigation/person_navigation' &&
     timeout 2 ros2 topic echo --once /uwb/person_observation >/dev/null 2>&1; then
     echo "UWB Navigation is ready in $MODE mode. No goal has been sent."
+    if [[ "$MODE" == "shadow" ]]; then
+      echo "Raw observations are available without Navigation Two; map goals still require map -> base_footprint TF."
+    fi
     echo "Commands: ./navigation_two_uwb.sh status|summon|follow|stop"
     if [[ "$ATTACH" -eq 1 ]]; then
       if [[ -n "${TMUX:-}" ]]; then tmux switch-client -t "$SESSION"; else tmux attach -t "$SESSION"; fi

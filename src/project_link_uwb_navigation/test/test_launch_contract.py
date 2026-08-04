@@ -12,6 +12,15 @@ class LaunchContractTests(unittest.TestCase):
                 script_source,
             )
 
+    def test_shadow_startup_does_not_require_navigation_two(self) -> None:
+        repository_root = Path(__file__).parents[3]
+        script_source = (repository_root / "navigation_two_start_uwb.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('if [[ "$MODE" == "live" ]]; then\n  check_navigation_two', script_source)
+        self.assertIn("Shadow can\npublish raw observations without the chassis", script_source)
+
     def test_person_navigation_goal_has_no_dynamic_string(self) -> None:
         action_source = (
             Path(__file__).parents[2]
