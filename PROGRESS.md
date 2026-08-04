@@ -60,6 +60,9 @@
   for a real observation instead of a one-shot status message. Added Nav2's
   `behavior_server` beside `velocity_smoother` to the expected velocity-publisher
   set; unrelated publishers still fail live goals closed.
+* Forced the private launch-time tag address to remain a ROS string. Without the
+  explicit type, a digits-only address was inferred as an integer by ROS launch
+  and the serial node rejected the parameter before opening the BU04 stream.
 * Unitree L1 diagnostics ruled out USB bandwidth. After a hardware reconnect the
   CP2104 bridge was healthy but the lidar remained in standby; the official SDK
   example's explicit `STANDBY -> NORMAL` sequence immediately restored firmware

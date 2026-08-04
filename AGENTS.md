@@ -418,6 +418,9 @@ now attempts at most one full scan turn, with a 20-second allowance so a
   environment on the session, then creates the real node window so the values
   are inherited without appearing in the launch command. Readiness requires a
   real `/uwb/person_observation`, not a one-shot status message.
+- Keep the launch-time private tag wrapped in a string-typed `ParameterValue`;
+  ROS launch otherwise infers digits-only addresses as integers and the serial
+  node rejects the parameter before opening the BU04 stream.
 - On the current Orin, build the two UWB packages without `--symlink-install`.
   `setuptools 82` rejects Humble colcon's legacy `setup.py develop --editable`;
   normal install mode is verified and avoids changing the global Python stack.

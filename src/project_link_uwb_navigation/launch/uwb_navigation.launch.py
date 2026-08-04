@@ -7,6 +7,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -36,7 +37,10 @@ def generate_launch_description():
                 output="screen",
                 parameters=[
                     params_file,
-                    {"device": serial_device, "tag_address": tag_address},
+                    {
+                        "device": ParameterValue(serial_device, value_type=str),
+                        "tag_address": ParameterValue(tag_address, value_type=str),
+                    },
                 ],
             ),
             Node(
