@@ -331,11 +331,16 @@ project_link_navigation_two_status
 /home/wte/maps/navigation_two_YYYYMMDD_HHMMSS.yaml
 /home/wte/maps/navigation_two_YYYYMMDD_HHMMSS.pgm
 /home/wte/maps/navigation_two_YYYYMMDD_HHMMSS.posegraph
+/home/wte/maps/navigation_two_YYYYMMDD_HHMMSS.data
 ```
 
 occupancy map 用于 Nav2/map_server；posegraph 用于 slam_toolbox 后续继续建图。
 posegraph 保存失败不会阻止 occupancy map 保存，具体输出在
 `project_link_navigation_two_save` tmux 中。
+
+2026-08-04 实机验证：完整启动入口能够识别并复用现有健康栈；状态 tmux
+持续刷新并确认六个关键 topic；保存入口成功生成 `.yaml`、`.pgm`、
+`.posegraph` 和 `.data`。
 
 ## 12. 安全边界
 

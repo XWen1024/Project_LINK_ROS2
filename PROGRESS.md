@@ -11,6 +11,11 @@
   occupancy/posegraph saving, consolidated status monitoring, and safe stop.
   Mapping mode stops Nav2 before keyboard teleop; navigation mode requires real
   C63A `/odom`, starts no goal, and preserves Point-LIO TF ownership.
+* Pulled the scripts onto Orin and ran no-motion validation. The full navigation
+  entrypoint reused the already-healthy stack without restarting its map; the
+  status tmux continuously reported all six required topics and about `9.23 Hz`
+  `/odom_lio`; the save helper produced validated `.yaml`, `.pgm`, `.posegraph`,
+  and `.data` outputs under `/home/wte/maps/navigation_two_script_validation*`.
 
 ## Nav2 path-reference velocity fix - 2026-08-04
 
