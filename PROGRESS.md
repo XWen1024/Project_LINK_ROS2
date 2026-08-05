@@ -79,6 +79,12 @@
   observations now run with the chassis, lidar, SLAM, map, and Nav2 absent;
   those prerequisites remain mandatory only for live motion. Map-frame
   summon/follow proposals still fail closed when their TF is unavailable.
+* The first supervised live summon on 2026-08-06 reached Nav2 and briefly moved
+  the chassis, then stopped after about `0.83 s`. Logs proved the UWB server had
+  applied follow's `0.75 s` rolling refresh to summon, canceled its own first
+  Nav2 goal, and treated the cancellation as a navigation failure. Summon now
+  submits one static Nav2 goal and waits for its result; rolling replacement
+  remains follow-only. A pure-policy regression test locks this distinction.
 * Unitree L1 diagnostics ruled out USB bandwidth. After a hardware reconnect the
   CP2104 bridge was healthy but the lidar remained in standby; the official SDK
   example's explicit `STANDBY -> NORMAL` sequence immediately restored firmware

@@ -414,6 +414,9 @@ now attempts at most one full scan turn, with a 20-second allowance so a
   calibration YAML marked `valid`, the exact stable BU04 device, and a private
   tag address supplied through `PROJECT_LINK_UWB_TAG_ADDRESS`.
 - `navigation_two_uwb.sh status|summon|follow|stop` is the operator entrypoint.
+- Summon submits exactly one static Nav2 goal per Action request. Only follow
+  mode may cancel and replace rolling Nav2 goals; never apply follow's refresh
+  timer to summon.
 - The UWB launcher creates a bootstrap tmux window, sets the private device/tag
   environment on the session, then creates the real node window so the values
   are inherited without appearing in the launch command. Readiness requires a
@@ -447,6 +450,11 @@ now attempts at most one full scan turn, with a 20-second allowance so a
   cancellation behavior are evidenced.
 - Nav2's expected `/cmd_vel` publishers are `velocity_smoother` and
   `behavior_server`; any publisher outside that set still rejects live UWB goals.
+- The first supervised live summon on 2026-08-06 exposed a goal-lifecycle bug:
+  the shared `0.75 s` follow refresh canceled the summon goal after about
+  `0.83 s`, producing only a brief movement. The server now keeps summon
+  one-shot and reserves throttled replacement for follow; repeat live validation
+  is still required before accepting the summon gate.
 
 ## Direct RViz A-To-B Loop Notes
 

@@ -134,6 +134,11 @@ Live operation is documented and gated in
 `docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md`; do not enable it before measured
 four-direction calibration and stop/takeover tests.
 
+Summon and follow intentionally have different Nav2 goal lifecycles. A summon
+computes and submits one static goal, then waits for arrival or a fail-closed
+fault. Follow alone may throttle, cancel, and replace rolling goals as the person
+moves. Do not reuse follow's periodic refresh timer for summon.
+
 The launcher passes the private tag and exact device through tmux session
 environment, then waits for a real observation. Nav2's own `velocity_smoother`
 and `behavior_server` are accepted motion-path publishers; any unrelated

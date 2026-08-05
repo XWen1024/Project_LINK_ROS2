@@ -5,6 +5,7 @@ from project_link_uwb_navigation.policy import (
     PersonMode,
     PolicyConfig,
     propose_goal,
+    should_submit_nav_goal,
     target_speed_mps,
 )
 
@@ -35,6 +36,18 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(throttler.should_replace(1.1, 2.0, 1_500_000_000))
         self.assertTrue(throttler.should_replace(1.3, 2.0, 1_500_000_000))
         self.assertTrue(throttler.should_replace(1.1, 2.0, 1_800_000_000))
+
+    def test_summon_submits_one_nav_goal_but_follow_keeps_rolling(self) -> None:
+        throttler = GoalThrottler(displacement_m=0.2, refresh_sec=0.75)
+        self.assertTrue(
+            should_submit_nav_goal(PersonMode.SUMMON, False, throttler, 1.0, 2.0, 1_000_000_000)
+        )
+        self.assertFalse(
+            should_submit_nav_goal(PersonMode.SUMMON, True, throttler, 1.3, 2.0, 2_000_000_000)
+        )
+        self.assertTrue(
+            should_submit_nav_goal(PersonMode.FOLLOW, False, throttler, 1.0, 2.0, 1_000_000_000)
+        )
 
     def test_target_speed_uses_monotonic_observation_time(self) -> None:
         self.assertAlmostEqual(target_speed_mps(0.0, 0.0, 1_000_000_000, 0.5, 0.0, 1_500_000_000), 1.0)

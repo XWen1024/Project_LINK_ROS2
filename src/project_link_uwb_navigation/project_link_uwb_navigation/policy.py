@@ -103,6 +103,22 @@ class GoalThrottler:
         self._last_time_ns = now_ns
 
 
+def should_submit_nav_goal(
+    mode: PersonMode,
+    goal_already_submitted: bool,
+    throttler: GoalThrottler,
+    target_x_m: float,
+    target_y_m: float,
+    now_ns: int,
+) -> bool:
+    """Submit summon once; reserve rolling replacement for follow mode."""
+    if mode == PersonMode.SUMMON:
+        return not goal_already_submitted
+    if mode == PersonMode.FOLLOW:
+        return throttler.should_replace(target_x_m, target_y_m, now_ns)
+    return False
+
+
 def target_speed_mps(
     previous_x_m: float,
     previous_y_m: float,

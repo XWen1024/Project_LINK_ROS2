@@ -25,7 +25,14 @@ from project_link_uwb_interfaces.action import PersonNavigation
 from project_link_uwb_interfaces.msg import UwbObservation
 
 from .geometry import Calibration, base_to_map, sensor_to_base, yaw_from_quaternion
-from .policy import GoalThrottler, PersonMode, PolicyConfig, propose_goal, target_speed_mps
+from .policy import (
+    GoalThrottler,
+    PersonMode,
+    PolicyConfig,
+    propose_goal,
+    should_submit_nav_goal,
+    target_speed_mps,
+)
 
 
 STATUS_SUCCEEDED = 0
@@ -251,6 +258,7 @@ class UwbNav2Server(Node):
             float(self.get_parameter("goal_displacement_m").value),
             float(self.get_parameter("goal_refresh_sec").value),
         )
+        nav_goal_submitted = False
         previous_target: tuple[float, float] | None = None
         previous_target_time_ns: int | None = None
         previous_target_tag: int | None = None
@@ -360,19 +368,42 @@ class UwbNav2Server(Node):
                     goal_handle.abort()
                     return self._result(STATUS_REJECTED, f"Competing /cmd_vel publisher detected: {unexpected}")
 
-                if throttler.should_replace(person_x, person_y, now_ros_ns):
-                    if not self._cancel_nav_goal():
+                if should_submit_nav_goal(
+                    mode,
+                    nav_goal_submitted,
+                    throttler,
+                    person_x,
+                    person_y,
+                    now_ros_ns,
+                ):
+                    if mode == PersonMode.FOLLOW and not self._cancel_nav_goal():
                         goal_handle.abort()
                         return self._result(STATUS_NAVIGATION_FAILED, "Nav2 goal cancellation was not acknowledged.")
                     if not self._send_nav_goal(proposed):
                         goal_handle.abort()
-                        return self._result(STATUS_NAVIGATION_FAILED, "Nav2 rejected or failed to accept the UWB rolling goal.")
-                    throttler.mark_submitted(person_x, person_y, now_ros_ns)
+                        goal_kind = "one-shot summon" if mode == PersonMode.SUMMON else "rolling follow"
+                        return self._result(
+                            STATUS_NAVIGATION_FAILED,
+                            f"Nav2 rejected or failed to accept the UWB {goal_kind} goal.",
+                        )
+                    nav_goal_submitted = True
+                    if mode == PersonMode.FOLLOW:
+                        throttler.mark_submitted(person_x, person_y, now_ros_ns)
 
-                nav_failure = self._completed_nav_failure()
-                if nav_failure:
-                    goal_handle.abort()
-                    return self._result(STATUS_NAVIGATION_FAILED, nav_failure)
+                nav_status = self._take_completed_nav_status()
+                if nav_status is not None:
+                    if nav_status == GoalStatus.STATUS_SUCCEEDED:
+                        if mode == PersonMode.SUMMON:
+                            goal_handle.succeed()
+                            return self._result(STATUS_SUCCEEDED, "Nav2 reached the one-shot summon goal.")
+                        nav_goal_submitted = False
+                    else:
+                        goal_handle.abort()
+                        goal_kind = "one-shot summon" if mode == PersonMode.SUMMON else "rolling follow"
+                        return self._result(
+                            STATUS_NAVIGATION_FAILED,
+                            f"Nav2 {goal_kind} goal ended with status {nav_status}.",
+                        )
                 time.sleep(period)
         except Exception as exc:
             self.get_logger().error(f"UWB person navigation failed closed: {exc}")
@@ -426,17 +457,15 @@ class UwbNav2Server(Node):
         self._nav_result_future = None
         return acknowledged
 
-    def _completed_nav_failure(self) -> str | None:
+    def _take_completed_nav_status(self) -> int | None:
         if self._nav_result_future is None or not self._nav_result_future.done():
             return None
         wrapped = self._nav_result_future.result()
         self._nav_goal_handle = None
         self._nav_result_future = None
         if wrapped is None:
-            return "Nav2 returned no result."
-        if wrapped.status == GoalStatus.STATUS_SUCCEEDED:
-            return None
-        return f"Nav2 rolling goal ended with status {wrapped.status}."
+            return GoalStatus.STATUS_UNKNOWN
+        return wrapped.status
 
     @staticmethod
     def _wait_future(future, timeout_sec: float) -> bool:
