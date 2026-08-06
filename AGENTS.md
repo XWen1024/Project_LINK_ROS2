@@ -455,6 +455,11 @@ now attempts at most one full scan turn, with a 20-second allowance so a
   `0.83 s`, producing only a brief movement. The server now keeps summon
   one-shot and reserves throttled replacement for follow; repeat live validation
   is still required before accepting the summon gate.
+- The second supervised attempt proved the static goal was no longer refreshed,
+  but post-submission PDoA jitter tripped the shared `3.0 m/s` moving-target gate
+  and canceled motion after about `0.45 s`. After a summon submits its one-shot
+  goal, freeze the target and use later observations only for freshness and
+  range-arrival safety; moving-target speed validation remains follow-only.
 
 ## Direct RViz A-To-B Loop Notes
 

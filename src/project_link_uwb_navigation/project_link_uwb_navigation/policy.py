@@ -119,6 +119,11 @@ def should_submit_nav_goal(
     return False
 
 
+def should_recompute_person_target(mode: PersonMode, goal_already_submitted: bool) -> bool:
+    """A live summon freezes its person target after the one-shot goal is sent."""
+    return mode == PersonMode.FOLLOW or not goal_already_submitted
+
+
 def target_speed_mps(
     previous_x_m: float,
     previous_y_m: float,

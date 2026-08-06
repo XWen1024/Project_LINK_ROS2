@@ -85,6 +85,12 @@
   Nav2 goal, and treated the cancellation as a navigation failure. Summon now
   submits one static Nav2 goal and waits for its result; rolling replacement
   remains follow-only. A pure-policy regression test locks this distinction.
+* A second supervised run confirmed the refresh fix but exposed another shared
+  follow assumption: a post-submission PDoA direction jump produced a computed
+  `3.00 m/s` target speed and canceled the otherwise static summon after about
+  `0.45 s`. Live summon now freezes its target after the first Nav2 submission;
+  later UWB samples are used only for freshness and range-arrival safety. Follow
+  retains moving-target speed checks and rolling target replacement.
 * Unitree L1 diagnostics ruled out USB bandwidth. After a hardware reconnect the
   CP2104 bridge was healthy but the lidar remained in standby; the official SDK
   example's explicit `STANDBY -> NORMAL` sequence immediately restored firmware

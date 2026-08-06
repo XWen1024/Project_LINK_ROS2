@@ -30,6 +30,7 @@ from .policy import (
     PersonMode,
     PolicyConfig,
     propose_goal,
+    should_recompute_person_target,
     should_submit_nav_goal,
     target_speed_mps,
 )
@@ -297,6 +298,57 @@ class UwbNav2Server(Node):
                         goal_handle.abort()
                         return self._result(STATUS_TARGET_LOST, "Timed out acquiring fresh UWB and SLAM observations.")
                     self._feedback(goal_handle, "acquiring", math.nan, observation_age, None)
+                    time.sleep(period)
+                    continue
+
+                if live and not should_recompute_person_target(mode, nav_goal_submitted):
+                    current_distance = observation.coordinate_range_m
+                    self._last_person_distance = current_distance
+                    unexpected = self._unexpected_cmd_vel_publishers()
+                    if unexpected:
+                        self._cancel_nav_goal()
+                        goal_handle.abort()
+                        return self._result(
+                            STATUS_REJECTED,
+                            f"Competing /cmd_vel publisher detected: {unexpected}",
+                        )
+                    if current_distance <= float(self.get_parameter("summon_arrival_distance_m").value):
+                        self._state = "arrived"
+                        if not self._cancel_nav_goal():
+                            goal_handle.abort()
+                            return self._result(
+                                STATUS_NAVIGATION_FAILED,
+                                "Nav2 goal cancellation was not acknowledged at summon arrival.",
+                            )
+                        self._feedback(
+                            goal_handle,
+                            self._state,
+                            current_distance,
+                            observation_age,
+                            self._last_proposed_goal,
+                        )
+                        goal_handle.succeed()
+                        return self._result(
+                            STATUS_SUCCEEDED,
+                            "Robot reached the configured one-shot summon distance.",
+                        )
+                    nav_status = self._take_completed_nav_status()
+                    if nav_status is not None:
+                        if nav_status == GoalStatus.STATUS_SUCCEEDED:
+                            goal_handle.succeed()
+                            return self._result(STATUS_SUCCEEDED, "Nav2 reached the one-shot summon goal.")
+                        goal_handle.abort()
+                        return self._result(
+                            STATUS_NAVIGATION_FAILED,
+                            f"Nav2 one-shot summon goal ended with status {nav_status}.",
+                        )
+                    self._feedback(
+                        goal_handle,
+                        self._state,
+                        current_distance,
+                        observation_age,
+                        self._last_proposed_goal,
+                    )
                     time.sleep(period)
                     continue
 

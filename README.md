@@ -136,8 +136,10 @@ four-direction calibration and stop/takeover tests.
 
 Summon and follow intentionally have different Nav2 goal lifecycles. A summon
 computes and submits one static goal, then waits for arrival or a fail-closed
-fault. Follow alone may throttle, cancel, and replace rolling goals as the person
-moves. Do not reuse follow's periodic refresh timer for summon.
+fault. Once submitted, later summon observations are used only for freshness and
+range-arrival safety, not moving-target speed estimation or goal replacement.
+Follow alone may validate target speed, throttle, cancel, and replace rolling
+goals as the person moves.
 
 The launcher passes the private tag and exact device through tmux session
 environment, then waits for a real observation. Nav2's own `velocity_smoother`
