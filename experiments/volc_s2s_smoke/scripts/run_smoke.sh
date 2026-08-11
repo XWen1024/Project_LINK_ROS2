@@ -8,6 +8,7 @@ ARTIFACT_DIR="${EXPERIMENT_DIR}/artifacts"
 
 umask 077
 mkdir -p "${ARTIFACT_DIR}"
+exec > >(tee "${ARTIFACT_DIR}/smoke.log") 2>&1
 
 required_vars=(
   VOLC_BOT_ID
@@ -45,10 +46,8 @@ echo "Credentials: present (values redacted)"
 echo "Log: ${ARTIFACT_DIR}/smoke.log"
 
 set +e
-stdbuf -oL -eL "${BINARY}" --artifact-dir "${ARTIFACT_DIR}" "$@" \
-  2>&1 | tee "${ARTIFACT_DIR}/smoke.log"
-status=${PIPESTATUS[0]}
+stdbuf -oL -eL "${BINARY}" --artifact-dir "${ARTIFACT_DIR}" "$@"
+status=$?
 set -e
 
 exit "${status}"
-

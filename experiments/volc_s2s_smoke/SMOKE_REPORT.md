@@ -37,21 +37,44 @@ Python 3.10.12
   - Next action: run credentialed WebSocket initialization and TLS connection.
 
 - [NOT TESTED] WS initialization
+  - Observed: the credential gate stopped before `volc_create`.
+  - Expected: SDK creation followed by `VOLC_MODE_WS` start.
+  - Error: all five required variables were absent from the non-interactive
+    Orin SSH process used for the test; no values were guessed or searched for.
+  - Probable layer: runtime credential provisioning.
+  - Next action: load the private environment in the test shell and rerun.
+
 - [NOT TESTED] TLS/WSS connect
+  - Blocked before network initialization by the credential gate.
+
 - [NOT TESTED] authentication
+  - Blocked because the official device registration fields were not provided
+    to the test process.
+
 - [NOT TESTED] PCM upload
 - [NOT TESTED] server speech detection
 - [NOT TESTED] AI audio received
 - [NOT TESTED] AI audio playable
+  - These require a successful authenticated WSS session first.
+
 - [NOT TESTED] mixed orchestration
 - [NOT TESTED] function call received
 - [NOT TESTED] function output returned
 - [NOT TESTED] final AI response
+  - These additionally require the account/Bot Function Calling configuration
+    and a successful PCM-to-S2S-to-AI-audio baseline.
 
 The online items require valid `VOLC_BOT_ID`, `VOLC_INSTANCE_ID`,
 `VOLC_PRODUCT_KEY`, `VOLC_PRODUCT_SECRET`, and `VOLC_DEVICE_NAME`, plus the
 appropriate Bot/account console configuration. No credential values are stored
 in this report.
+
+## Current blocker
+
+The Orin build is complete, but the non-interactive test shell does not contain
+the five required SDK variables. Per the Spike safety rules, testing stopped at
+the explicit credential gate. No shell profiles or unrelated private files were
+searched, and no credential values were printed.
 
 ## Timing evidence
 
