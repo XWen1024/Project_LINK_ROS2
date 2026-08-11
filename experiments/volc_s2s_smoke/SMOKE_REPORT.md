@@ -6,6 +6,16 @@ Native Jetson Orin Nano / Ubuntu aarch64 validation of official SDK commit
 `2c94f96f3aad4094e0e818cbb031149fd4384ead`, with WebSocket enabled and RTC
 disabled. This Spike is isolated from the existing Project LINK voice chain.
 
+## Isolation evidence
+
+- Original user workspace: `main` at
+  `00cdaa4fccc0430c53d69711b60e40873ce5afba`, with pre-existing uncommitted
+  visual-grasp/VL53L0X work; it was not stashed, reset, or edited by this Spike.
+- Windows Spike worktree:
+  `C:\Users\XWen1024\Documents\ROS2小车-volc-smoke`
+- Orin Spike worktree: `/home/wte/wheeltec_robot-volc-smoke`
+- Branch: `spike/volc-s2s-ws-smoke`
+
 ## Platform evidence
 
 ```text
@@ -35,6 +45,18 @@ Python 3.10.12
     warnings; they are retained as evidence rather than hidden.
   - Probable layer: native portability baseline passed.
   - Next action: run credentialed WebSocket initialization and TLS connection.
+
+Additional binary checks:
+
+```text
+Class: ELF64
+Machine: AArch64
+RTC_SYMBOLS_ABSENT
+X86_RTC_REFERENCE_ABSENT
+```
+
+`ldd` resolves only native AArch64 glibc/loader at runtime; mbedTLS is linked
+from the native static build, and no RTC library is present.
 
 - [NOT TESTED] WS initialization
   - Observed: the credential gate stopped before `volc_create`.
@@ -75,6 +97,9 @@ The Orin build is complete, but the non-interactive test shell does not contain
 the five required SDK variables. Per the Spike safety rules, testing stopped at
 the explicit credential gate. No shell profiles or unrelated private files were
 searched, and no credential values were printed.
+
+The credential-gate run exited with code `2` and saved its redacted diagnostic
+to `artifacts/smoke.log`.
 
 ## Timing evidence
 
