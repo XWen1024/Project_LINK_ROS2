@@ -12,10 +12,9 @@ Model observed in every `session.created`: `doubao-seed-2-0-lite-260428`
 
 ## Scope and outcome
 
-This round measured Test A and Test D without modifying the legacy voice pipeline.
-Test B was intentionally handed back to the operator for console Prompt/Tool tuning.
-Test C was skipped because changing the model safely requires a controlled console
-configuration change and the operator asked to focus on D.
+This round measured Test A, Test B, and Test D without modifying the legacy voice
+pipeline. The operator switched the console Prompt/Tool configuration for B1.
+Test C remains pending the operator-provided model list.
 
 Main results:
 
@@ -27,6 +26,8 @@ Main results:
   `451.5 ms`, a `78.9%` reduction from D0.
 - D3 local pre-generated PCM, tool output to playback process start: mean
   `0.4 ms`; last input audio to local feedback start: mean `1827.1 ms`.
+- B1 minimal Prompt/Tool schema did not improve FC latency: VAD-stop-to-call mean
+  was `2144.4 ms`, P50 `1424 ms`, and P90 `3370 ms`.
 - D3 returned `response.cancel` status `0` in all 10 runs and observed no cloud
   audio after the function output during the three-second duplicate-detection
   window.
@@ -235,6 +236,60 @@ Raw artifacts:
 
 `/home/wte/wheeltec_robot-volc-smoke/experiments/volc_s2s_smoke/artifacts/ab_latency/D3_local_pcm_20260811_223458`
 
+## Test B: Prompt and Tool Schema
+
+B0 reuses the D2 batch because it used the current pre-B1 System Prompt, current
+Tool schema, the same model, the same fixed Function Calling PCM, and the same
+post-call `input_tts` strategy. B1 used the operator-confirmed minimal System
+Prompt and minimal `get_magic_number` schema.
+
+| Metric | B0 mean | B0 P50 | B0 P90 | B1 mean | B1 P50 | B1 P90 |
+|---|---:|---:|---:|---:|---:|---:|
+| Last input -> VAD stop | 423.8 | 337 | 587 | 306.4 | 303 | 323 |
+| VAD stop -> Function Call | 1401.8 | 1406 | 1682 | 2144.4 | 1424 | 3370 |
+| Last input -> Function Call | 1825.6 | 1743 | 2309 | 2450.8 | 1813 | 3599 |
+| Tool output -> first feedback audio | 451.5 | 418 | 470 | 531.3 | 439 | 651 |
+| Last input -> first feedback audio | 2280.2 | 2211 | 2703 | 2985.3 | 2219 | 4806 |
+
+All values are milliseconds.
+
+Observed result:
+
+- Function Call correctness: B0 `10/10`, B1 `10/10`.
+- Function name correctness: B1 `10/10 get_magic_number`.
+- Argument correctness: B1 `10/10 {}`.
+- B1 P50 FC decision was effectively unchanged: `1424 ms` versus `1406 ms`.
+- B1 tail latency was worse: P90 `3370 ms` versus `1682 ms`.
+- B1 mean VAD-stop-to-call increased by `742.6 ms` (`53.0%`).
+
+B0 and B1 ran in different time windows, so server-load jitter is a confounding
+factor. The result is sufficient to reject the claim that the minimal Prompt
+produced a clear latency improvement, but it is not a tightly time-matched causal
+benchmark. A stricter comparison would alternate B0/B1 in smaller blocks.
+
+B1 required 11 attempts to obtain 10 successes. Attempt 2 failed before WebSocket
+startup during device registration with mbedTLS error `-0x7280`; it was preserved
+and excluded from latency statistics.
+
+Raw B1 successful runs:
+
+| Attempt | Success run | Input->VAD | VAD->FC | Input->FC | Tool->audio | Input->audio | Input->done |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 1 | 278 | 1385 | 1663 | 439 | 2107 | 2335 |
+| 3 | 2 | 312 | 2262 | 2574 | 445 | 3023 | 6312 |
+| 4 | 3 | 297 | 1401 | 1698 | 390 | 2095 | 3406 |
+| 5 | 4 | 389 | 1424 | 1813 | 404 | 2219 | 2369 |
+| 6 | 5 | 323 | 4108 | 4431 | 430 | 4862 | 5252 |
+| 7 | 6 | 303 | 2942 | 3245 | 651 | 3897 | 7096 |
+| 8 | 7 | 314 | 1406 | 1720 | 382 | 2106 | 3426 |
+| 9 | 8 | 299 | 959 | 1258 | 513 | 1775 | 2082 |
+| 10 | 9 | 320 | 2187 | 2507 | 453 | 2963 | 4318 |
+| 11 | 10 | 229 | 3370 | 3599 | 1206 | 4806 | 6945 |
+
+Raw artifacts:
+
+`/home/wte/wheeltec_robot-volc-smoke/experiments/volc_s2s_smoke/artifacts/ab_latency/B1_minimal_prompt_20260812_072256`
+
 ## Answers to the requested questions
 
 ### A. How fast is the S2S path itself?
@@ -246,9 +301,10 @@ mean. A separate ASR-complete event was not available.
 
 ### B. How much can Prompt/Tool tuning reduce FC decision time?
 
-Not measured in this run. The operator owns the console B0/B1 comparison. D1 is
-not a substitute because its instruction is sent only after the Function Call has
-already been chosen.
+No clear reduction was observed. B1 P50 remained almost unchanged (`1424 ms`
+versus `1406 ms`) and P90 worsened (`3370 ms` versus `1682 ms`). Under these
+samples, simplifying Prompt/Tool text is not the main latency lever; service/model
+decision variance dominates.
 
 ### C. Which model is fastest for Function Calling?
 
@@ -276,5 +332,6 @@ Yes.
 - D3 measures process start, not the first sample leaving the physical speaker.
 - D3 duplicate suppression was observed for three seconds per run; it is not a
   proof about arbitrarily delayed server behavior.
-- Test B and Test C remain pending controlled console configuration work.
+- Test C remains pending the operator-provided model list.
+- B0 and B1 were not interleaved in the same time window.
 - No production bridge or legacy voice module was changed.
