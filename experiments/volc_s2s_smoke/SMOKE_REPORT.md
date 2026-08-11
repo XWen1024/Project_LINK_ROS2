@@ -91,12 +91,29 @@ from the native static build, and no RTC library is present.
     PCM S16LE, 16 kHz, mono, duration `30.861062 s`; `aplay -D null` accepted
     and played the complete file without an error.
 
-- [NOT TESTED] mixed orchestration
-- [NOT TESTED] function call received
-- [NOT TESTED] function output returned
-- [NOT TESTED] final AI response
-  - These additionally require the account/Bot Function Calling configuration
-    and a successful PCM-to-S2S-to-AI-audio baseline.
+- [PASS] mixed orchestration
+  - Speech requesting the magic number caused the server to emit a Function
+    Call over the same low-load WebSocket session.
+
+- [PASS] function call received
+  - Received both `conversation.item.created` with `item.type=function_call`
+    and `response.function_call_arguments.done`.
+  - Observed call ID: `call_1wklv3udz2t2knfwv9t7uop0`.
+  - Observed arguments: `{}`.
+
+- [FAIL] function output returned
+  - Observed: the server function name was `get_magic_numbe`.
+  - Expected: the locally whitelisted name `get_magic_number`.
+  - Error: the Bot definition is missing the final `r`; the smoke program
+    rejected it fail-closed and did not return `{"number":42}`.
+  - Probable layer: Case A, Bot/business Function Calling configuration.
+  - Next action: rename the console function exactly to `get_magic_number` and
+    repeat the same PCM test. Do not add a local typo alias merely to turn the
+    test green.
+
+- [FAIL] final AI response
+  - Not produced because no function output was returned after the strict name
+    mismatch.
 
 The completed online runs used `VOLC_BOT_ID`, `VOLC_INSTANCE_ID`,
 `VOLC_PRODUCT_KEY`, `VOLC_PRODUCT_SECRET`, and `VOLC_DEVICE_NAME` from ignored
@@ -105,10 +122,11 @@ still requires the appropriate Bot/account console configuration.
 
 ## Current blocker
 
-Levels 1 through 3 now pass. Level 4 still requires the Bot/account console to
-define and enable `get_magic_number`, plus a PCM utterance such as “请告诉我神奇数字。”
-The Spike does not fabricate this cloud configuration or substitute a separate
-Ark connection.
+Levels 1 through 3 pass, and Level 4 has reached the real WebSocket Function
+Call. The remaining blocker is the console function name `get_magic_numbe`
+versus required `get_magic_number`. The Spike does not fabricate this cloud
+configuration, accept the typo silently, or substitute a separate Ark
+connection.
 
 ## First credentialed runs
 
