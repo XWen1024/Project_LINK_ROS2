@@ -7,6 +7,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -49,7 +50,7 @@ def generate_launch_description() -> LaunchDescription:
                     "enable_audio": enable_audio,
                     "enable_llm_tools": enable_llm_tools,
                     "enable_visual_grasp": enable_visual_grasp,
-                    "pure_test_mode": pure_test_mode,
+                    "pure_test_mode": ParameterValue(pure_test_mode, value_type=str),
                     "waypoints_override_file": waypoints_override_file,
                     "wakeup_serial_port": wakeup_serial_port,
                     "audio_input_device_index": audio_input_device_index,
