@@ -376,7 +376,7 @@ class VolcanoTts:
                     requested_at,
                     {"mode": "full_text", "cached": True, "success": True},
                 )
-            elif len(text) <= 25:
+            else:
                 self._cmd_queue.put(
                     {
                         "type": "full_text",
@@ -385,16 +385,6 @@ class VolcanoTts:
                         "timing_callback": timing_callback,
                     }
                 )
-            else:
-                self._cmd_queue.put(
-                    {
-                        "type": "start",
-                        "requested_at": requested_at,
-                        "timing_callback": timing_callback,
-                    }
-                )
-                self._cmd_queue.put({"type": "text", "text": text})
-                self._cmd_queue.put({"type": "end"})
 
     @classmethod
     def _notify_immediate_tts(

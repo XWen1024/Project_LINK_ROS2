@@ -1,4 +1,6 @@
 import json
+import queue
+import threading
 
 from project_link_voice.voice_debug import VoiceDebugSink
 from project_link_voice.volcano_tts import VolcanoTts
@@ -79,3 +81,21 @@ def test_mock_tts_reports_first_audio_and_completion():
         "tts_synthesis_complete",
     ]
     assert all(fields["mock"] for _phase, _elapsed_ms, fields in timings)
+
+
+def test_complete_long_text_uses_one_full_text_command():
+    tts = VolcanoTts.__new__(VolcanoTts)
+    tts._mock_mode = False
+    tts._play_lock = threading.Lock()
+    tts._stop_flag = threading.Event()
+    tts._is_playing = False
+    tts._phrase_cache = {}
+    tts._audio_queue = queue.Queue()
+    tts._cmd_queue = queue.Queue()
+    tts._mixer_ready = False
+
+    tts.speak("这是一条超过二十五个字符但在调用前已经完整确定的现场语音播报文本。")
+
+    command = tts._cmd_queue.get_nowait()
+    assert command["type"] == "full_text"
+    assert tts._cmd_queue.empty()
