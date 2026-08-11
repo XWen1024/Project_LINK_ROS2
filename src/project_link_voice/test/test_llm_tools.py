@@ -1,7 +1,7 @@
 import sys
 from types import SimpleNamespace
 
-from project_link_voice.llm import ToolCallingClient, ToolResult
+from project_link_voice.llm import TOOL_SCHEMAS, ToolCallingClient, ToolResult
 
 
 def test_llm_disabled_returns_clear_message(monkeypatch):
@@ -32,6 +32,15 @@ def test_tool_result_can_stop_before_ros_execution():
     )
     assert handled.stop_after_tool
     assert handled.spoken_reply == "准备前往客厅，请确认开始。"
+
+
+def test_navigation_tool_descriptions_are_backend_neutral():
+    descriptions = {
+        schema["function"]["name"]: schema["function"]["description"]
+        for schema in TOOL_SCHEMAS
+    }
+    assert "navigation" in descriptions["navigate_to_location"]
+    assert "direct-drive" not in descriptions["navigate_to_location"]
 
 
 def test_parse_bad_tool_args_is_empty_dict():

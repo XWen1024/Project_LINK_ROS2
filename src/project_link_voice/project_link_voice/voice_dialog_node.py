@@ -26,7 +26,11 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 from std_srvs.srv import SetBool, Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
-from wheeltec_robot_msg.action import TrackAndGrasp
+
+try:
+    from wheeltec_robot_msg.action import TrackAndGrasp
+except ImportError:
+    TrackAndGrasp = None
 
 from project_link_voice_interfaces.action import DriveToPoint
 
@@ -162,11 +166,13 @@ class VoiceDialogNode(Node):
             NavigateToPose,
             str(self.get_parameter("nav2_action_name").value),
         )
-        self._visual_grasp_client = ActionClient(
-            self,
-            TrackAndGrasp,
-            str(self.get_parameter("visual_grasp_action_name").value),
-        )
+        self._visual_grasp_client = None
+        if TrackAndGrasp is not None:
+            self._visual_grasp_client = ActionClient(
+                self,
+                TrackAndGrasp,
+                str(self.get_parameter("visual_grasp_action_name").value),
+            )
         self._connect_arm_client = self.create_client(
             Trigger,
             str(self.get_parameter("visual_grasp_connect_service").value),
@@ -942,6 +948,9 @@ class VoiceDialogNode(Node):
         return response
 
     def _send_visual_grasp_goal(self, task: PendingTask) -> None:
+        if TrackAndGrasp is None or self._visual_grasp_client is None:
+            self._finish_active_task("视觉抓取接口未安装，导航已结束但不会启动机械臂。")
+            return
         if not self._visual_grasp_client.wait_for_server(timeout_sec=0.0):
             self._finish_active_task("视觉抓取 Action 不可用。")
             return

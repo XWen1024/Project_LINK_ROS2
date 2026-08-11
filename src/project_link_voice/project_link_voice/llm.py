@@ -48,7 +48,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "navigate_to_location",
-            "description": "Create a pending direct-drive task to a saved named waypoint.",
+            "description": "Create a pending navigation task to a saved named waypoint.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -73,7 +73,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "fetch_item_from_location",
-            "description": "Create a pending task: drive to a saved waypoint, then visually grasp one object.",
+            "description": "Create a pending task: navigate to a saved waypoint, then visually grasp one object.",
             "parameters": {
                 "type": "object",
                 "properties": {
