@@ -51,8 +51,7 @@ class WhisperTranscriber:
         self._compute_type = compute_type
         self._model = None
 
-    def transcribe_pcm(self, pcm: bytes) -> str:
-        import numpy as np
+    def _model_instance(self):
         from faster_whisper import WhisperModel
 
         if self._model is None:
@@ -60,8 +59,17 @@ class WhisperTranscriber:
                 self._model = WhisperModel(self._model_path, device=self._device, compute_type=self._compute_type)
             except Exception:
                 self._model = WhisperModel(self._model_path, device="cpu", compute_type="int8")
+        return self._model
+
+    def warm_up(self) -> None:
+        self._model_instance()
+
+    def transcribe_pcm(self, pcm: bytes) -> str:
+        import numpy as np
+
+        model = self._model_instance()
         audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        segments, _ = self._model.transcribe(audio, language="zh")
+        segments, _ = model.transcribe(audio, language="zh")
         return "".join(segment.text for segment in segments).strip()
 
 
@@ -207,7 +215,7 @@ class VoiceDialogNode(Node):
         self.declare_parameter("audio_no_speech_timeout_sec", 8.0)
         self.declare_parameter("audio_max_utterance_sec", 12.0)
         self.declare_parameter("audio_min_speech_sec", 0.30)
-        self.declare_parameter("whisper_model", "small")
+        self.declare_parameter("whisper_model", os.environ.get("PROJECT_LINK_WHISPER_MODEL", "small"))
         self.declare_parameter("whisper_device", "cuda")
         self.declare_parameter("whisper_compute_type", "float16")
         self.declare_parameter("enable_llm_tools", True)
@@ -890,6 +898,14 @@ class VoiceDialogNode(Node):
         except Exception as exc:
             self.get_logger().error(f"FunVAD warm-up failed: {exc}")
             self._say("语音端点模型加载失败，请检查 FunASR 模型和运行环境。")
+            return
+        try:
+            self.get_logger().info("Loading faster-whisper model before accepting wake events.")
+            transcriber.warm_up()
+            self.get_logger().info("faster-whisper model is ready.")
+        except Exception as exc:
+            self.get_logger().error(f"faster-whisper warm-up failed: {exc}")
+            self._say("语音识别模型加载失败，请检查本地 Whisper 模型。")
             return
         while not self._stop_event.is_set():
             trace = None
