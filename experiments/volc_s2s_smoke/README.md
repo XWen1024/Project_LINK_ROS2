@@ -192,6 +192,9 @@ Prepare 16 kHz mono S16LE speech such as “请告诉我神奇数字。” and r
   --response-timeout-sec 60
 ```
 
+Local PCM/WAV files under `assets/` are ignored by Git so recorded speech is
+not committed accidentally.
+
 The current official low-load sample receives
 `conversation.item.created`/`response.function_call_arguments.done`. The
 official high-quality sample documents the return item as:
