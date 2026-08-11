@@ -44,7 +44,8 @@ Python 3.10.12
   - Error: none. Official source emits non-fatal format/thread signature
     warnings; they are retained as evidence rather than hidden.
   - Probable layer: native portability baseline passed.
-  - Next action: run credentialed WebSocket initialization and TLS connection.
+  - Next action: proceed to the Function Calling gate after the successful
+    WSS/S2S validation recorded below.
 
 Additional binary checks:
 
@@ -58,26 +59,37 @@ X86_RTC_REFERENCE_ABSENT
 `ldd` resolves only native AArch64 glibc/loader at runtime; mbedTLS is linked
 from the native static build, and no RTC library is present.
 
-- [NOT TESTED] WS initialization
-  - Observed: the credential gate stopped before `volc_create`.
-  - Expected: SDK creation followed by `VOLC_MODE_WS` start.
-  - Error: all five required variables were absent from the non-interactive
-    Orin SSH process used for the test; no values were guessed or searched for.
-  - Probable layer: runtime credential provisioning.
-  - Next action: load the private environment in the test shell and rerun.
+- [PASS] WS initialization
+  - `volc_create` and `volc_start(VOLC_MODE_WS)` returned success on Orin.
+  - The server returned `session.created` with model
+    `doubao-seed-2-0-lite-260428`, PCM16 input/output, and `server_vad`.
 
-- [NOT TESTED] TLS/WSS connect
-  - Blocked before network initialization by the credential gate.
+- [PASS] TLS/WSS connect
+  - Connected natively to `ai-gateway.vei.volces.com:443` through the official
+    low-load transport. A connection-only run measured `2422 ms`; the final
+    PCM run measured `582 ms`. Both shut down cleanly.
 
-- [NOT TESTED] authentication
-  - Blocked because the official device registration fields were not provided
-    to the test process.
+- [PASS] authentication
+  - Official dynamic device registration completed successfully. The final PCM
+    run measured `367 ms`. Credential values were loaded from ignored mode-600
+    `.env.local` and were not printed by the smoke wrapper.
 
-- [NOT TESTED] PCM upload
-- [NOT TESTED] server speech detection
-- [NOT TESTED] AI audio received
-- [NOT TESTED] AI audio playable
-  - These require a successful authenticated WSS session first.
+- [PASS] PCM upload
+  - Uploaded all `222,420` bytes of the official `hi_lexin.pcm` asset as PCM
+    S16LE, 16 kHz, mono, using 100 ms realtime cadence and a final commit.
+
+- [PASS] server speech detection
+  - Received actual `VOLC_CONV_STATUS_LISTENING`, `THINKING`, `ANSWERING`, and
+    `ANSWER_FINISH` callbacks, plus `input_audio_buffer.committed` events.
+
+- [PASS] AI audio received
+  - Received `987,554` bytes through `on_volc_audio_data` and a completed
+    `response.done` event. The full PCM run exited with code `0`.
+
+- [PASS] AI audio playable
+  - Generated `response.wav` with `987,598` bytes. `soxi` and `ffprobe` report
+    PCM S16LE, 16 kHz, mono, duration `30.861062 s`; `aplay -D null` accepted
+    and played the complete file without an error.
 
 - [NOT TESTED] mixed orchestration
 - [NOT TESTED] function call received
@@ -86,20 +98,17 @@ from the native static build, and no RTC library is present.
   - These additionally require the account/Bot Function Calling configuration
     and a successful PCM-to-S2S-to-AI-audio baseline.
 
-The online items require valid `VOLC_BOT_ID`, `VOLC_INSTANCE_ID`,
-`VOLC_PRODUCT_KEY`, `VOLC_PRODUCT_SECRET`, and `VOLC_DEVICE_NAME`, plus the
-appropriate Bot/account console configuration. No credential values are stored
-in this report.
+The completed online runs used `VOLC_BOT_ID`, `VOLC_INSTANCE_ID`,
+`VOLC_PRODUCT_KEY`, `VOLC_PRODUCT_SECRET`, and `VOLC_DEVICE_NAME` from ignored
+`.env.local`. No credential values are stored in this report. Function Calling
+still requires the appropriate Bot/account console configuration.
 
 ## Current blocker
 
-The Orin build is complete, but the non-interactive test shell does not contain
-the five required SDK variables. Per the Spike safety rules, testing stopped at
-the explicit credential gate. No shell profiles or unrelated private files were
-searched, and no credential values were printed.
-
-The credential-gate run exited with code `2` and saved its redacted diagnostic
-to `artifacts/smoke.log`.
+Levels 1 through 3 now pass. Level 4 still requires the Bot/account console to
+define and enable `get_magic_number`, plus a PCM utterance such as “请告诉我神奇数字。”
+The Spike does not fabricate this cloud configuration or substitute a separate
+Ark connection.
 
 ## First credentialed runs
 
@@ -111,12 +120,32 @@ to `artifacts/smoke.log`.
   SDK's positive WebSocket byte-count return (`69`) as an error. Official
   low-load code returns a positive send length from the commit-triggered
   `response.create`; only negative values indicate failure. The CLI was corrected
-  without patching the official SDK, and the complete S2S run must be repeated.
+  without patching the official SDK.
+- The repeated complete run passed PCM upload, AI PCM receive, WAV generation,
+  structural/playback validation, and clean shutdown.
+
+## Final Level 3 timing sample
+
+```text
+connect_ms=582
+T2_first_input_audio_sent=968 ms
+T3_last_input_audio_sent=7870 ms
+T4_speech_started=3155 ms
+T5_speech_stopped=3693 ms
+T6_first_ai_audio=2326 ms
+T7_response_done=37885 ms
+response_total_ms=30015
+```
+
+`speech_end_to_first_audio_ms` is `N/A` because the Bot produced audio before
+the first observed speech-stop event (welcome/overlapping server-VAD turns).
+Therefore this bundled multi-utterance asset proves transport and audio flow but
+is not a clean single-turn latency benchmark.
 
 ## Timing evidence
 
-No online timing samples are available yet. The executable records T0 through
-T7 with `CLOCK_MONOTONIC` and prints `N/A` for missing events.
+The final Level 3 sample above was recorded with `CLOCK_MONOTONIC`. Missing or
+temporally invalid derived events remain `N/A`; no latency value is synthesized.
 
 ## Artifact locations
 
