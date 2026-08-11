@@ -29,9 +29,16 @@ from wheeltec_robot_msg.action import TrackAndGrasp
 from project_link_voice_interfaces.action import DriveToPoint
 
 from .funvad import FunVadRecorder, VadSettings
-from .llm import ToolCallingClient, ToolResult
+from .llm import (
+    DEFAULT_LLM_API_KEY_ENV,
+    DEFAULT_LLM_BASE_URL,
+    DEFAULT_LLM_MODEL,
+    ToolCallingClient,
+    ToolResult,
+)
 from .task_parser import parse_aliases
 from .volcano_tts import VolcanoTts
+from .voice_debug import VoiceDebugSink, VoiceTrace
 from .waypoints import CANCEL_WORDS, CONFIRM_WORDS, Waypoint, WaypointStore, contains_any
 
 
@@ -87,8 +94,16 @@ class VoiceDialogNode(Node):
         self._target_frame = str(self.get_parameter("target_frame").value).lstrip("/")
         self._base_frame = str(self.get_parameter("base_frame").value).lstrip("/")
         self._motion_enabled = bool(self.get_parameter("enable_motion").value)
-        self._text_queue: queue.Queue[str] = queue.Queue()
-        self._tts_queue: queue.Queue[str | None] = queue.Queue()
+        self._debug_sink = VoiceDebugSink(
+            self.get_logger(),
+            debug_enabled=bool(self.get_parameter("debug_logging_enabled").value),
+            timing_enabled=bool(self.get_parameter("timing_debug_enabled").value),
+            debug_log_file=str(self.get_parameter("debug_log_file").value),
+            timing_log_file=str(self.get_parameter("timing_log_file").value),
+            timing_console_enabled=bool(self.get_parameter("timing_console_enabled").value),
+        )
+        self._text_queue: queue.Queue[tuple[str, VoiceTrace]] = queue.Queue()
+        self._tts_queue: queue.Queue[tuple[str, VoiceTrace]] = queue.Queue()
         self._stop_event = threading.Event()
         self._goal_handle = None
         self._grasp_goal_handle = None
@@ -114,6 +129,7 @@ class VoiceDialogNode(Node):
             bool(self.get_parameter("enable_llm_tools").value),
             str(self.get_parameter("llm_base_url").value),
             str(self.get_parameter("llm_model").value),
+            api_key_env=str(self.get_parameter("llm_api_key_env").value),
         )
         self._tts = VolcanoTts(
             resource_id=str(self.get_parameter("volcano_resource_id").value).strip() or None,
@@ -165,6 +181,9 @@ class VoiceDialogNode(Node):
         if bool(self.get_parameter("enable_demo_motion").value):
             self.get_logger().warn("VOICE DEMO MOTION ENABLED: bounded local /cmd_vel commands are accepted without SLAM.")
         self.get_logger().warn("Physical E-stop remains mandatory; LLM never directly controls ROS actions.")
+        self.get_logger().info(
+            "Voice timing JSONL: " + str(Path(str(self.get_parameter("timing_log_file").value)).expanduser())
+        )
         self._announce_pure_test_mode_if_needed()
 
     def _declare_parameters(self) -> None:
@@ -192,8 +211,9 @@ class VoiceDialogNode(Node):
         self.declare_parameter("whisper_device", "cuda")
         self.declare_parameter("whisper_compute_type", "float16")
         self.declare_parameter("enable_llm_tools", True)
-        self.declare_parameter("llm_base_url", "https://api.siliconflow.cn/v1")
-        self.declare_parameter("llm_model", "Qwen/Qwen3-8B")
+        self.declare_parameter("llm_api_key_env", DEFAULT_LLM_API_KEY_ENV)
+        self.declare_parameter("llm_base_url", DEFAULT_LLM_BASE_URL)
+        self.declare_parameter("llm_model", DEFAULT_LLM_MODEL)
         self.declare_parameter("confirmation_timeout_sec", 30.0)
         self.declare_parameter("enable_demo_motion", False)
         self.declare_parameter("demo_cmd_vel_topic", "/cmd_vel")
@@ -206,6 +226,11 @@ class VoiceDialogNode(Node):
         self.declare_parameter("tts_sample_rate", 24000)
         self.declare_parameter("volcano_resource_id", "")
         self.declare_parameter("volcano_speaker", "")
+        self.declare_parameter("debug_logging_enabled", True)
+        self.declare_parameter("timing_debug_enabled", True)
+        self.declare_parameter("timing_console_enabled", True)
+        self.declare_parameter("debug_log_file", "~/.ros/project_link_voice/voice_debug.jsonl")
+        self.declare_parameter("timing_log_file", "~/.ros/project_link_voice/voice_timing.jsonl")
         self.declare_parameter("enable_visual_grasp", False)
         self.declare_parameter("visual_grasp_timeout_sec", 45.0)
         self.declare_parameter("visual_grasp_prepare_arm", True)
@@ -277,7 +302,9 @@ class VoiceDialogNode(Node):
     def _on_text_input(self, message: String) -> None:
         text = message.data.strip()
         if text:
-            self._text_queue.put(text)
+            trace = self._debug_sink.start_trace("text_topic", text_chars=len(text))
+            trace.debug("text_received", text_preview=text[:120])
+            self._text_queue.put((text, trace))
 
     def _publish_status(self) -> None:
         ready, reason = self._slam_ready()
@@ -318,20 +345,29 @@ class VoiceDialogNode(Node):
         )
         return translation.x, translation.y, yaw
 
-    def _say(self, text: str) -> None:
+    def _say(self, text: str, trace: VoiceTrace | None = None) -> None:
         if not text:
             return
         self.get_logger().info(f"TTS: {text}")
-        self._tts.speak(text)
+        started_at = time.perf_counter()
+        self._tts.speak(text, trace.timing_callback if trace is not None else None)
+        if trace is not None:
+            trace.record(
+                "tts_dispatch",
+                (time.perf_counter() - started_at) * 1000.0,
+                text_chars=len(text),
+            )
+            trace.debug("tts_requested", text_preview=text[:120], text_chars=len(text))
         self._tts_pub.publish(String(data=text))
 
     def _process_queues(self) -> None:
         while not self._tts_queue.empty():
-            item = self._tts_queue.get_nowait()
-            if item is not None:
-                self._say(item)
+            text, trace = self._tts_queue.get_nowait()
+            self._say(text, trace)
+            trace.complete("llm_reply_dispatched")
         while not self._text_queue.empty():
-            self._handle_text(self._text_queue.get_nowait())
+            text, trace = self._text_queue.get_nowait()
+            self._handle_text(text, trace)
 
     def _expire_pending_task(self) -> None:
         if not self._pending_task:
@@ -342,28 +378,36 @@ class VoiceDialogNode(Node):
             self._pending_task = None
             self._say(f"{task.waypoint.name}的任务确认超时，已作废。请重新下达指令。")
 
-    def _handle_text(self, text: str) -> None:
+    def _handle_text(self, text: str, trace: VoiceTrace) -> None:
         normalized = text.strip()
+        trace.debug("command_processing_started", text_preview=normalized[:120])
         if contains_any(normalized, CANCEL_WORDS):
-            self._cancel_everything("voice cancellation")
-            self._stop_demo_motion()
-            self._say("已取消当前任务，并请求底盘和机械臂停止。")
+            with trace.phase("python_tool", tool="cancel_current_task"):
+                self._cancel_everything("voice cancellation")
+                self._stop_demo_motion()
+            self._say("已取消当前任务，并请求底盘和机械臂停止。", trace)
+            trace.complete("local_cancel")
             return
         demo_command = self._parse_demo_motion(normalized)
         if demo_command:
-            self._start_demo_motion(demo_command)
+            with trace.phase("python_tool", tool="local_demo_motion"):
+                self._start_demo_motion(demo_command, trace)
+            trace.complete("local_demo_motion")
             return
         if self._pending_task:
             if contains_any(normalized, CONFIRM_WORDS):
                 task = self._pending_task
                 self._pending_task = None
-                self._confirm_and_execute(task)
+                with trace.phase("python_tool", tool="confirm_task"):
+                    self._confirm_and_execute(task, trace)
+                trace.complete("task_confirmation")
             else:
-                self._say("当前有待确认任务。请说确认开始，或说取消。")
+                self._say("当前有待确认任务。请说确认开始，或说取消。", trace)
+                trace.complete("confirmation_required")
             return
-        threading.Thread(target=self._run_llm_turn, args=(normalized,), daemon=True).start()
+        threading.Thread(target=self._run_llm_turn, args=(normalized, trace), daemon=True).start()
 
-    def _run_llm_turn(self, text: str) -> None:
+    def _run_llm_turn(self, text: str, trace: VoiceTrace) -> None:
         stream_open = False
         streamed_any = False
 
@@ -375,14 +419,29 @@ class VoiceDialogNode(Node):
                 return
             if chunk.strip():
                 if not stream_open:
-                    self._tts.speak_stream_start()
+                    started_at = time.perf_counter()
+                    self._tts.speak_stream_start(trace.timing_callback)
+                    trace.record(
+                        "tts_dispatch",
+                        (time.perf_counter() - started_at) * 1000.0,
+                        mode="stream",
+                    )
                 stream_open = True
                 streamed_any = True
                 self._tts.speak_stream_feed(chunk)
 
-        result = self._llm.chat(text, self._handle_tool_call, on_text_chunk)
+        trace.debug("llm_started", text_chars=len(text))
+        result = self._llm.chat(
+            text,
+            self._handle_tool_call,
+            on_text_chunk,
+            trace.timing_callback,
+        )
+        trace.debug("llm_finished", result_kind=result.kind, tool_name=result.tool_name)
         if result.kind != "text" or not streamed_any:
-            self._tts_queue.put(result.reply)
+            self._tts_queue.put((result.reply, trace))
+        else:
+            trace.complete("llm_stream_reply")
 
     def _parse_demo_motion(self, text: str) -> DemoMotionCommand | None:
         if not bool(self.get_parameter("enable_demo_motion").value):
@@ -406,12 +465,12 @@ class VoiceDialogNode(Node):
             return DemoMotionCommand("右转一点", 0.0, -angular, turn_sec)
         return None
 
-    def _start_demo_motion(self, command: DemoMotionCommand) -> None:
+    def _start_demo_motion(self, command: DemoMotionCommand, trace: VoiceTrace | None = None) -> None:
         if self._active_task or self._pending_task:
-            self._say("当前有正式任务，演示动作被拒绝。请先取消。")
+            self._say("当前有正式任务，演示动作被拒绝。请先取消。", trace)
             return
         if not bool(self.get_parameter("enable_demo_motion").value):
-            self._say("演示运动模式未开启。")
+            self._say("演示运动模式未开启。", trace)
             return
         with self._demo_motion_lock:
             self._stop_demo_motion_locked()
@@ -423,7 +482,7 @@ class VoiceDialogNode(Node):
                 daemon=True,
             )
             self._demo_motion_thread.start()
-        self._say(f"演示动作：{command.label}。")
+        self._say(f"演示动作：{command.label}。", trace)
 
     def _run_demo_motion(self, command: DemoMotionCommand) -> None:
         start = time.monotonic()
@@ -600,27 +659,30 @@ class VoiceDialogNode(Node):
         name = str(args.get("target_name") or args.get("location_name") or "").strip()
         return self._waypoints.get(name) if name else None
 
-    def _confirm_and_execute(self, task: PendingTask) -> None:
+    def _confirm_and_execute(self, task: PendingTask, trace: VoiceTrace | None = None) -> None:
         if self._active_task:
-            self._say("当前已有任务正在执行，拒绝启动新的任务。")
+            self._say("当前已有任务正在执行，拒绝启动新的任务。", trace)
             return
         if self._pure_test_mode:
-            self._say(f"纯测试模式已确认{task.waypoint.name}任务；不会发送底盘或机械臂动作。")
+            self._say(f"纯测试模式已确认{task.waypoint.name}任务；不会发送底盘或机械臂动作。", trace)
             return
         ready, reason = self._slam_ready()
         if not ready:
-            self._say(f"拒绝启动，{reason}。")
+            self._say(f"拒绝启动，{reason}。", trace)
             return
         if not self._motion_enabled:
-            self._say(f"Dry-run 已确认{task.waypoint.name}任务；未启用运动，不会发送底盘或机械臂动作。")
+            self._say(
+                f"Dry-run 已确认{task.waypoint.name}任务；未启用运动，不会发送底盘或机械臂动作。",
+                trace,
+            )
             return
         self._active_task = task
-        self._send_drive_goal(task)
+        self._send_drive_goal(task, trace)
 
-    def _send_drive_goal(self, task: PendingTask) -> None:
+    def _send_drive_goal(self, task: PendingTask, trace: VoiceTrace | None = None) -> None:
         if not self._drive_client.wait_for_server(timeout_sec=0.0):
             self._active_task = None
-            self._say("直驱服务器未就绪，未启动运动。")
+            self._say("直驱服务器未就绪，未启动运动。", trace)
             return
         goal = DriveToPoint.Goal()
         goal.target = PoseStamped()
@@ -630,7 +692,7 @@ class VoiceDialogNode(Node):
         goal.target.pose.position.y = task.waypoint.y
         goal.target.pose.orientation.z = math.sin(task.waypoint.yaw / 2.0)
         goal.target.pose.orientation.w = math.cos(task.waypoint.yaw / 2.0)
-        self._say(task.immediate_reply or f"确认前往{task.waypoint.name}，低速直驱已启动。")
+        self._say(task.immediate_reply or f"确认前往{task.waypoint.name}，低速直驱已启动。", trace)
         future = self._drive_client.send_goal_async(goal, feedback_callback=self._on_drive_feedback)
         future.add_done_callback(self._on_drive_goal_response)
 
@@ -822,32 +884,47 @@ class VoiceDialogNode(Node):
             str(self.get_parameter("whisper_compute_type").value),
         )
         while not self._stop_event.is_set():
+            trace = None
             try:
                 wake_event = self._wait_for_wake_event()
                 if self._stop_event.is_set():
                     return
                 if wake_event:
                     self.get_logger().info(f"Wakeup event: {wake_event}")
+                trace = self._debug_sink.start_trace("audio", wake_event=str(wake_event)[:120])
                 if bool(self.get_parameter("wakeup_only").value):
-                    self._say("纯测试模式收到唤醒信号。")
+                    self._say("纯测试模式收到唤醒信号。", trace)
+                    trace.complete("wakeup_only")
                     continue
                 self._say("我在，请说。")
-                pcm, reason = recorder.record()
+                with trace.phase("vad_record"):
+                    pcm, reason = recorder.record()
+                trace.debug("vad_finished", reason=reason, pcm_bytes=len(pcm))
                 if reason == "no_speech_timeout":
-                    self._say("没有听到有效语音，我先休息了。")
+                    self._say("没有听到有效语音，我先休息了。", trace)
+                    trace.complete("no_speech_timeout")
                     continue
                 if not pcm:
-                    self._say("录音结束，但没有有效语音。")
+                    self._say("录音结束，但没有有效语音。", trace)
+                    trace.complete("empty_audio")
                     continue
-                text = transcriber.transcribe_pcm(pcm)
+                with trace.phase("asr"):
+                    text = transcriber.transcribe_pcm(pcm)
                 if text:
                     self.get_logger().info(f"ASR: {text}")
-                    self._text_queue.put(text)
+                    trace.debug("asr_result", text_preview=text[:120], text_chars=len(text))
+                    self._text_queue.put((text, trace))
                 else:
-                    self._say("没有识别到有效指令。")
+                    self._say("没有识别到有效指令。", trace)
+                    trace.complete("empty_asr")
             except Exception as exc:
                 self.get_logger().error(f"Audio loop failed: {exc}")
-                self._say("语音输入不可用，请检查麦克风、串口和模型依赖。")
+                if trace is not None:
+                    trace.debug("audio_pipeline_failed", error_type=type(exc).__name__, message=str(exc))
+                    self._say("语音输入不可用，请检查麦克风、串口和模型依赖。", trace)
+                    trace.complete("audio_pipeline_error")
+                else:
+                    self._say("语音输入不可用，请检查麦克风、串口和模型依赖。")
                 self._stop_event.wait(2.0)
 
     def destroy_node(self):

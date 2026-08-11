@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
@@ -111,6 +112,11 @@ TOOL_SCHEMAS = [
 ]
 
 
+DEFAULT_LLM_API_KEY_ENV = "DEEPSEEK_API_KEY"
+DEFAULT_LLM_BASE_URL = "https://api.deepseek.com"
+DEFAULT_LLM_MODEL = "deepseek-v4-flash"
+
+
 SYSTEM_PROMPT = """你是 Project LINK 机器人的语音中枢。
 当前时间：{current_time}
 
@@ -191,10 +197,18 @@ class LlmResult:
 class ToolCallingClient:
     """Small wrapper around OpenAI-compatible streaming tool calls."""
 
-    def __init__(self, enabled: bool, base_url: str, model: str, max_history: int = 20) -> None:
+    def __init__(
+        self,
+        enabled: bool,
+        base_url: str,
+        model: str,
+        max_history: int = 20,
+        api_key_env: str = DEFAULT_LLM_API_KEY_ENV,
+    ) -> None:
         self._enabled = enabled
         self._base_url = base_url
         self._model = model
+        self._api_key_env = api_key_env.strip() or DEFAULT_LLM_API_KEY_ENV
         self._max_history = max_history
         self._history: list[dict] = []
         self._client = None
@@ -202,8 +216,8 @@ class ToolCallingClient:
     def available(self) -> tuple[bool, str]:
         if not self._enabled:
             return False, "LLM tool calling is disabled"
-        if not os.environ.get("SILICONFLOW_API_KEY"):
-            return False, "SILICONFLOW_API_KEY is not set"
+        if not os.environ.get(self._api_key_env):
+            return False, f"{self._api_key_env} is not set"
         return True, "ready"
 
     def append_system_event(self, text: str) -> None:
@@ -215,23 +229,30 @@ class ToolCallingClient:
         user_text: str,
         tool_handler: Callable[[str, dict], ToolResult],
         text_callback: Callable[[str | None], None] | None = None,
+        timing_callback: Callable[[str, float, dict], None] | None = None,
     ) -> LlmResult:
         ready, reason = self.available()
         if not ready:
             return LlmResult("text", f"LLM 工具调用不可用：{reason}。")
 
+        chat_started_at = time.perf_counter()
         try:
             from openai import OpenAI
 
             if self._client is None:
-                self._client = OpenAI(api_key=os.environ["SILICONFLOW_API_KEY"], base_url=self._base_url)
+                self._client = OpenAI(api_key=os.environ[self._api_key_env], base_url=self._base_url)
 
             self._history.append({"role": "user", "content": user_text})
             self._trim_history()
             messages = [self._system_message()] + self._history
 
-            for _iteration in range(5):
-                content, tool_calls = self._stream_once(messages, text_callback)
+            for iteration in range(5):
+                content, tool_calls = self._stream_once(
+                    messages,
+                    text_callback,
+                    timing_callback,
+                    iteration,
+                )
                 if not tool_calls:
                     reply = self._clean_text(content)
                     self._history.append({"role": "assistant", "content": reply})
@@ -253,8 +274,22 @@ class ToolCallingClient:
                 messages.append(assistant_message)
 
                 for call in tool_calls:
+                    parse_started_at = time.perf_counter()
                     args = self._parse_args(call["arguments"])
+                    self._notify_timing(
+                        timing_callback,
+                        "llm_tool_arguments_parse",
+                        parse_started_at,
+                        {"tool": call["name"], "iteration": iteration},
+                    )
+                    tool_started_at = time.perf_counter()
                     handled = tool_handler(call["name"], args)
+                    self._notify_timing(
+                        timing_callback,
+                        "python_tool",
+                        tool_started_at,
+                        {"tool": call["name"], "iteration": iteration},
+                    )
                     tool_message = {
                         "role": "tool",
                         "tool_call_id": call["id"],
@@ -269,63 +304,92 @@ class ToolCallingClient:
             return LlmResult("text", "这个请求需要的工具步骤太多，我先停一下，请重新说一遍。")
         except Exception as exc:
             return LlmResult("error", f"LLM 工具调用失败：{exc}")
+        finally:
+            self._notify_timing(timing_callback, "llm_total", chat_started_at, {})
 
     def _stream_once(
         self,
         messages: list[dict],
         text_callback: Callable[[str | None], None] | None,
+        timing_callback: Callable[[str, float, dict], None] | None,
+        iteration: int,
     ) -> tuple[str, list[dict[str, str]]]:
-        stream = self._client.chat.completions.create(
-            model=self._model,
-            messages=messages,
-            tools=TOOL_SCHEMAS,
-            tool_choice="auto",
-            temperature=0.4,
-            max_tokens=1024,
-            stream=True,
-        )
-
-        content_parts: list[str] = []
+        request_started_at = time.perf_counter()
+        success = False
         tool_calls: dict[int, dict[str, str]] = {}
-        think_filter = ThinkFilter()
-        saw_tool_call = False
+        try:
+            stream = self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                tools=TOOL_SCHEMAS,
+                tool_choice="auto",
+                temperature=0.4,
+                max_tokens=1024,
+                stream=True,
+            )
 
-        for chunk in stream:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if delta is None:
-                continue
-            if delta.tool_calls:
-                if not saw_tool_call:
-                    saw_tool_call = True
-                    if text_callback:
-                        flushed = think_filter.flush()
-                        if flushed:
-                            text_callback(flushed)
-                        text_callback(None)
-                for call_delta in delta.tool_calls:
-                    index = call_delta.index
-                    entry = tool_calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
-                    if call_delta.id:
-                        entry["id"] = call_delta.id
-                    if call_delta.function:
-                        if call_delta.function.name:
-                            entry["name"] = call_delta.function.name
-                        if call_delta.function.arguments:
-                            entry["arguments"] += call_delta.function.arguments
-            if delta.content:
-                content_parts.append(delta.content)
-                if text_callback and not saw_tool_call:
-                    filtered = think_filter.process(delta.content)
-                    if filtered:
-                        text_callback(filtered)
+            content_parts: list[str] = []
+            think_filter = ThinkFilter()
+            saw_tool_call = False
 
-        if text_callback and not saw_tool_call:
-            flushed = think_filter.flush()
-            if flushed:
-                text_callback(flushed)
-            text_callback(None)
+            for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta is None:
+                    continue
+                if delta.tool_calls:
+                    if not saw_tool_call:
+                        saw_tool_call = True
+                        if text_callback:
+                            flushed = think_filter.flush()
+                            if flushed:
+                                text_callback(flushed)
+                            text_callback(None)
+                    for call_delta in delta.tool_calls:
+                        index = call_delta.index
+                        entry = tool_calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
+                        if call_delta.id:
+                            entry["id"] = call_delta.id
+                        if call_delta.function:
+                            if call_delta.function.name:
+                                entry["name"] = call_delta.function.name
+                            if call_delta.function.arguments:
+                                entry["arguments"] += call_delta.function.arguments
+                if delta.content:
+                    content_parts.append(delta.content)
+                    if text_callback and not saw_tool_call:
+                        filtered = think_filter.process(delta.content)
+                        if filtered:
+                            text_callback(filtered)
 
-        return "".join(content_parts), [tool_calls[index] for index in sorted(tool_calls)]
+            if text_callback and not saw_tool_call:
+                flushed = think_filter.flush()
+                if flushed:
+                    text_callback(flushed)
+                text_callback(None)
+
+            success = True
+            return "".join(content_parts), [tool_calls[index] for index in sorted(tool_calls)]
+        finally:
+            self._notify_timing(
+                timing_callback,
+                "llm_api_roundtrip",
+                request_started_at,
+                {"iteration": iteration, "success": success, "tool_call_count": len(tool_calls)},
+            )
+
+    @staticmethod
+    def _notify_timing(
+        callback: Callable[[str, float, dict], None] | None,
+        phase: str,
+        started_at: float,
+        fields: dict,
+    ) -> None:
+        if callback is None:
+            return
+        try:
+            callback(phase, (time.perf_counter() - started_at) * 1000.0, fields)
+        except Exception:
+            pass
 
     def _system_message(self) -> dict:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

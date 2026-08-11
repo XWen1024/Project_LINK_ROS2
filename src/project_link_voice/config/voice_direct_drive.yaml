@@ -29,10 +29,11 @@ voice_dialog_node:
     whisper_model: small
     whisper_device: cuda
     whisper_compute_type: float16
-    # LLM tool calling reads the key only from SILICONFLOW_API_KEY.
+    # Defaults to the official DeepSeek OpenAI-compatible API.
     enable_llm_tools: true
-    llm_base_url: https://api.siliconflow.cn/v1
-    llm_model: Qwen/Qwen3-8B
+    llm_api_key_env: DEEPSEEK_API_KEY
+    llm_base_url: https://api.deepseek.com
+    llm_model: deepseek-v4-flash
     confirmation_timeout_sec: 30.0
     # Emergency demo-only short /cmd_vel motions. Production launches keep this false.
     enable_demo_motion: false
@@ -47,6 +48,12 @@ voice_dialog_node:
     # Credentials come only from /home/wte/.config/project_link/voice_api.env.
     volcano_resource_id: seed-tts-2.0
     volcano_speaker: ""
+    # Per-interaction JSONL diagnostics. Timing phases are also printed with [VOICE_TIMING].
+    debug_logging_enabled: true
+    timing_debug_enabled: true
+    timing_console_enabled: true
+    debug_log_file: ~/.ros/project_link_voice/voice_debug.jsonl
+    timing_log_file: ~/.ros/project_link_voice/voice_timing.jsonl
     # Keep false until the robot is at a verified safe grasp pose and SO-101 space is clear.
     enable_visual_grasp: false
     visual_grasp_timeout_sec: 45.0

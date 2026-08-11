@@ -12,6 +12,7 @@ import time
 import uuid
 import wave
 from queue import Empty, Queue
+from typing import Callable
 
 from .tts_protocols import (
     EventType,
@@ -134,9 +135,9 @@ class VolcanoTts:
                         if cmd is None:
                             return
                         if cmd["type"] == "start":
-                            await self._handle_session(ws)
+                            await self._handle_session(ws, cmd)
                         elif cmd["type"] == "full_text":
-                            await self._handle_full_text(ws, cmd["text"])
+                            await self._handle_full_text(ws, cmd)
             except Exception as exc:
                 logger.warning("Volcano TTS WebSocket reconnecting after error: %s", exc)
                 await asyncio.sleep(2)
@@ -154,29 +155,56 @@ class VolcanoTts:
             ensure_ascii=False,
         ).encode("utf-8")
 
-    async def _handle_full_text(self, ws, text: str) -> None:
+    async def _handle_full_text(self, ws, command: dict) -> None:
+        text = command["text"]
+        requested_at = float(command["requested_at"])
+        timing_callback = command.get("timing_callback")
         session_id = str(uuid.uuid4())
         await start_session(ws, self._request_payload(), session_id)
         await wait_for_event(ws, MsgType.FullServerResponse, EventType.SessionStarted)
         await task_request(ws, self._request_payload({"text": text}), session_id)
         await finish_session(ws, session_id)
         pcm_buffer = bytearray()
+        first_audio_reported = False
+        final_event = None
         while True:
             message = await receive_message(ws)
             if message.type == MsgType.AudioOnlyServer:
+                if not first_audio_reported:
+                    first_audio_reported = True
+                    self._notify_timing(
+                        timing_callback,
+                        "tts_first_audio",
+                        requested_at,
+                        {"mode": "full_text", "cached": False},
+                    )
                 pcm_buffer.extend(message.payload)
             elif message.type == MsgType.FullServerResponse and message.event in (
                 EventType.SessionFinished,
                 EventType.SessionCanceled,
                 EventType.SessionFailed,
             ):
+                final_event = message.event
                 break
         if pcm_buffer:
             self._phrase_cache[text] = bytes(pcm_buffer)
             self._audio_queue.put(("audio", bytes(pcm_buffer)))
         self._audio_queue.put(("end", None))
+        self._notify_timing(
+            timing_callback,
+            "tts_synthesis_complete",
+            requested_at,
+            {
+                "mode": "full_text",
+                "cached": False,
+                "success": final_event == EventType.SessionFinished,
+                "audio_bytes": len(pcm_buffer),
+            },
+        )
 
-    async def _handle_session(self, ws) -> None:
+    async def _handle_session(self, ws, command: dict) -> None:
+        requested_at = float(command["requested_at"])
+        timing_callback = command.get("timing_callback")
         session_id = str(uuid.uuid4())
         await start_session(ws, self._request_payload(), session_id)
         await wait_for_event(ws, MsgType.FullServerResponse, EventType.SessionStarted)
@@ -184,13 +212,28 @@ class VolcanoTts:
         async def recv_task() -> None:
             pcm_buffer = bytearray()
             chunk_size = int(self._sample_rate * 2 * 0.3)
+            first_audio_reported = False
             while True:
                 try:
                     message = await receive_message(ws)
                 except Exception:
                     self._audio_queue.put(("end", None))
+                    self._notify_timing(
+                        timing_callback,
+                        "tts_synthesis_complete",
+                        requested_at,
+                        {"mode": "stream", "success": False},
+                    )
                     break
                 if message.type == MsgType.AudioOnlyServer:
+                    if not first_audio_reported:
+                        first_audio_reported = True
+                        self._notify_timing(
+                            timing_callback,
+                            "tts_first_audio",
+                            requested_at,
+                            {"mode": "stream", "cached": False},
+                        )
                     pcm_buffer.extend(message.payload)
                     if len(pcm_buffer) >= chunk_size:
                         self._audio_queue.put(("audio", bytes(pcm_buffer)))
@@ -203,6 +246,16 @@ class VolcanoTts:
                     if pcm_buffer:
                         self._audio_queue.put(("audio", bytes(pcm_buffer)))
                     self._audio_queue.put(("end", None))
+                    self._notify_timing(
+                        timing_callback,
+                        "tts_synthesis_complete",
+                        requested_at,
+                        {
+                            "mode": "stream",
+                            "cached": False,
+                            "success": message.event == EventType.SessionFinished,
+                        },
+                    )
                     break
 
         receiver = asyncio.create_task(recv_task())
@@ -259,12 +312,22 @@ class VolcanoTts:
                 except Exception as exc:
                     logger.error("Pygame playback failed: %s", exc)
 
-    def speak_stream_start(self) -> None:
+    def speak_stream_start(
+        self,
+        timing_callback: Callable[[str, float, dict], None] | None = None,
+    ) -> None:
         if self._mock_mode:
+            self._notify_immediate_tts(timing_callback, "stream", mock=True)
             return
         self._stop_flag.clear()
         self._is_playing = True
-        self._cmd_queue.put({"type": "start"})
+        self._cmd_queue.put(
+            {
+                "type": "start",
+                "requested_at": time.perf_counter(),
+                "timing_callback": timing_callback,
+            }
+        )
 
     def speak_stream_feed(self, text: str) -> None:
         if not text:
@@ -281,26 +344,83 @@ class VolcanoTts:
             return
         self._cmd_queue.put({"type": "end"})
 
-    def speak(self, text: str) -> None:
+    def speak(
+        self,
+        text: str,
+        timing_callback: Callable[[str, float, dict], None] | None = None,
+    ) -> None:
         if not text:
             return
         if self._mock_mode:
             logger.info("[TTS mock] %s", text)
             print(f"[TTS] {text}", flush=True)
+            self._notify_immediate_tts(timing_callback, "full_text", mock=True)
             return
         with self._play_lock:
             self.stop()
             self._stop_flag.clear()
             self._is_playing = True
+            requested_at = time.perf_counter()
             if text in self._phrase_cache:
                 self._audio_queue.put(("audio", self._phrase_cache[text]))
                 self._audio_queue.put(("end", None))
+                self._notify_timing(
+                    timing_callback,
+                    "tts_first_audio",
+                    requested_at,
+                    {"mode": "full_text", "cached": True},
+                )
+                self._notify_timing(
+                    timing_callback,
+                    "tts_synthesis_complete",
+                    requested_at,
+                    {"mode": "full_text", "cached": True, "success": True},
+                )
             elif len(text) <= 25:
-                self._cmd_queue.put({"type": "full_text", "text": text})
+                self._cmd_queue.put(
+                    {
+                        "type": "full_text",
+                        "text": text,
+                        "requested_at": requested_at,
+                        "timing_callback": timing_callback,
+                    }
+                )
             else:
-                self._cmd_queue.put({"type": "start"})
+                self._cmd_queue.put(
+                    {
+                        "type": "start",
+                        "requested_at": requested_at,
+                        "timing_callback": timing_callback,
+                    }
+                )
                 self._cmd_queue.put({"type": "text", "text": text})
                 self._cmd_queue.put({"type": "end"})
+
+    @classmethod
+    def _notify_immediate_tts(
+        cls,
+        callback: Callable[[str, float, dict], None] | None,
+        mode: str,
+        mock: bool,
+    ) -> None:
+        started_at = time.perf_counter()
+        fields = {"mode": mode, "cached": False, "mock": mock, "success": True}
+        cls._notify_timing(callback, "tts_first_audio", started_at, fields)
+        cls._notify_timing(callback, "tts_synthesis_complete", started_at, fields)
+
+    @staticmethod
+    def _notify_timing(
+        callback: Callable[[str, float, dict], None] | None,
+        phase: str,
+        started_at: float,
+        fields: dict,
+    ) -> None:
+        if callback is None:
+            return
+        try:
+            callback(phase, (time.perf_counter() - started_at) * 1000.0, fields)
+        except Exception:
+            pass
 
     def stop(self) -> None:
         self._stop_flag.set()

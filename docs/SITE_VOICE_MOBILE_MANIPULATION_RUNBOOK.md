@@ -136,7 +136,7 @@ chmod 600 /home/wte/.config/project_link/voice_api.env
 Expected values:
 
 ```bash
-export SILICONFLOW_API_KEY=...
+export DEEPSEEK_API_KEY=...
 export VOLCANO_APP_ID=...
 export VOLCANO_ACCESS_TOKEN=...
 export VOLCANO_RESOURCE_ID=seed-tts-2.0
@@ -157,6 +157,18 @@ before trying the iFlytek wake module:
 ros2 topic pub --once /voice/text_input std_msgs/msg/String "data: '去客厅'"
 ros2 topic pub --once /voice/text_input std_msgs/msg/String "data: '确认开始'"
 ```
+
+Every voice interaction writes structured timing data to
+`~/.ros/project_link_voice/voice_timing.jsonl` and ordinary trace events to
+`~/.ros/project_link_voice/voice_debug.jsonl`. During latency tuning, keep a
+second terminal open with:
+
+```bash
+tail -f ~/.ros/project_link_voice/voice_timing.jsonl
+```
+
+Console timing lines use the `[VOICE_TIMING]` prefix and share the same
+`trace_id` across VAD, ASR, DeepSeek, Python tools, and Volcano TTS.
 
 ## Step 4: iFlytek Wake And USB Speaker
 

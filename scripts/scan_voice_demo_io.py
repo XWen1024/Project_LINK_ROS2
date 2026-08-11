@@ -47,7 +47,7 @@ def scan_audio() -> None:
 
 def scan_env() -> None:
     print("\n=== Cloud/TTS env ===")
-    for name in ("SILICONFLOW_API_KEY", "VOLCANO_APP_ID", "VOLCANO_ACCESS_TOKEN", "VOLCANO_RESOURCE_ID", "VOLCANO_SPEAKER"):
+    for name in ("DEEPSEEK_API_KEY", "VOLCANO_APP_ID", "VOLCANO_ACCESS_TOKEN", "VOLCANO_RESOURCE_ID", "VOLCANO_SPEAKER"):
         print(f"{name}: {'set' if os.environ.get(name) else 'missing'}")
 
 

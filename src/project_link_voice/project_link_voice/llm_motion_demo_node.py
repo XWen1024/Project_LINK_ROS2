@@ -11,6 +11,7 @@ import queue
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import rclpy
@@ -19,7 +20,9 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from .funvad import FunVadRecorder, VadSettings
+from .llm import DEFAULT_LLM_API_KEY_ENV, DEFAULT_LLM_BASE_URL, DEFAULT_LLM_MODEL
 from .volcano_tts import VolcanoTts
+from .voice_debug import VoiceDebugSink, VoiceTrace
 
 
 DEMO_TOOLS = [
@@ -98,7 +101,15 @@ class LlmMotionDemoNode(Node):
     def __init__(self) -> None:
         super().__init__("llm_motion_demo_node")
         self._declare_parameters()
-        self._text_queue: queue.Queue[str] = queue.Queue()
+        self._debug_sink = VoiceDebugSink(
+            self.get_logger(),
+            debug_enabled=bool(self.get_parameter("debug_logging_enabled").value),
+            timing_enabled=bool(self.get_parameter("timing_debug_enabled").value),
+            debug_log_file=str(self.get_parameter("debug_log_file").value),
+            timing_log_file=str(self.get_parameter("timing_log_file").value),
+            timing_console_enabled=bool(self.get_parameter("timing_console_enabled").value),
+        )
+        self._text_queue: queue.Queue[tuple[str, VoiceTrace]] = queue.Queue()
         self._stop_event = threading.Event()
         self._motion_stop = threading.Event()
         self._motion_thread: threading.Thread | None = None
@@ -126,6 +137,9 @@ class LlmMotionDemoNode(Node):
 
         self.get_logger().warn("LLM VOICE CAR DEMO MODE: no SLAM, no waypoints, no arm; bounded /cmd_vel only.")
         self.get_logger().warn("Topics: subscribe /voice_demo/text_input, publish /voice_demo/status and /cmd_vel.")
+        self.get_logger().info(
+            "Voice timing JSONL: " + str(Path(str(self.get_parameter("timing_log_file").value)).expanduser())
+        )
         self._say("语音演示模式已启动。可以说前进、后退、左转、右转、转一圈，或停止。")
 
     def _declare_parameters(self) -> None:
@@ -135,8 +149,9 @@ class LlmMotionDemoNode(Node):
         self.declare_parameter("wakeup_serial_port", "auto")
         self.declare_parameter("wakeup_serial_baud", 115200)
         self.declare_parameter("wakeup_match_text", "aiui_event")
-        self.declare_parameter("llm_base_url", "https://api.siliconflow.cn/v1")
-        self.declare_parameter("llm_model", "Qwen/Qwen3-8B")
+        self.declare_parameter("llm_api_key_env", DEFAULT_LLM_API_KEY_ENV)
+        self.declare_parameter("llm_base_url", DEFAULT_LLM_BASE_URL)
+        self.declare_parameter("llm_model", DEFAULT_LLM_MODEL)
         self.declare_parameter("tts_enabled", True)
         self.declare_parameter("tts_sample_rate", 24000)
         self.declare_parameter("volcano_resource_id", "")
@@ -158,94 +173,129 @@ class LlmMotionDemoNode(Node):
         self.declare_parameter("demo_step_sec", 1.0)
         self.declare_parameter("demo_turn_sec", 1.2)
         self.declare_parameter("demo_spin_sec", 5.5)
+        self.declare_parameter("debug_logging_enabled", True)
+        self.declare_parameter("timing_debug_enabled", True)
+        self.declare_parameter("timing_console_enabled", True)
+        self.declare_parameter("debug_log_file", "~/.ros/project_link_voice/voice_debug.jsonl")
+        self.declare_parameter("timing_log_file", "~/.ros/project_link_voice/voice_timing.jsonl")
 
     def _on_text_input(self, message: String) -> None:
         text = message.data.strip()
         if text:
-            self._text_queue.put(text)
+            trace = self._debug_sink.start_trace("text_topic", text_chars=len(text))
+            trace.debug("text_received", text_preview=text[:120])
+            self._text_queue.put((text, trace))
 
     def _process_text_queue(self) -> None:
         while not self._text_queue.empty():
-            text = self._text_queue.get_nowait()
+            text, trace = self._text_queue.get_nowait()
             self._status(f"heard: {text}")
-            threading.Thread(target=self._handle_text, args=(text,), daemon=True).start()
+            threading.Thread(target=self._handle_text, args=(text, trace), daemon=True).start()
 
-    def _handle_text(self, text: str) -> None:
+    def _handle_text(self, text: str, trace: VoiceTrace) -> None:
+        trace.debug("command_processing_started", text_preview=text[:120])
         if self._local_stop_requested(text):
-            self._stop_motion()
-            self._say("已停止。")
+            with trace.phase("python_tool", tool="local_stop"):
+                self._stop_motion()
+            self._say("已停止。", trace)
+            trace.complete("local_stop")
             return
-        api_key = os.environ.get("SILICONFLOW_API_KEY")
+        api_key_env = (
+            str(self.get_parameter("llm_api_key_env").value).strip()
+            or DEFAULT_LLM_API_KEY_ENV
+        )
+        api_key = os.environ.get(api_key_env)
         if not api_key:
-            if not self._try_local_fallback(text):
-                self._say("大模型密钥没有配置。可以说前进、后退、左转、右转、转个圈或停止。")
+            trace.debug("llm_unavailable", reason=f"{api_key_env} missing")
+            if not self._try_local_fallback(text, trace):
+                self._say(
+                    f"大模型密钥 {api_key_env} 没有配置。"
+                    "可以说前进、后退、左转、右转、转个圈或停止。",
+                    trace,
+                )
+            trace.complete("local_fallback_or_missing_key")
             return
+        llm_started_at = time.perf_counter()
+        outcome = "llm_unknown"
+        outcome_fields: dict[str, Any] = {}
         try:
             from openai import OpenAI
 
             if self._openai_client is None:
                 self._openai_client = OpenAI(api_key=api_key, base_url=str(self.get_parameter("llm_base_url").value))
             messages = [{"role": "system", "content": SYSTEM_PROMPT}] + self._llm_history + [{"role": "user", "content": text}]
-            response = self._openai_client.chat.completions.create(
-                model=str(self.get_parameter("llm_model").value),
-                messages=messages,
-                tools=DEMO_TOOLS,
-                tool_choice="auto",
-                temperature=0.2,
-                max_tokens=300,
-            )
-            message = response.choices[0].message
-            self._llm_history.append({"role": "user", "content": text})
-            assistant_message = {"role": "assistant", "content": message.content or ""}
-            if message.tool_calls:
-                assistant_message["tool_calls"] = [
-                    {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments,
-                        },
-                    }
-                    for tool_call in message.tool_calls
-                ]
-            self._llm_history.append(assistant_message)
-            self._trim_history()
+            with trace.phase("llm_api_roundtrip", model=str(self.get_parameter("llm_model").value)):
+                response = self._openai_client.chat.completions.create(
+                    model=str(self.get_parameter("llm_model").value),
+                    messages=messages,
+                    tools=DEMO_TOOLS,
+                    tool_choice="auto",
+                    temperature=0.2,
+                    max_tokens=300,
+                )
+            with trace.phase("llm_response_parse"):
+                message = response.choices[0].message
+                self._llm_history.append({"role": "user", "content": text})
+                assistant_message = {"role": "assistant", "content": message.content or ""}
+                if message.tool_calls:
+                    assistant_message["tool_calls"] = [
+                        {
+                            "id": tool_call.id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments,
+                            },
+                        }
+                        for tool_call in message.tool_calls
+                    ]
+                self._llm_history.append(assistant_message)
+                self._trim_history()
 
             if message.tool_calls:
                 for tool_call in message.tool_calls:
                     if tool_call.function.name == "demo_motion":
-                        args = self._parse_json_args(tool_call.function.arguments)
-                        self._execute_tool_motion(args)
+                        with trace.phase("llm_tool_arguments_parse", tool="demo_motion"):
+                            args = self._parse_json_args(tool_call.function.arguments)
+                        with trace.phase("python_tool", tool="demo_motion"):
+                            self._execute_tool_motion(args, trace)
                         self._llm_history.append(
                             {"role": "tool", "tool_call_id": tool_call.id, "content": json.dumps({"success": True}, ensure_ascii=False)}
                         )
+                outcome = "tool_call"
+                outcome_fields = {"tool_count": len(message.tool_calls)}
                 return
             reply = (message.content or "").strip()
             if reply:
-                self._say(reply)
+                self._say(reply, trace)
+            outcome = "text_reply"
         except Exception as exc:
             self.get_logger().error(f"LLM demo failed: {exc}")
-            if not self._try_local_fallback(text):
-                self._say("大模型暂时不可用，但本地前进后退转圈还可以用。")
+            trace.debug("llm_failed", error_type=type(exc).__name__, message=str(exc))
+            if not self._try_local_fallback(text, trace):
+                self._say("大模型暂时不可用，但本地前进后退转圈还可以用。", trace)
+            outcome = "llm_error_fallback"
+        finally:
+            trace.record("llm_total", (time.perf_counter() - llm_started_at) * 1000.0)
+            trace.complete(outcome, **outcome_fields)
 
-    def _execute_tool_motion(self, args: dict[str, Any]) -> None:
+    def _execute_tool_motion(self, args: dict[str, Any], trace: VoiceTrace | None = None) -> None:
         action = str(args.get("action", "")).strip()
         reply = str(args.get("spoken_reply", "")).strip()
         spec = self._motion_spec(action)
         if spec is None:
-            self._say("这个动作我不能执行。")
+            self._say("这个动作我不能执行。", trace)
             return
         if reply:
-            self._say(reply)
+            self._say(reply, trace)
         else:
-            self._say(f"执行{spec.label}。")
+            self._say(f"执行{spec.label}。", trace)
         if action == "stop":
             self._stop_motion()
         else:
             self._start_motion(spec)
 
-    def _try_local_fallback(self, text: str) -> bool:
+    def _try_local_fallback(self, text: str, trace: VoiceTrace | None = None) -> bool:
         normalized = text.replace(" ", "")
         pairs = [
             (("转个圈", "转一圈", "旋转一圈", "原地转圈"), "spin"),
@@ -258,8 +308,15 @@ class LlmMotionDemoNode(Node):
             if any(word in normalized for word in words):
                 spec = self._motion_spec(action)
                 if spec:
-                    self._say(f"执行{spec.label}。")
+                    started_at = time.perf_counter()
+                    self._say(f"执行{spec.label}。", trace)
                     self._start_motion(spec)
+                    if trace is not None:
+                        trace.record(
+                            "python_tool",
+                            (time.perf_counter() - started_at) * 1000.0,
+                            tool="local_motion_fallback",
+                        )
                     return True
         return False
 
@@ -341,28 +398,42 @@ class LlmMotionDemoNode(Node):
             str(self.get_parameter("whisper_compute_type").value),
         )
         while not self._stop_event.is_set():
+            trace = None
             try:
                 wake_event = self._wait_for_wake_event()
                 if self._stop_event.is_set():
                     return
                 self.get_logger().info(f"Wakeup event: {wake_event}")
                 self._say("我在，请说。")
-                pcm, reason = recorder.record()
+                trace = self._debug_sink.start_trace("audio", wake_event=str(wake_event)[:120])
+                with trace.phase("vad_record"):
+                    pcm, reason = recorder.record()
+                trace.debug("vad_finished", reason=reason, pcm_bytes=len(pcm))
                 if reason == "no_speech_timeout":
-                    self._say("没有听到有效语音。")
+                    self._say("没有听到有效语音。", trace)
+                    trace.complete("no_speech_timeout")
                     continue
                 if not pcm:
-                    self._say("没有录到有效语音。")
+                    self._say("没有录到有效语音。", trace)
+                    trace.complete("empty_audio")
                     continue
-                text = transcriber.transcribe_pcm(pcm)
+                with trace.phase("asr"):
+                    text = transcriber.transcribe_pcm(pcm)
                 if text:
+                    trace.debug("asr_result", text_preview=text[:120], text_chars=len(text))
                     self._status(f"asr: {text}")
-                    self._text_queue.put(text)
+                    self._text_queue.put((text, trace))
                 else:
-                    self._say("没有识别到。")
+                    self._say("没有识别到。", trace)
+                    trace.complete("empty_asr")
             except Exception as exc:
                 self.get_logger().error(f"Audio loop failed: {exc}")
-                self._say("语音输入不可用，请检查串口、麦克风和模型。")
+                if trace is not None:
+                    trace.debug("audio_pipeline_failed", error_type=type(exc).__name__, message=str(exc))
+                    self._say("语音输入不可用，请检查串口、麦克风和模型。", trace)
+                    trace.complete("audio_pipeline_error")
+                else:
+                    self._say("语音输入不可用，请检查串口、麦克风和模型。")
                 self._stop_event.wait(2.0)
 
     def _wait_for_wake_event(self) -> str:
@@ -407,11 +478,19 @@ class LlmMotionDemoNode(Node):
         preferred = [port for port in ports if "USB" in (port.description or "").upper() or "串行" in (port.description or "")]
         return (preferred or ports)[0].device
 
-    def _say(self, text: str) -> None:
+    def _say(self, text: str, trace: VoiceTrace | None = None) -> None:
         if not text:
             return
         self.get_logger().info(f"TTS: {text}")
-        self._tts.speak(text)
+        started_at = time.perf_counter()
+        self._tts.speak(text, trace.timing_callback if trace is not None else None)
+        if trace is not None:
+            trace.record(
+                "tts_dispatch",
+                (time.perf_counter() - started_at) * 1000.0,
+                text_chars=len(text),
+            )
+            trace.debug("tts_requested", text_preview=text[:120], text_chars=len(text))
         self._status(f"tts: {text}")
 
     def _status(self, text: str) -> None:
