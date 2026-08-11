@@ -13,6 +13,7 @@ setup(
             "share/" + package_name + "/launch",
             [
                 "launch/voice_direct_drive.launch.py",
+                "launch/voice_nav2.launch.py",
                 "launch/voice_pure_test.launch.py",
                 "launch/voice_demo_motion.launch.py",
                 "launch/llm_motion_demo.launch.py",

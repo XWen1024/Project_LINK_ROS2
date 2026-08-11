@@ -1,4 +1,4 @@
-"""Launch guarded voice dialog and direct-drive action server without Nav2."""
+"""Launch guarded voice dialog using Nav2 NavigateToPose as the motion backend."""
 
 import os
 
@@ -27,26 +27,15 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument(
             "enable_motion",
             default_value="false",
-            description="Explicitly permit `/cmd_vel` publishing after voice confirmation.",
+            description="Permit confirmed named-waypoint goals to be sent to Nav2.",
         ),
         DeclareLaunchArgument("enable_audio", default_value="true"),
         DeclareLaunchArgument("enable_llm_tools", default_value="true"),
+        DeclareLaunchArgument("enable_visual_grasp", default_value="false"),
         DeclareLaunchArgument("pure_test_mode", default_value="auto"),
         DeclareLaunchArgument("waypoints_override_file", default_value=""),
         DeclareLaunchArgument("wakeup_serial_port", default_value="auto"),
         DeclareLaunchArgument("audio_input_device_index", default_value="0"),
-        DeclareLaunchArgument(
-            "enable_visual_grasp",
-            default_value="false",
-            description="Permit arm prepare and TrackAndGrasp after a successful direct-drive arrival.",
-        ),
-        Node(
-            package="project_link_voice",
-            executable="ab_drive_server",
-            name="ab_drive_server",
-            output="screen",
-            parameters=[params_file, {"enable_motion": enable_motion}],
-        ),
         Node(
             package="project_link_voice",
             executable="voice_dialog_node",
@@ -55,15 +44,16 @@ def generate_launch_description() -> LaunchDescription:
             parameters=[
                 params_file,
                 {
+                    "navigation_backend": "nav2",
                     "enable_motion": enable_motion,
                     "enable_audio": enable_audio,
                     "enable_llm_tools": enable_llm_tools,
                     "enable_visual_grasp": enable_visual_grasp,
                     "pure_test_mode": pure_test_mode,
                     "waypoints_override_file": waypoints_override_file,
-                    "navigation_backend": "direct_drive",
                     "wakeup_serial_port": wakeup_serial_port,
                     "audio_input_device_index": audio_input_device_index,
+                    "enable_demo_motion": False,
                 },
             ],
         ),

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import glob
 import math
 import os
 import queue
@@ -23,6 +22,7 @@ from .funvad import FunVadRecorder, VadSettings
 from .llm import DEFAULT_LLM_API_KEY_ENV, DEFAULT_LLM_BASE_URL, DEFAULT_LLM_MODEL
 from .volcano_tts import VolcanoTts
 from .voice_debug import VoiceDebugSink, VoiceTrace
+from .wakeup import SerialWakeDetector, resolve_wakeup_serial_port
 
 
 DEMO_TOOLS = [
@@ -157,6 +157,11 @@ class LlmMotionDemoNode(Node):
         self.declare_parameter("wakeup_serial_port", "auto")
         self.declare_parameter("wakeup_serial_baud", 115200)
         self.declare_parameter("wakeup_match_text", "aiui_event")
+        self.declare_parameter("wakeup_serial_max_buffer_bytes", 16384)
+        self.declare_parameter("wakeup_ack_text", "我在，请说。")
+        self.declare_parameter("wakeup_ack_cache_file", "~/.cache/project_link_voice/wakeup_ack.mp3")
+        self.declare_parameter("wakeup_ack_cache_timeout_sec", 20.0)
+        self.declare_parameter("wakeup_ack_playback_timeout_sec", 5.0)
         self.declare_parameter("llm_api_key_env", DEFAULT_LLM_API_KEY_ENV)
         self.declare_parameter("llm_base_url", DEFAULT_LLM_BASE_URL)
         self.declare_parameter("llm_model", DEFAULT_LLM_MODEL)
@@ -421,6 +426,7 @@ class LlmMotionDemoNode(Node):
             self.get_logger().error(f"faster-whisper warm-up failed: {exc}")
             self._say("语音识别模型加载失败，请检查本地 Whisper 模型。")
             return
+        self._prepare_wakeup_ack()
         while not self._stop_event.is_set():
             trace = None
             try:
@@ -428,8 +434,8 @@ class LlmMotionDemoNode(Node):
                 if self._stop_event.is_set():
                     return
                 self.get_logger().info(f"Wakeup event: {wake_event}")
-                self._say("我在，请说。")
                 trace = self._debug_sink.start_trace("audio", wake_event=str(wake_event)[:120])
+                self._play_wakeup_ack(trace)
                 with trace.phase("vad_record"):
                     pcm, reason = recorder.record()
                 trace.debug("vad_finished", reason=reason, pcm_bytes=len(pcm))
@@ -468,39 +474,64 @@ class LlmMotionDemoNode(Node):
             import serial
         except ImportError as exc:
             raise RuntimeError("pyserial is required for serial wakeup") from exc
-        port = self._resolve_serial_port()
+        port = resolve_wakeup_serial_port(
+            str(self.get_parameter("wakeup_serial_port").value),
+            self.get_logger().warn,
+        )
         baud = int(self.get_parameter("wakeup_serial_baud").value)
         match_text = str(self.get_parameter("wakeup_match_text").value)
+        detector = SerialWakeDetector(
+            match_text,
+            int(self.get_parameter("wakeup_serial_max_buffer_bytes").value),
+        )
         with serial.Serial(port, baud, timeout=0.5) as serial_port:
             while not self._stop_event.is_set():
-                data = serial_port.readline().strip()
+                data = serial_port.read(max(1, min(serial_port.in_waiting, 4096)))
                 if data:
                     decoded = data.decode("utf-8", errors="backslashreplace")
                     print(f"WAKEUP raw={data!r} text={decoded}", flush=True)
-                    if match_text and match_text not in decoded:
-                        continue
-                    return decoded
+                    matched = detector.feed(data)
+                    if matched is not None:
+                        return matched
         return ""
 
-    def _resolve_serial_port(self) -> str:
-        configured = str(self.get_parameter("wakeup_serial_port").value).strip()
-        if configured and configured.lower() != "auto":
-            return configured
-        by_id_matches = sorted(glob.glob("/dev/serial/by-id/*WCH.CN_USB_Single_Serial_0004*"))
-        if by_id_matches:
-            self.get_logger().warn(f"Auto-selected iFlytek wake serial: {by_id_matches[0]}")
-            return by_id_matches[0]
-        try:
-            from serial.tools import list_ports
+    def _prepare_wakeup_ack(self) -> None:
+        text = str(self.get_parameter("wakeup_ack_text").value).strip()
+        path = Path(str(self.get_parameter("wakeup_ack_cache_file").value)).expanduser()
+        if not text:
+            return
+        if self._tts.ensure_phrase_file(
+            text,
+            path,
+            timeout_sec=float(self.get_parameter("wakeup_ack_cache_timeout_sec").value),
+            audio_format="mp3",
+        ):
+            self.get_logger().info(f"Wake acknowledgement MP3 is ready: {path}")
+        else:
+            self.get_logger().warn("Wake acknowledgement MP3 is unavailable; falling back to live TTS.")
 
-            ports = list(list_ports.comports())
-        except Exception:
-            ports = []
-        if not ports:
-            return "/dev/ttyUSB0"
-        self.get_logger().warn("Serial ports: " + ", ".join(f"{port.device} {port.description}" for port in ports))
-        preferred = [port for port in ports if "USB" in (port.description or "").upper() or "串行" in (port.description or "")]
-        return (preferred or ports)[0].device
+    def _play_wakeup_ack(self, trace: VoiceTrace) -> None:
+        text = str(self.get_parameter("wakeup_ack_text").value).strip()
+        path = Path(str(self.get_parameter("wakeup_ack_cache_file").value)).expanduser()
+        started_at = time.perf_counter()
+        cached = self._tts.play_file_blocking(
+            path,
+            timeout_sec=float(self.get_parameter("wakeup_ack_playback_timeout_sec").value),
+        )
+        fallback_completed = False
+        if cached:
+            self.get_logger().info(f"TTS cached wake acknowledgement: {text}")
+        if not cached and text:
+            self._say(text, trace)
+            fallback_completed = self._tts.wait_until_idle(
+                float(self.get_parameter("wakeup_ack_playback_timeout_sec").value)
+            )
+        trace.record(
+            "wakeup_ack_playback",
+            (time.perf_counter() - started_at) * 1000.0,
+            cached_file=cached,
+            success=cached or fallback_completed or not text,
+        )
 
     def _say(self, text: str, trace: VoiceTrace | None = None) -> None:
         if not text:

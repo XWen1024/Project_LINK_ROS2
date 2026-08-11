@@ -9,13 +9,26 @@ voice_dialog_node:
     pure_test_mode: auto
     pure_test_auto_delay_sec: 3.0
     keyboard_wakeup: false
-    wakeup_serial_port: /dev/ttyUSB0
+    wakeup_serial_port: auto
     wakeup_serial_baud: 115200
     # Empty string accepts any serial data. COM9 AIUI modules also emit heartbeat frames,
     # so the default only treats AIUI event frames as wakeups.
     wakeup_match_text: aiui_event
+    wakeup_serial_max_buffer_bytes: 16384
+    wakeup_ack_text: 我在，请说。
+    wakeup_ack_cache_file: ~/.cache/project_link_voice/wakeup_ack.mp3
+    wakeup_ack_cache_timeout_sec: 20.0
+    wakeup_ack_playback_timeout_sec: 5.0
     target_frame: map
     base_frame: base_footprint
+    navigation_backend: direct_drive
+    nav2_action_name: /navigate_to_pose
+    navigation_timeout_sec: 180.0
+    nav2_behavior_tree: ""
+    nav2_cmd_vel_topic: /cmd_vel
+    nav2_allowed_cmd_vel_publishers:
+      - velocity_smoother
+      - behavior_server
     # Example: /home/wte/.ros/project_link_voice/waypoints.json
     waypoints_override_file: ""
     funvad_model: fsmn-vad
@@ -26,7 +39,7 @@ voice_dialog_node:
     audio_no_speech_timeout_sec: 8.0
     audio_max_utterance_sec: 12.0
     audio_min_speech_sec: 0.30
-    whisper_model: small
+    audio_input_device_index: 0
     whisper_device: cuda
     whisper_compute_type: float16
     # Defaults to the official DeepSeek OpenAI-compatible API.

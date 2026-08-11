@@ -15,9 +15,11 @@ from pathlib import Path
 from typing import Any
 
 import rclpy
+from action_msgs.msg import GoalStatus
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry
+from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
@@ -40,6 +42,7 @@ from .task_parser import parse_aliases
 from .volcano_tts import VolcanoTts
 from .voice_debug import VoiceDebugSink, VoiceTrace
 from .waypoints import CANCEL_WORDS, CONFIRM_WORDS, Waypoint, WaypointStore, contains_any
+from .wakeup import SerialWakeDetector, resolve_wakeup_serial_port
 
 
 class WhisperTranscriber:
@@ -102,6 +105,11 @@ class VoiceDialogNode(Node):
         self._target_frame = str(self.get_parameter("target_frame").value).lstrip("/")
         self._base_frame = str(self.get_parameter("base_frame").value).lstrip("/")
         self._motion_enabled = bool(self.get_parameter("enable_motion").value)
+        self._navigation_backend = str(self.get_parameter("navigation_backend").value).strip().lower()
+        if self._navigation_backend not in ("nav2", "direct_drive"):
+            raise ValueError("navigation_backend must be 'nav2' or 'direct_drive'")
+        if self._navigation_backend == "nav2" and bool(self.get_parameter("enable_demo_motion").value):
+            raise ValueError("enable_demo_motion cannot be used with navigation_backend=nav2")
         self._debug_sink = VoiceDebugSink(
             self.get_logger(),
             debug_enabled=bool(self.get_parameter("debug_logging_enabled").value),
@@ -114,6 +122,7 @@ class VoiceDialogNode(Node):
         self._tts_queue: queue.Queue[tuple[str, VoiceTrace]] = queue.Queue()
         self._stop_event = threading.Event()
         self._goal_handle = None
+        self._navigation_started_at = 0.0
         self._grasp_goal_handle = None
         self._pending_task: PendingTask | None = None
         self._active_task: PendingTask | None = None
@@ -148,6 +157,11 @@ class VoiceDialogNode(Node):
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
         self._drive_client = ActionClient(self, DriveToPoint, "/voice/drive_to_point")
+        self._nav2_client = ActionClient(
+            self,
+            NavigateToPose,
+            str(self.get_parameter("nav2_action_name").value),
+        )
         self._visual_grasp_client = ActionClient(
             self,
             TrackAndGrasp,
@@ -167,7 +181,13 @@ class VoiceDialogNode(Node):
         )
         self._tts_pub = self.create_publisher(String, "/voice/tts_text", 10)
         self._status_pub = self.create_publisher(String, "/voice/status", 10)
-        self._demo_cmd_pub = self.create_publisher(Twist, str(self.get_parameter("demo_cmd_vel_topic").value), 10)
+        self._demo_cmd_pub = None
+        if bool(self.get_parameter("enable_demo_motion").value):
+            self._demo_cmd_pub = self.create_publisher(
+                Twist,
+                str(self.get_parameter("demo_cmd_vel_topic").value),
+                10,
+            )
         self.create_subscription(String, "/voice/text_input", self._on_text_input, 10)
         self.create_subscription(OccupancyGrid, "/map", self._on_map, 10)
         self.create_subscription(LaserScan, "/scan", self._on_scan, 10)
@@ -176,6 +196,7 @@ class VoiceDialogNode(Node):
         self.create_timer(1.0, self._publish_status)
         self.create_timer(1.0, self._update_pure_test_mode)
         self.create_timer(1.0, self._expire_pending_task)
+        self.create_timer(1.0, self._check_navigation_timeout)
 
         if bool(self.get_parameter("enable_audio").value):
             self._audio_thread = threading.Thread(target=self._audio_loop, name="voice-audio", daemon=True)
@@ -185,7 +206,10 @@ class VoiceDialogNode(Node):
 
         mode = "MOTION ENABLED" if self._motion_enabled else "DRY RUN"
         llm_ready, llm_reason = self._llm.available()
-        self.get_logger().warn(f"Voice LLM orchestrator starts in {mode}. LLM={llm_ready}: {llm_reason}.")
+        self.get_logger().warn(
+            f"Voice LLM orchestrator starts in {mode}. backend={self._navigation_backend}; "
+            f"LLM={llm_ready}: {llm_reason}."
+        )
         if bool(self.get_parameter("enable_demo_motion").value):
             self.get_logger().warn("VOICE DEMO MOTION ENABLED: bounded local /cmd_vel commands are accepted without SLAM.")
         self.get_logger().warn("Physical E-stop remains mandatory; LLM never directly controls ROS actions.")
@@ -204,8 +228,19 @@ class VoiceDialogNode(Node):
         self.declare_parameter("wakeup_serial_port", "/dev/ttyUSB0")
         self.declare_parameter("wakeup_serial_baud", 115200)
         self.declare_parameter("wakeup_match_text", "aiui_event")
+        self.declare_parameter("wakeup_serial_max_buffer_bytes", 16384)
+        self.declare_parameter("wakeup_ack_text", "我在，请说。")
+        self.declare_parameter("wakeup_ack_cache_file", "~/.cache/project_link_voice/wakeup_ack.mp3")
+        self.declare_parameter("wakeup_ack_cache_timeout_sec", 20.0)
+        self.declare_parameter("wakeup_ack_playback_timeout_sec", 5.0)
         self.declare_parameter("target_frame", "map")
         self.declare_parameter("base_frame", "base_footprint")
+        self.declare_parameter("navigation_backend", "direct_drive")
+        self.declare_parameter("nav2_action_name", "/navigate_to_pose")
+        self.declare_parameter("navigation_timeout_sec", 180.0)
+        self.declare_parameter("nav2_behavior_tree", "")
+        self.declare_parameter("nav2_cmd_vel_topic", "/cmd_vel")
+        self.declare_parameter("nav2_allowed_cmd_vel_publishers", ["velocity_smoother", "behavior_server"])
         self.declare_parameter("waypoints_override_file", "")
         self.declare_parameter("funvad_model", "fsmn-vad")
         self.declare_parameter("funvad_device", "cuda")
@@ -215,6 +250,7 @@ class VoiceDialogNode(Node):
         self.declare_parameter("audio_no_speech_timeout_sec", 8.0)
         self.declare_parameter("audio_max_utterance_sec", 12.0)
         self.declare_parameter("audio_min_speech_sec", 0.30)
+        self.declare_parameter("audio_input_device_index", -1)
         self.declare_parameter("whisper_model", os.environ.get("PROJECT_LINK_WHISPER_MODEL", "small"))
         self.declare_parameter("whisper_device", "cuda")
         self.declare_parameter("whisper_compute_type", "float16")
@@ -323,7 +359,14 @@ class VoiceDialogNode(Node):
         else:
             status = "idle"
         mode = "pure_test" if self._pure_test_mode else "production"
-        self._status_pub.publish(String(data=f"{status}; mode={mode}; slam_ready={ready}; {reason}"))
+        self._status_pub.publish(
+            String(
+                data=(
+                    f"{status}; mode={mode}; backend={self._navigation_backend}; "
+                    f"slam_ready={ready}; {reason}"
+                )
+            )
+        )
 
     def _slam_ready(self) -> tuple[bool, str]:
         if self._pure_test_mode:
@@ -519,6 +562,8 @@ class VoiceDialogNode(Node):
             self._demo_motion_thread = None
 
     def _publish_demo_stop(self) -> None:
+        if self._demo_cmd_pub is None:
+            return
         stop = Twist()
         for _index in range(5):
             self._demo_cmd_pub.publish(stop)
@@ -617,9 +662,9 @@ class VoiceDialogNode(Node):
             created_at=time.monotonic(),
         )
         self._pending_task = task
-        spoken = (
-            f"准备前往{waypoint.name}。本阶段是无避障低速直驱，必须确认路径清空、有人监护并且急停可用。"
-            "请说确认开始，或说取消。"
+        spoken = self._navigation_confirmation_prompt(
+            f"准备前往{waypoint.name}。",
+            include_arm=False,
         )
         return ToolResult({"success": True, "pending": "navigation", "target_name": waypoint.name}, True, spoken)
 
@@ -652,10 +697,9 @@ class VoiceDialogNode(Node):
             created_at=time.monotonic(),
         )
         self._pending_task = task
-        spoken = (
-            f"准备前往{waypoint.name}抓取{item_name}，视觉目标是{grasp_target}。"
-            "本阶段没有路径规划和避障，必须确认路径、底盘周围和机械臂区域都安全，急停可用。"
-            "请说确认开始，或说取消。"
+        spoken = self._navigation_confirmation_prompt(
+            f"准备前往{waypoint.name}抓取{item_name}，视觉目标是{grasp_target}。",
+            include_arm=True,
         )
         return ToolResult(
             {"success": True, "pending": "fetch", "target_name": waypoint.name, "grasp_target": grasp_target},
@@ -666,6 +710,15 @@ class VoiceDialogNode(Node):
     def _resolve_waypoint(self, args: dict[str, Any]) -> Waypoint | None:
         name = str(args.get("target_name") or args.get("location_name") or "").strip()
         return self._waypoints.get(name) if name else None
+
+    def _navigation_confirmation_prompt(self, prefix: str, include_arm: bool) -> str:
+        if self._navigation_backend == "nav2":
+            safety = "将使用 Navigation2 规划和避障，但仍必须确认通道清空、有人监护并且急停可用。"
+        else:
+            safety = "本阶段是无规划、无避障的低速直驱，必须确认路径清空、有人监护并且急停可用。"
+        if include_arm:
+            safety += "还必须确认机械臂区域安全。"
+        return prefix + safety + "请说确认开始，或说取消。"
 
     def _confirm_and_execute(self, task: PendingTask, trace: VoiceTrace | None = None) -> None:
         if self._active_task:
@@ -684,13 +737,49 @@ class VoiceDialogNode(Node):
                 trace,
             )
             return
+        navigation_ready, navigation_reason = self._navigation_ready()
+        if not navigation_ready:
+            self._say(f"拒绝启动，{navigation_reason}。", trace)
+            return
         self._active_task = task
-        self._send_drive_goal(task, trace)
+        self._send_navigation_goal(task, trace)
+
+    def _navigation_ready(self) -> tuple[bool, str]:
+        if self._navigation_backend == "direct_drive":
+            if not self._drive_client.wait_for_server(timeout_sec=0.0):
+                return False, "直驱服务器未就绪"
+            return True, "直驱服务器已就绪"
+        if not self._nav2_client.wait_for_server(timeout_sec=0.0):
+            return False, "Nav2 NavigateToPose Action 未就绪"
+        unexpected = self._unexpected_cmd_vel_publishers()
+        if unexpected:
+            return False, f"检测到非 Nav2 的 /cmd_vel 发布者：{unexpected}"
+        return True, "Nav2 已就绪"
+
+    def _unexpected_cmd_vel_publishers(self) -> list[str]:
+        allowed = {
+            str(name).strip().lstrip("/")
+            for name in self.get_parameter("nav2_allowed_cmd_vel_publishers").value
+            if str(name).strip()
+        }
+        topic = str(self.get_parameter("nav2_cmd_vel_topic").value)
+        unexpected = []
+        for info in self.get_publishers_info_by_topic(topic):
+            node_name = str(info.node_name).lstrip("/")
+            if node_name not in allowed:
+                unexpected.append(node_name)
+        return sorted(set(unexpected))
+
+    def _send_navigation_goal(self, task: PendingTask, trace: VoiceTrace | None = None) -> None:
+        self._navigation_started_at = time.monotonic()
+        if self._navigation_backend == "nav2":
+            self._send_nav2_goal(task, trace)
+        else:
+            self._send_drive_goal(task, trace)
 
     def _send_drive_goal(self, task: PendingTask, trace: VoiceTrace | None = None) -> None:
         if not self._drive_client.wait_for_server(timeout_sec=0.0):
-            self._active_task = None
-            self._say("直驱服务器未就绪，未启动运动。", trace)
+            self._finish_active_task("直驱服务器未就绪，未启动运动。")
             return
         goal = DriveToPoint.Goal()
         goal.target = PoseStamped()
@@ -703,6 +792,66 @@ class VoiceDialogNode(Node):
         self._say(task.immediate_reply or f"确认前往{task.waypoint.name}，低速直驱已启动。", trace)
         future = self._drive_client.send_goal_async(goal, feedback_callback=self._on_drive_feedback)
         future.add_done_callback(self._on_drive_goal_response)
+
+    def _send_nav2_goal(self, task: PendingTask, trace: VoiceTrace | None = None) -> None:
+        goal = NavigateToPose.Goal()
+        goal.pose = PoseStamped()
+        goal.pose.header.frame_id = self._target_frame
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
+        goal.pose.pose.position.x = task.waypoint.x
+        goal.pose.pose.position.y = task.waypoint.y
+        goal.pose.pose.orientation.z = math.sin(task.waypoint.yaw / 2.0)
+        goal.pose.pose.orientation.w = math.cos(task.waypoint.yaw / 2.0)
+        goal.behavior_tree = str(self.get_parameter("nav2_behavior_tree").value).strip()
+        self._say(task.immediate_reply or f"确认前往{task.waypoint.name}，Navigation2 导航已启动。", trace)
+        future = self._nav2_client.send_goal_async(goal, feedback_callback=self._on_nav2_feedback)
+        future.add_done_callback(self._on_nav2_goal_response)
+
+    def _on_nav2_goal_response(self, future) -> None:
+        try:
+            self._goal_handle = future.result()
+        except Exception as exc:
+            self._finish_active_task(f"Nav2 目标发送失败：{exc}")
+            return
+        if self._goal_handle is None:
+            self._finish_active_task("Nav2 目标发送失败：无响应。")
+            return
+        if not self._goal_handle.accepted:
+            self._finish_active_task("Nav2 拒绝了目标，机器人没有运动。")
+            return
+        result_future = self._goal_handle.get_result_async()
+        result_future.add_done_callback(self._on_nav2_result)
+
+    def _on_nav2_feedback(self, feedback_message) -> None:
+        feedback = feedback_message.feedback
+        self.get_logger().info(
+            f"Nav2: remaining={feedback.distance_remaining:.2f}m; recoveries={feedback.number_of_recoveries}"
+        )
+
+    def _on_nav2_result(self, future) -> None:
+        self._goal_handle = None
+        task = self._active_task
+        if task is None:
+            return
+        try:
+            wrapped = future.result()
+            status = wrapped.status
+        except Exception as exc:
+            self._finish_active_task(f"Nav2 结果异常，取消后续任务：{exc}")
+            return
+        if status != GoalStatus.STATUS_SUCCEEDED:
+            label = {
+                GoalStatus.STATUS_CANCELED: "已取消",
+                GoalStatus.STATUS_ABORTED: "执行失败",
+            }.get(status, f"状态码 {status}")
+            self._finish_active_task(f"Navigation2 导航{label}，取消后续任务。")
+            return
+        if task.kind == "fetch":
+            self._navigation_started_at = 0.0
+            self._say(task.arrival_reply or f"已到达{task.waypoint.name}并停车，准备抓取{task.item_name}。")
+            self._start_visual_grasp(task)
+            return
+        self._finish_active_task(task.arrival_reply or f"已到达{task.waypoint.name}。", success=True)
 
     def _on_drive_goal_response(self, future) -> None:
         try:
@@ -737,6 +886,7 @@ class VoiceDialogNode(Node):
             self._finish_active_task(f"导航未成功，取消后续任务：{result.message}")
             return
         if task.kind == "fetch":
+            self._navigation_started_at = 0.0
             self._say(task.arrival_reply or f"已到达{task.waypoint.name}并停车，准备抓取{task.item_name}。")
             self._start_visual_grasp(task)
             return
@@ -835,6 +985,7 @@ class VoiceDialogNode(Node):
 
     def _finish_active_task(self, message: str, success: bool = False) -> None:
         self._active_task = None
+        self._navigation_started_at = 0.0
         self._say(message)
         self._llm.append_system_event(f"Robot task finished. success={success}. message={message}")
 
@@ -843,15 +994,26 @@ class VoiceDialogNode(Node):
         self._active_task = None
         self._stop_demo_motion()
         if self._goal_handle is not None:
-            self.get_logger().warn(f"Canceling direct drive: {reason}")
+            self.get_logger().warn(f"Canceling {self._navigation_backend} navigation: {reason}")
             self._goal_handle.cancel_goal_async()
             self._goal_handle = None
+        self._navigation_started_at = 0.0
         if self._grasp_goal_handle is not None:
             self.get_logger().warn(f"Canceling visual grasp: {reason}")
             self._grasp_goal_handle.cancel_goal_async()
             self._grasp_goal_handle = None
         if self._stop_grasp_client.wait_for_service(timeout_sec=0.0):
             self._stop_grasp_client.call_async(Trigger.Request())
+
+    def _check_navigation_timeout(self) -> None:
+        if self._active_task is None or self._navigation_started_at <= 0.0:
+            return
+        timeout = float(self.get_parameter("navigation_timeout_sec").value)
+        if timeout <= 0.0 or time.monotonic() - self._navigation_started_at <= timeout:
+            return
+        task = self._active_task
+        self._cancel_everything("navigation timeout")
+        self._say(f"前往{task.waypoint.name}超时，已取消导航和后续任务。")
 
     def _wait_for_wake_event(self) -> str:
         if bool(self.get_parameter("keyboard_wakeup").value):
@@ -861,19 +1023,26 @@ class VoiceDialogNode(Node):
             import serial
         except ImportError as exc:
             raise RuntimeError("pyserial is required for serial wakeup") from exc
-        port = str(self.get_parameter("wakeup_serial_port").value)
+        port = resolve_wakeup_serial_port(
+            str(self.get_parameter("wakeup_serial_port").value),
+            self.get_logger().warn,
+        )
         baud = int(self.get_parameter("wakeup_serial_baud").value)
         match_text = str(self.get_parameter("wakeup_match_text").value)
+        detector = SerialWakeDetector(
+            match_text,
+            int(self.get_parameter("wakeup_serial_max_buffer_bytes").value),
+        )
         with serial.Serial(port, baud, timeout=0.5) as serial_port:
             while not self._stop_event.is_set():
-                data = serial_port.readline().strip()
+                data = serial_port.read(max(1, min(serial_port.in_waiting, 4096)))
                 if data:
                     decoded = data.decode("utf-8", errors="backslashreplace")
                     if self._pure_test_mode:
                         print(f"WAKEUP raw={data!r} text={decoded}", flush=True)
-                    if match_text and match_text not in decoded:
-                        continue
-                    return decoded
+                    matched = detector.feed(data)
+                    if matched is not None:
+                        return matched
         return ""
 
     def _audio_loop(self) -> None:
@@ -885,7 +1054,13 @@ class VoiceDialogNode(Node):
             max_utterance_sec=float(self.get_parameter("audio_max_utterance_sec").value),
             min_speech_sec=float(self.get_parameter("audio_min_speech_sec").value),
         )
-        recorder = FunVadRecorder(settings, str(self.get_parameter("funvad_model").value), str(self.get_parameter("funvad_device").value))
+        input_index = int(self.get_parameter("audio_input_device_index").value)
+        recorder = FunVadRecorder(
+            settings,
+            str(self.get_parameter("funvad_model").value),
+            str(self.get_parameter("funvad_device").value),
+            input_device_index=input_index if input_index >= 0 else None,
+        )
         transcriber = WhisperTranscriber(
             str(self.get_parameter("whisper_model").value),
             str(self.get_parameter("whisper_device").value),
@@ -907,6 +1082,7 @@ class VoiceDialogNode(Node):
             self.get_logger().error(f"faster-whisper warm-up failed: {exc}")
             self._say("语音识别模型加载失败，请检查本地 Whisper 模型。")
             return
+        self._prepare_wakeup_ack()
         while not self._stop_event.is_set():
             trace = None
             try:
@@ -920,7 +1096,7 @@ class VoiceDialogNode(Node):
                     self._say("纯测试模式收到唤醒信号。", trace)
                     trace.complete("wakeup_only")
                     continue
-                self._say("我在，请说。")
+                self._play_wakeup_ack(trace)
                 with trace.phase("vad_record"):
                     pcm, reason = recorder.record()
                 trace.debug("vad_finished", reason=reason, pcm_bytes=len(pcm))
@@ -950,6 +1126,45 @@ class VoiceDialogNode(Node):
                 else:
                     self._say("语音输入不可用，请检查麦克风、串口和模型依赖。")
                 self._stop_event.wait(2.0)
+
+    def _prepare_wakeup_ack(self) -> None:
+        text = str(self.get_parameter("wakeup_ack_text").value).strip()
+        path = Path(str(self.get_parameter("wakeup_ack_cache_file").value)).expanduser()
+        if not text:
+            return
+        if self._tts.ensure_phrase_file(
+            text,
+            path,
+            timeout_sec=float(self.get_parameter("wakeup_ack_cache_timeout_sec").value),
+            audio_format="mp3",
+        ):
+            self.get_logger().info(f"Wake acknowledgement MP3 is ready: {path}")
+        else:
+            self.get_logger().warn("Wake acknowledgement MP3 is unavailable; falling back to live TTS.")
+
+    def _play_wakeup_ack(self, trace: VoiceTrace) -> None:
+        text = str(self.get_parameter("wakeup_ack_text").value).strip()
+        path = Path(str(self.get_parameter("wakeup_ack_cache_file").value)).expanduser()
+        started_at = time.perf_counter()
+        cached = self._tts.play_file_blocking(
+            path,
+            timeout_sec=float(self.get_parameter("wakeup_ack_playback_timeout_sec").value),
+        )
+        fallback_completed = False
+        if cached:
+            self.get_logger().info(f"TTS cached wake acknowledgement: {text}")
+            self._tts_pub.publish(String(data=text))
+        elif text:
+            self._say(text, trace)
+            fallback_completed = self._tts.wait_until_idle(
+                float(self.get_parameter("wakeup_ack_playback_timeout_sec").value)
+            )
+        trace.record(
+            "wakeup_ack_playback",
+            (time.perf_counter() - started_at) * 1000.0,
+            cached_file=cached,
+            success=cached or fallback_completed or not text,
+        )
 
     def destroy_node(self):
         self._stop_event.set()

@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 import wave
+from pathlib import Path
 from queue import Empty, Queue
 from typing import Callable
 
@@ -138,14 +139,16 @@ class VolcanoTts:
                             await self._handle_session(ws, cmd)
                         elif cmd["type"] == "full_text":
                             await self._handle_full_text(ws, cmd)
+                        elif cmd["type"] == "cache_file":
+                            await self._handle_cache_file(ws, cmd)
             except Exception as exc:
                 logger.warning("Volcano TTS WebSocket reconnecting after error: %s", exc)
                 await asyncio.sleep(2)
 
-    def _request_payload(self, extra_params: dict | None = None) -> bytes:
+    def _request_payload(self, extra_params: dict | None = None, audio_format: str = "pcm") -> bytes:
         params = {
             "speaker": self._speaker,
-            "audio_params": {"format": "pcm", "sample_rate": self._sample_rate},
+            "audio_params": {"format": audio_format, "sample_rate": self._sample_rate},
             "additions": json.dumps({"disable_markdown_filter": True}),
         }
         if extra_params:
@@ -201,6 +204,49 @@ class VolcanoTts:
                 "audio_bytes": len(pcm_buffer),
             },
         )
+
+    async def _handle_cache_file(self, ws, command: dict) -> None:
+        completed = command["completed"]
+        result = command["result"]
+        target = Path(command["path"])
+        audio_format = str(command.get("audio_format") or "mp3")
+        session_id = str(uuid.uuid4())
+        try:
+            await start_session(ws, self._request_payload(audio_format=audio_format), session_id)
+            await wait_for_event(ws, MsgType.FullServerResponse, EventType.SessionStarted)
+            await task_request(
+                ws,
+                self._request_payload({"text": command["text"]}, audio_format=audio_format),
+                session_id,
+            )
+            await finish_session(ws, session_id)
+            audio_buffer = bytearray()
+            final_event = None
+            while True:
+                message = await receive_message(ws)
+                if message.type == MsgType.AudioOnlyServer:
+                    audio_buffer.extend(message.payload)
+                elif message.type == MsgType.FullServerResponse and message.event in (
+                    EventType.SessionFinished,
+                    EventType.SessionCanceled,
+                    EventType.SessionFailed,
+                ):
+                    final_event = message.event
+                    break
+            if final_event != EventType.SessionFinished or not audio_buffer:
+                result["error"] = f"TTS cache synthesis ended with event={final_event}"
+                return
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(target.name + ".tmp")
+            temporary.write_bytes(audio_buffer)
+            os.replace(temporary, target)
+            result["success"] = True
+            result["audio_bytes"] = len(audio_buffer)
+        except Exception as exc:
+            result["error"] = str(exc)
+            raise
+        finally:
+            completed.set()
 
     async def _handle_session(self, ws, command: dict) -> None:
         requested_at = float(command["requested_at"])
@@ -385,6 +431,70 @@ class VolcanoTts:
                         "timing_callback": timing_callback,
                     }
                 )
+
+    def ensure_phrase_file(
+        self,
+        text: str,
+        path: str | Path,
+        timeout_sec: float = 20.0,
+        audio_format: str = "mp3",
+    ) -> bool:
+        target = Path(path).expanduser()
+        if target.is_file() and target.stat().st_size > 128:
+            return True
+        if self._mock_mode or not text:
+            return False
+        completed = threading.Event()
+        result: dict[str, object] = {"success": False}
+        self._cmd_queue.put(
+            {
+                "type": "cache_file",
+                "text": text,
+                "path": str(target),
+                "audio_format": audio_format,
+                "completed": completed,
+                "result": result,
+            }
+        )
+        if not completed.wait(max(0.1, timeout_sec)):
+            logger.error("Timed out caching TTS phrase to %s", target)
+            return False
+        if not bool(result.get("success")):
+            logger.error("Failed caching TTS phrase to %s: %s", target, result.get("error", "unknown error"))
+            return False
+        logger.info("Cached TTS phrase to %s (%s bytes)", target, result.get("audio_bytes", 0))
+        return True
+
+    def play_file_blocking(self, path: str | Path, timeout_sec: float = 5.0) -> bool:
+        target = Path(path).expanduser()
+        if self._mock_mode or not target.is_file() or target.stat().st_size <= 128:
+            return False
+        with self._play_lock:
+            self.stop()
+            self._stop_flag.clear()
+            channel = pygame.mixer.Channel(0)
+            try:
+                sound = pygame.mixer.Sound(str(target))
+                self._is_playing = True
+                channel.play(sound)
+                deadline = time.monotonic() + max(0.1, timeout_sec)
+                while channel.get_busy() and not self._stop_flag.is_set() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                completed = not channel.get_busy()
+                if not completed:
+                    channel.stop()
+                return completed
+            except Exception as exc:
+                logger.error("Cached audio playback failed for %s: %s", target, exc)
+                return False
+            finally:
+                self._is_playing = False
+
+    def wait_until_idle(self, timeout_sec: float = 5.0) -> bool:
+        deadline = time.monotonic() + max(0.1, timeout_sec)
+        while self._is_playing and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return not self._is_playing
 
     @classmethod
     def _notify_immediate_tts(

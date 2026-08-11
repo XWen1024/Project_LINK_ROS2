@@ -3,7 +3,7 @@
 <package format="3">
   <name>project_link_voice</name>
   <version>0.1.0</version>
-  <description>Guarded voice dialog, FunASR VAD endpointing, and direct A-to-B drive.</description>
+  <description>Guarded voice dialog, FunASR VAD, Nav2 navigation, and optional visual grasp.</description>
   <maintainer email="wte@example.com">Project LINK</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_python</buildtool_depend>
@@ -11,6 +11,7 @@
   <depend>ament_index_python</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>nav2_msgs</depend>
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
