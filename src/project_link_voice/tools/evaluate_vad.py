@@ -33,8 +33,13 @@ def main(argv: list[str]) -> int:
         chunk = pcm[offset : offset + settings.chunk_bytes]
         if len(chunk) < settings.chunk_bytes:
             break
-        result = model.generate(input=chunk, cache=cache, is_final=False)
-        reason = state.feed(chunk, extract_vad_events(result))
+        events = recorder._generate_events(
+            model,
+            chunk,
+            cache,
+            is_final=offset + settings.chunk_bytes >= len(pcm),
+        )
+        reason = state.feed(chunk, events)
         if reason:
             print(f"reason={reason} elapsed_ms={state.elapsed_ms} retained_bytes={len(state.audio)}")
             return 0

@@ -883,6 +883,14 @@ class VoiceDialogNode(Node):
             str(self.get_parameter("whisper_device").value),
             str(self.get_parameter("whisper_compute_type").value),
         )
+        try:
+            self.get_logger().info("Loading FunVAD model before accepting wake events.")
+            recorder.warm_up()
+            self.get_logger().info("FunVAD model is ready.")
+        except Exception as exc:
+            self.get_logger().error(f"FunVAD warm-up failed: {exc}")
+            self._say("语音端点模型加载失败，请检查 FunASR 模型和运行环境。")
+            return
         while not self._stop_event.is_set():
             trace = None
             try:

@@ -112,12 +112,34 @@ class FunVadRecorder:
         except ImportError as exc:
             raise RuntimeError("FunASR is not installed; install requirements-orin.txt on Orin") from exc
         try:
-            self._model = AutoModel(model=self.model_name, device=self.device)
+            self._model = AutoModel(model=self.model_name, device=self.device, disable_update=True)
         except Exception:
             if self.device == "cpu":
                 raise
-            self._model = AutoModel(model=self.model_name, device="cpu")
+            self._model = AutoModel(model=self.model_name, device="cpu", disable_update=True)
         return self._model
+
+    def warm_up(self) -> None:
+        self._model_instance()
+
+    def _generate_events(
+        self,
+        model: Any,
+        chunk: bytes,
+        cache: dict[str, Any],
+        is_final: bool,
+    ) -> list[tuple[int, int]]:
+        import numpy as np
+
+        waveform = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+        result = model.generate(
+            input=waveform,
+            cache=cache,
+            is_final=is_final,
+            chunk_size=self.settings.chunk_ms,
+            disable_pbar=True,
+        )
+        return extract_vad_events(result)
 
     def record(self) -> tuple[bytes, str]:
         try:
@@ -142,8 +164,18 @@ class FunVadRecorder:
         try:
             while True:
                 chunk = stream.read(self.settings.chunk_bytes // 2, exception_on_overflow=False)
-                result = model.generate(input=chunk, cache=cache, is_final=False)
-                reason = state.feed(chunk, extract_vad_events(result))
+                next_elapsed_ms = state.elapsed_ms + self.settings.chunk_ms
+                active_limit_ms = int(
+                    (self.settings.max_utterance_sec if state.started else self.settings.no_speech_timeout_sec)
+                    * 1000
+                )
+                events = self._generate_events(
+                    model,
+                    chunk,
+                    cache,
+                    is_final=next_elapsed_ms >= active_limit_ms,
+                )
+                reason = state.feed(chunk, events)
                 if reason:
                     return state.audio, reason
         finally:
