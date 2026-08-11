@@ -228,3 +228,6 @@ artifacts/function_calls.jsonl
 ```
 
 Runtime artifacts are ignored by Git except for `artifacts/.gitkeep`.
+
+Detailed three-run latency decomposition is recorded in
+[LATENCY_REPORT.md](LATENCY_REPORT.md).

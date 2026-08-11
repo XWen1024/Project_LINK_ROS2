@@ -241,3 +241,10 @@ home-grown orchestration.
   blocks the service.
 
 See [SMOKE_REPORT.md](SMOKE_REPORT.md) for the observed pass/fail evidence.
+
+For the three-run end-to-end and phase latency measurements, see
+[LATENCY_REPORT.md](LATENCY_REPORT.md). Re-run the same benchmark with:
+
+```bash
+./scripts/run_latency_3x.sh assets/get_magic_number.pcm
+```
