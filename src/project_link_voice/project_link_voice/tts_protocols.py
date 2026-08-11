@@ -59,8 +59,23 @@ class EventType(IntEnum):
     SessionCanceled = 151
     SessionFinished = 152
     SessionFailed = 153
+    UsageResponse = 154
     TaskRequest = 200
+    UpdateConfig = 201
+    AudioMuted = 250
+    TTSSentenceStart = 350
+    TTSSentenceEnd = 351
     TTSResponse = 352
+    TTSEnded = 359
+
+    @classmethod
+    def _missing_(cls, value):
+        if not isinstance(value, int):
+            return None
+        member = int.__new__(cls, value)
+        member._name_ = f"Unknown_{value}"
+        member._value_ = value
+        return member
 
 
 @dataclass

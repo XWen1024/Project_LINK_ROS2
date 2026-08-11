@@ -42,3 +42,17 @@ def test_client_event_frame_keeps_json_serialization_header():
     frame = message.marshal()
 
     assert frame[:4] == bytes([0x11, 0x14, 0x10, 0x00])
+
+
+def test_tts_sentence_events_and_future_events_do_not_break_parsing():
+    sentence_start = bytes([0x11, 0x94, 0x10, 0x00]) + struct.pack(">i", 350)
+    sentence_start += struct.pack(">I", 0) + struct.pack(">I", 2) + b"{}"
+    future_event = bytes([0x11, 0x94, 0x10, 0x00]) + struct.pack(">i", 399)
+    future_event += struct.pack(">I", 0) + struct.pack(">I", 2) + b"{}"
+
+    start_message = Message.from_bytes(sentence_start)
+    future_message = Message.from_bytes(future_event)
+
+    assert start_message.event == EventType.TTSSentenceStart
+    assert future_message.event.value == 399
+    assert future_message.event.name == "Unknown_399"
