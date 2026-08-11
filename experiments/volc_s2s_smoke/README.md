@@ -242,6 +242,9 @@ home-grown orchestration.
 
 See [SMOKE_REPORT.md](SMOKE_REPORT.md) for the observed pass/fail evidence.
 
+See [AB_LATENCY_REPORT.md](AB_LATENCY_REPORT.md) for the 10-run Pure S2S and
+Function Calling feedback latency comparison, including every raw sample.
+
 For the three-run end-to-end and phase latency measurements, see
 [LATENCY_REPORT.md](LATENCY_REPORT.md). Re-run the same benchmark with:
 
