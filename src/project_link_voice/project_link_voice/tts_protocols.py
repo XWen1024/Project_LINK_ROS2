@@ -37,6 +37,7 @@ class HeaderSizeBits(IntEnum):
 
 
 class SerializationBits(IntEnum):
+    None_ = 0
     JSON = 0b1
 
 
@@ -59,6 +60,7 @@ class EventType(IntEnum):
     SessionFinished = 152
     SessionFailed = 153
     TaskRequest = 200
+    TTSResponse = 352
 
 
 @dataclass
