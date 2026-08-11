@@ -26,12 +26,15 @@ Python 3.10.12
 
 ## Results
 
-- [NOT TESTED] ARM64 compile
-  - Observed: implementation and ARM64-only build gate prepared.
-  - Expected: ELF64 AArch64 `volc_ws_smoke` and static WS SDK archive.
-  - Error: build has not yet been executed at this report revision.
-  - Probable layer: build verification pending.
-  - Next action: run `./scripts/build.sh` on Orin.
+- [PASS] ARM64 compile
+  - Observed: `libvolc_conv_ai_ws.a` and `volc_ws_smoke` built successfully on
+    the Orin with GCC 11.4.0. `file` reports `ELF 64-bit ... ARM aarch64`, and
+    `readelf -h` reports `Machine: AArch64`.
+  - Expected: native AArch64 WS-only SDK library and CLI.
+  - Error: none. Official source emits non-fatal format/thread signature
+    warnings; they are retained as evidence rather than hidden.
+  - Probable layer: native portability baseline passed.
+  - Next action: run credentialed WebSocket initialization and TLS connection.
 
 - [NOT TESTED] WS initialization
 - [NOT TESTED] TLS/WSS connect

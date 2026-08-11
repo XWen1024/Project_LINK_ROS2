@@ -80,6 +80,7 @@ target_include_directories(volc_conv_ai_ws PUBLIC
 )
 
 target_compile_definitions(volc_conv_ai_ws PRIVATE
+  _GNU_SOURCE
   ENABLE_WS_MODE
   ENABLE_MBEDTLS
   PLATFORM_LINUX
@@ -115,4 +116,3 @@ message(STATUS "Volc SDK commit: ${VOLC_SDK_COMMIT}")
 message(STATUS "mbedTLS commit: ${MBEDTLS_COMMIT}")
 message(STATUS "Transport: low-load WebSocket only")
 message(STATUS "RTC transport: disabled/not linked")
-

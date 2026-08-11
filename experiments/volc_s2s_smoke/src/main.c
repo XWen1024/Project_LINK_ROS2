@@ -571,7 +571,7 @@ static void on_volc_audio_data(
         "audio_callback bytes=%zu total=%zu data_type=%d format=PCM_S16LE sample_rate=%u channels=%u%s\n",
         data_len,
         total,
-        info_ptr != NULL ? info_ptr->data_type : -1,
+        info_ptr != NULL ? (int)info_ptr->data_type : -1,
         AUDIO_SAMPLE_RATE,
         AUDIO_CHANNELS,
         write_error ? " write_error=true" : "");
