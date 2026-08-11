@@ -243,7 +243,7 @@ class VoiceDialogNode(Node):
         self.declare_parameter("nav2_cmd_vel_topic", "/cmd_vel")
         self.declare_parameter("nav2_allowed_cmd_vel_publishers", ["velocity_smoother", "behavior_server"])
         self.declare_parameter("waypoints_override_file", "")
-        self.declare_parameter("funvad_model", "fsmn-vad")
+        self.declare_parameter("funvad_model", os.environ.get("PROJECT_LINK_FUNVAD_MODEL", "fsmn-vad"))
         self.declare_parameter("funvad_device", "cuda")
         self.declare_parameter("audio_sample_rate", 16000)
         self.declare_parameter("audio_chunk_ms", 200)

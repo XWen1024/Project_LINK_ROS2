@@ -32,7 +32,6 @@ voice_dialog_node:
       - behavior_server
     # Example: /home/wte/.ros/project_link_voice/waypoints.json
     waypoints_override_file: ""
-    funvad_model: fsmn-vad
     funvad_device: cuda
     audio_sample_rate: 16000
     audio_chunk_ms: 200

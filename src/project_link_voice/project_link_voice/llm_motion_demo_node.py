@@ -170,7 +170,7 @@ class LlmMotionDemoNode(Node):
         self.declare_parameter("tts_sample_rate", 24000)
         self.declare_parameter("volcano_resource_id", "")
         self.declare_parameter("volcano_speaker", "")
-        self.declare_parameter("funvad_model", "fsmn-vad")
+        self.declare_parameter("funvad_model", os.environ.get("PROJECT_LINK_FUNVAD_MODEL", "fsmn-vad"))
         self.declare_parameter("funvad_device", "cuda")
         self.declare_parameter("audio_sample_rate", 16000)
         self.declare_parameter("audio_chunk_ms", 200)
