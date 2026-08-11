@@ -1,10 +1,10 @@
 # Project LINK 火山引擎端到端语音迁移交接
 
-更新时间：2026-08-11  
-适用仓库：`Project_LINK_ROS2`  
-本地工作区：`C:\Users\XWen1024\Documents\ROS2小车`  
-Orin 工作区：`/home/wte/wheeltec_robot`  
-Orin 登录：`wte@orin`  
+更新时间：2026-08-11
+适用仓库：`Project_LINK_ROS2`
+本地工作区：`C:\Users\XWen1024\Documents\ROS2小车`
+Orin 工作区：`/home/wte/wheeltec_robot`
+Orin 登录：`wte@orin`
 当前 Git 提交：`9a9fd33 Shut down Volcano TTS worker cleanly`
 
 ## 1. 文档目的
