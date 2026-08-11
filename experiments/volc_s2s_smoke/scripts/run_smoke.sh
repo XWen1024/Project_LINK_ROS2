@@ -5,10 +5,19 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 EXPERIMENT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 BINARY="${EXPERIMENT_DIR}/build/volc_ws_smoke"
 ARTIFACT_DIR="${EXPERIMENT_DIR}/artifacts"
+ENV_FILE="${EXPERIMENT_DIR}/.env.local"
 
 umask 077
 mkdir -p "${ARTIFACT_DIR}"
 exec > >(tee "${ARTIFACT_DIR}/smoke.log") 2>&1
+
+if [[ -f "${ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
+  set +a
+  echo "Credentials file: ${ENV_FILE} (values redacted)"
+fi
 
 required_vars=(
   VOLC_BOT_ID

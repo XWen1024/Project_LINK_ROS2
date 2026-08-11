@@ -85,13 +85,14 @@ VOLC_PRODUCT_SECRET
 VOLC_DEVICE_NAME
 ```
 
-Copy only the variable names from `.env.example` into a private file outside
-Git. Load it without printing values:
+The dedicated local credential file is `.env.local`. It is ignored by Git and
+is loaded automatically by `scripts/run_smoke.sh`. Fill it locally without
+printing values:
 
 ```bash
-set -a
-source /absolute/private/path/volc_s2s.env
-set +a
+cd experiments/volc_s2s_smoke
+chmod 600 .env.local
+${EDITOR:-nano} .env.local
 ```
 
 The smoke program and wrapper print only presence checks. Do not put real
@@ -237,4 +238,3 @@ home-grown orchestration.
   blocks the service.
 
 See [SMOKE_REPORT.md](SMOKE_REPORT.md) for the observed pass/fail evidence.
-

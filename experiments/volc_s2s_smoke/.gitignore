@@ -1,4 +1,5 @@
 /build/
 /.env
+/.env.local
 /artifacts/*
 !/artifacts/.gitkeep
