@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <pthread.h>
 #include <signal.h>
+#include <spawn.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -12,6 +13,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
@@ -39,6 +41,16 @@
 #define DEFAULT_CONNECT_TIMEOUT_SEC 20
 #define DEFAULT_RESPONSE_TIMEOUT_SEC 45
 #define MAX_LOGGED_JSON 16384u
+#define LOCAL_DUPLICATE_OBSERVE_MS 3000
+
+extern char **environ;
+
+typedef enum {
+    FEEDBACK_CLOUD = 0,
+    FEEDBACK_CLOUD_SHORT,
+    FEEDBACK_INPUT_TTS,
+    FEEDBACK_LOCAL_PCM,
+} feedback_strategy_e;
 
 typedef struct {
     const char *pcm_path;
@@ -47,6 +59,8 @@ typedef struct {
     int connect_timeout_sec;
     int response_timeout_sec;
     bool expect_function_call;
+    feedback_strategy_e feedback_strategy;
+    const char *local_feedback_pcm;
 } cli_options_t;
 
 typedef struct {
@@ -65,6 +79,9 @@ typedef struct {
     bool function_task_finished;
     bool function_output_returned;
     bool response_create_sent;
+    bool input_tts_sent;
+    bool local_playback_started;
+    bool local_playback_finished;
     bool final_response_after_function;
     bool final_commit_started;
     bool input_complete;
@@ -94,6 +111,12 @@ typedef struct {
     int64_t t_response_audio_done_ms;
     int64_t t_first_ai_audio_after_response_created_ms;
     int64_t t_first_ai_audio_after_function_ms;
+    int64_t t_input_tts_send_start_ms;
+    int64_t t_input_tts_sent_ms;
+    int64_t t_local_playback_start_ms;
+    int64_t t_local_playback_done_ms;
+    feedback_strategy_e feedback_strategy;
+    char local_feedback_pcm[PATH_MAX];
     char pending_call_id[256];
     char pending_function_name[128];
     char pending_arguments[2048];
@@ -274,6 +297,101 @@ static int send_json_message(smoke_context_t *context, cJSON *root) {
     return result < 0 ? result : 0;
 }
 
+static int send_binary_json_message(smoke_context_t *context, cJSON *root) {
+    char *json = cJSON_PrintUnformatted(root);
+    if (json == NULL) {
+        return -1;
+    }
+    volc_message_info_t info = {.is_binary = true};
+    int result = volc_send_message(context->engine, json, strlen(json), &info);
+    free(json);
+    return result < 0 ? result : 0;
+}
+
+static const char *feedback_strategy_name(feedback_strategy_e strategy) {
+    switch (strategy) {
+        case FEEDBACK_CLOUD:
+            return "cloud";
+        case FEEDBACK_CLOUD_SHORT:
+            return "cloud-short";
+        case FEEDBACK_INPUT_TTS:
+            return "input-tts";
+        case FEEDBACK_LOCAL_PCM:
+            return "local-pcm";
+        default:
+            return "unknown";
+    }
+}
+
+static int send_input_tts(smoke_context_t *context, const char *call_id, const char *text) {
+    cJSON *root = cJSON_CreateObject();
+    cJSON *item = cJSON_CreateObject();
+    cJSON *content = cJSON_CreateArray();
+    cJSON *content_item = cJSON_CreateObject();
+    if (root == NULL || item == NULL || content == NULL || content_item == NULL) {
+        cJSON_Delete(root);
+        cJSON_Delete(item);
+        cJSON_Delete(content);
+        cJSON_Delete(content_item);
+        return -1;
+    }
+
+    cJSON_AddStringToObject(root, "type", "conversation.item.create");
+    cJSON_AddStringToObject(root, "event_id", call_id);
+    cJSON_AddItemToObject(root, "item", item);
+    cJSON_AddStringToObject(item, "type", "message");
+    cJSON_AddStringToObject(item, "role", "user");
+    cJSON_AddNumberToObject(item, "interrupt_mode", 1);
+    cJSON_AddItemToObject(item, "content", content);
+    cJSON_AddItemToArray(content, content_item);
+    cJSON_AddStringToObject(content_item, "type", "input_tts");
+    cJSON_AddStringToObject(content_item, "text", text);
+
+    const int result = send_binary_json_message(context, root);
+    write_function_debug(
+        context,
+        "client_to_server",
+        "conversation.item.create.input_tts",
+        call_id,
+        NULL,
+        NULL,
+        text,
+        root);
+    cJSON_Delete(root);
+    return result;
+}
+
+static int play_local_feedback(smoke_context_t *context) {
+    char *const arguments[] = {
+        "aplay", "-q", "-t", "raw", "-f", "S16_LE", "-r", "16000",
+        "-c", "1", context->local_feedback_pcm, NULL,
+    };
+    pid_t child = -1;
+    const int spawn_result = posix_spawnp(&child, "aplay", NULL, NULL, arguments, environ);
+    const int64_t started = monotonic_ms();
+    if (spawn_result != 0) {
+        fprintf(stderr, "ERROR: local aplay spawn failed code=%d\n", spawn_result);
+        return -1;
+    }
+
+    pthread_mutex_lock(&context->mutex);
+    context->local_playback_started = true;
+    context->t_local_playback_start_ms = started;
+    pthread_mutex_unlock(&context->mutex);
+    printf("local_playback_start path=%s\n", context->local_feedback_pcm);
+
+    int status = 0;
+    const int wait_result = waitpid(child, &status, 0);
+    const int64_t done = monotonic_ms();
+    const bool succeeded = wait_result == child && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    pthread_mutex_lock(&context->mutex);
+    context->local_playback_finished = succeeded;
+    context->t_local_playback_done_ms = done;
+    pthread_mutex_unlock(&context->mutex);
+    printf("local_playback_done success=%s elapsed_ms=%" PRId64 "\n", succeeded ? "true" : "false", done - started);
+    return succeeded ? 0 : -1;
+}
+
 static void *function_output_thread(void *argument) {
     function_task_t *task = (function_task_t *)argument;
     smoke_context_t *context = task->context;
@@ -310,7 +428,11 @@ static void *function_output_thread(void *argument) {
     pthread_mutex_unlock(&context->mutex);
 
     bool response_create_sent = false;
-    if (output_result == 0) {
+    bool input_tts_sent = false;
+    int local_playback_result = -1;
+    if (output_result == 0 &&
+        (context->feedback_strategy == FEEDBACK_CLOUD ||
+         context->feedback_strategy == FEEDBACK_CLOUD_SHORT)) {
         cJSON *response_root = cJSON_CreateObject();
         cJSON *response = cJSON_CreateObject();
         cJSON *modalities = cJSON_CreateArray();
@@ -319,12 +441,33 @@ static void *function_output_thread(void *argument) {
         cJSON_AddItemToArray(modalities, cJSON_CreateString("text"));
         cJSON_AddItemToArray(modalities, cJSON_CreateString("audio"));
         cJSON_AddItemToObject(response, "modalities", modalities);
+        if (context->feedback_strategy == FEEDBACK_CLOUD_SHORT) {
+            cJSON_AddStringToObject(
+                response,
+                "instructions",
+                "工具成功后只回复“好了”，不要补充任何内容。");
+        }
         response_create_sent = send_json_message(context, response_root) == 0;
         cJSON_Delete(response_root);
+    } else if (output_result == 0 && context->feedback_strategy == FEEDBACK_INPUT_TTS) {
+        const int64_t send_start = monotonic_ms();
+        const int input_tts_result = send_input_tts(context, task->call_id, "好了");
+        const int64_t sent = monotonic_ms();
+        input_tts_sent = input_tts_result == 0;
+        pthread_mutex_lock(&context->mutex);
+        context->t_input_tts_send_start_ms = send_start;
+        context->t_input_tts_sent_ms = sent;
+        pthread_mutex_unlock(&context->mutex);
+        printf("input_tts text=好了 send_status=%d\n", input_tts_result);
+    } else if (output_result == 0 && context->feedback_strategy == FEEDBACK_LOCAL_PCM) {
+        const int interrupt_result = volc_interrupt(context->engine);
+        printf("cloud_response_cancel status=%d\n", interrupt_result);
+        local_playback_result = play_local_feedback(context);
     }
 
     pthread_mutex_lock(&context->mutex);
     context->response_create_sent = response_create_sent;
+    context->input_tts_sent = input_tts_sent;
     if (response_create_sent) {
         context->t_response_create_sent_ms = monotonic_ms();
     }
@@ -332,12 +475,15 @@ static void *function_output_thread(void *argument) {
     pthread_mutex_unlock(&context->mutex);
 
     printf(
-        "function_output call_id=%s function=%s result=%s send_status=%d response_create=%s\n",
+        "function_output call_id=%s function=%s result=%s send_status=%d strategy=%s response_create=%s input_tts=%s local_playback=%s\n",
         task->call_id,
         task->function_name,
         result_json,
         output_result,
-        response_create_sent ? "sent" : "not_sent");
+        feedback_strategy_name(context->feedback_strategy),
+        response_create_sent ? "sent" : "not_sent",
+        input_tts_sent ? "sent" : "not_sent",
+        local_playback_result == 0 ? "played" : "not_played");
     fflush(stdout);
     free(task);
     return NULL;
@@ -981,14 +1127,30 @@ static bool wait_for_response(
         const bool audio_after_input = context->t_first_ai_audio_after_input_ms >= 0;
         const bool function_call_received = context->function_call_received;
         const bool function_output_returned = context->function_output_returned;
+        const bool input_tts_sent = context->input_tts_sent;
+        const bool local_playback_started = context->local_playback_started;
+        const bool function_task_finished = context->function_task_finished;
+        const int64_t local_playback_start_ms = context->t_local_playback_start_ms;
+        const feedback_strategy_e feedback_strategy = context->feedback_strategy;
         const bool final_response_after_function = context->final_response_after_function;
         const bool audio_after_function =
             context->total_audio_bytes > context->audio_bytes_at_function_output;
         pthread_mutex_unlock(&context->mutex);
 
         if (expect_function_call) {
-            if (function_call_received && function_output_returned &&
-                final_response_after_function && audio_after_function) {
+            if (feedback_strategy == FEEDBACK_LOCAL_PCM) {
+                if (function_call_received && function_output_returned &&
+                    local_playback_started && function_task_finished &&
+                    monotonic_ms() - local_playback_start_ms >= LOCAL_DUPLICATE_OBSERVE_MS) {
+                    return true;
+                }
+            } else if (feedback_strategy == FEEDBACK_INPUT_TTS) {
+                if (function_call_received && function_output_returned && input_tts_sent &&
+                    final_response_after_function && audio_after_function) {
+                    return true;
+                }
+            } else if (function_call_received && function_output_returned &&
+                       final_response_after_function && audio_after_function) {
                 return true;
             }
         } else if (has_audio && response_done && response_done_after_input && audio_after_input) {
@@ -1056,6 +1218,10 @@ static void print_metrics(smoke_context_t *context) {
         "T19_first_ai_audio_after_response_created",
         context->t_first_ai_audio_after_response_created_ms,
         context->process_start_ms);
+    print_timestamp("T20_input_tts_send_start", context->t_input_tts_send_start_ms, context->process_start_ms);
+    print_timestamp("T21_input_tts_sent", context->t_input_tts_sent_ms, context->process_start_ms);
+    print_timestamp("T22_local_playback_start", context->t_local_playback_start_ms, context->process_start_ms);
+    print_timestamp("T23_local_playback_done", context->t_local_playback_done_ms, context->process_start_ms);
     print_duration("connect_ms", context->t_connect_start_ms, context->t_connected_ms);
     print_duration(
         "speech_end_to_first_audio_ms",
@@ -1134,6 +1300,31 @@ static void print_metrics(smoke_context_t *context) {
         "input_end_to_response_done_ms",
         context->t_last_input_audio_ms,
         context->t_response_done_ms);
+    print_duration("input_tts_send_ms", context->t_input_tts_send_start_ms, context->t_input_tts_sent_ms);
+    print_duration(
+        "input_tts_to_first_ai_audio_ms",
+        context->t_input_tts_sent_ms,
+        context->t_first_ai_audio_after_function_ms);
+    print_duration(
+        "function_output_to_local_playback_start_ms",
+        context->t_function_output_sent_ms,
+        context->t_local_playback_start_ms);
+    print_duration(
+        "function_call_to_local_playback_start_ms",
+        context->t_function_call_created_ms,
+        context->t_local_playback_start_ms);
+    print_duration(
+        "input_end_to_local_playback_start_ms",
+        context->t_last_input_audio_ms,
+        context->t_local_playback_start_ms);
+    print_duration(
+        "vad_stop_to_local_playback_start_ms",
+        context->t_speech_stopped_ms,
+        context->t_local_playback_start_ms);
+    print_duration(
+        "local_playback_duration_ms",
+        context->t_local_playback_start_ms,
+        context->t_local_playback_done_ms);
     printf("asr_event_observed=%s\n", context->t_asr_completed_ms >= 0 ? "true" : "false");
     printf("total_audio_bytes=%zu\n", context->total_audio_bytes);
     printf("audio_format=PCM_S16LE\n");
@@ -1144,6 +1335,13 @@ static void print_metrics(smoke_context_t *context) {
     printf("function_call_received=%s\n", context->function_call_received ? "true" : "false");
     printf("function_output_returned=%s\n", context->function_output_returned ? "true" : "false");
     printf("response_create_sent=%s\n", context->response_create_sent ? "true" : "false");
+    printf("feedback_strategy=%s\n", feedback_strategy_name(context->feedback_strategy));
+    printf("input_tts_sent=%s\n", context->input_tts_sent ? "true" : "false");
+    printf("local_playback_started=%s\n", context->local_playback_started ? "true" : "false");
+    printf("local_playback_finished=%s\n", context->local_playback_finished ? "true" : "false");
+    printf(
+        "cloud_audio_after_function=%s\n",
+        context->total_audio_bytes > context->audio_bytes_at_function_output ? "true" : "false");
     printf("final_response_after_function=%s\n", context->final_response_after_function ? "true" : "false");
     pthread_mutex_unlock(&context->mutex);
     fflush(stdout);
@@ -1160,6 +1358,8 @@ static void usage(const char *program) {
         "  --connect-timeout-sec N     Connection timeout (default: 20).\n"
         "  --response-timeout-sec N    Response timeout (default: 45).\n"
         "  --expect-function-call      Require get_magic_number round trip.\n"
+        "  --feedback-strategy NAME    cloud, cloud-short, input-tts, or local-pcm.\n"
+        "  --local-feedback-pcm PATH   Required by local-pcm; S16LE/16kHz/mono.\n"
         "  --help                      Show this help.\n",
         program);
 }
@@ -1183,6 +1383,8 @@ static int parse_args(int argc, char **argv, cli_options_t *options) {
         .connect_timeout_sec = DEFAULT_CONNECT_TIMEOUT_SEC,
         .response_timeout_sec = DEFAULT_RESPONSE_TIMEOUT_SEC,
         .expect_function_call = false,
+        .feedback_strategy = FEEDBACK_CLOUD,
+        .local_feedback_pcm = NULL,
     };
 
     for (int index = 1; index < argc; ++index) {
@@ -1218,6 +1420,21 @@ static int parse_args(int argc, char **argv, cli_options_t *options) {
                 fprintf(stderr, "ERROR: invalid response timeout\n");
                 return -1;
             }
+        } else if (strcmp(argv[index - 1], "--feedback-strategy") == 0) {
+            if (strcmp(value, "cloud") == 0) {
+                options->feedback_strategy = FEEDBACK_CLOUD;
+            } else if (strcmp(value, "cloud-short") == 0) {
+                options->feedback_strategy = FEEDBACK_CLOUD_SHORT;
+            } else if (strcmp(value, "input-tts") == 0) {
+                options->feedback_strategy = FEEDBACK_INPUT_TTS;
+            } else if (strcmp(value, "local-pcm") == 0) {
+                options->feedback_strategy = FEEDBACK_LOCAL_PCM;
+            } else {
+                fprintf(stderr, "ERROR: invalid feedback strategy: %s\n", value);
+                return -1;
+            }
+        } else if (strcmp(argv[index - 1], "--local-feedback-pcm") == 0) {
+            options->local_feedback_pcm = value;
         } else {
             fprintf(stderr, "ERROR: unknown option %s\n", argv[index - 1]);
             return -1;
@@ -1226,6 +1443,19 @@ static int parse_args(int argc, char **argv, cli_options_t *options) {
     if (options->expect_function_call && options->pcm_path == NULL) {
         fprintf(stderr, "ERROR: --expect-function-call requires --pcm\n");
         return -1;
+    }
+    if (options->feedback_strategy != FEEDBACK_CLOUD && !options->expect_function_call) {
+        fprintf(stderr, "ERROR: non-default feedback strategy requires --expect-function-call\n");
+        return -1;
+    }
+    if (options->feedback_strategy == FEEDBACK_LOCAL_PCM) {
+        struct stat local_pcm_stat;
+        if (options->local_feedback_pcm == NULL ||
+            stat(options->local_feedback_pcm, &local_pcm_stat) != 0 ||
+            !S_ISREG(local_pcm_stat.st_mode)) {
+            fprintf(stderr, "ERROR: local-pcm requires an existing --local-feedback-pcm file\n");
+            return -1;
+        }
     }
     return 0;
 }
@@ -1248,6 +1478,11 @@ int main(int argc, char **argv) {
     memset(&context, 0, sizeof(context));
     pthread_mutex_init(&context.mutex, NULL);
     context.next_audio_log_bytes = 64u * 1024u;
+    context.feedback_strategy = options.feedback_strategy;
+    copy_text(
+        context.local_feedback_pcm,
+        sizeof(context.local_feedback_pcm),
+        options.local_feedback_pcm);
     context.process_start_ms = monotonic_ms();
     context.t_connect_start_ms = -1;
     context.t_connected_ms = -1;
@@ -1269,6 +1504,10 @@ int main(int argc, char **argv) {
     context.t_response_audio_done_ms = -1;
     context.t_first_ai_audio_after_response_created_ms = -1;
     context.t_first_ai_audio_after_function_ms = -1;
+    context.t_input_tts_send_start_ms = -1;
+    context.t_input_tts_sent_ms = -1;
+    context.t_local_playback_start_ms = -1;
+    context.t_local_playback_done_ms = -1;
 
     struct utsname platform;
     if (uname(&platform) != 0) {
@@ -1284,6 +1523,7 @@ int main(int argc, char **argv) {
     printf("mbedtls_commit=%s\n", VOLC_MBEDTLS_COMMIT);
     printf("transport=websocket_low_load\n");
     printf("rtc_transport=disabled\n");
+    printf("feedback_strategy=%s\n", feedback_strategy_name(context.feedback_strategy));
     printf("credentials=present_values_redacted\n");
 
     if (strcmp(platform.machine, "aarch64") != 0 && strcmp(platform.machine, "arm64") != 0) {
@@ -1386,16 +1626,32 @@ int main(int argc, char **argv) {
     const bool function_call_received = context.function_call_received;
     const bool function_output_returned = context.function_output_returned;
     const bool final_response_after_function = context.final_response_after_function;
+    const bool input_tts_sent = context.input_tts_sent;
+    const bool local_playback_started = context.local_playback_started;
+    const bool local_playback_finished = context.local_playback_finished;
+    const bool cloud_audio_after_function =
+        context.total_audio_bytes > context.audio_bytes_at_function_output;
     pthread_mutex_unlock(&context.mutex);
 
     if (exit_code == 0 && options.pcm_path != NULL && total_audio_bytes == 0) {
         fprintf(stderr, "ERROR: no AI audio was received\n");
         exit_code = 22;
     }
-    if (exit_code == 0 && options.expect_function_call &&
-        (!function_call_received || !function_output_returned || !final_response_after_function)) {
-        fprintf(stderr, "ERROR: Function Calling round trip incomplete\n");
-        exit_code = 23;
+    if (exit_code == 0 && options.expect_function_call) {
+        bool complete = function_call_received && function_output_returned;
+        if (options.feedback_strategy == FEEDBACK_LOCAL_PCM) {
+            complete = complete && local_playback_started && local_playback_finished &&
+                       !cloud_audio_after_function;
+        } else if (options.feedback_strategy == FEEDBACK_INPUT_TTS) {
+            complete = complete && input_tts_sent && final_response_after_function &&
+                       cloud_audio_after_function;
+        } else {
+            complete = complete && final_response_after_function && cloud_audio_after_function;
+        }
+        if (!complete) {
+            fprintf(stderr, "ERROR: Function Calling feedback round trip incomplete or duplicated\n");
+            exit_code = 23;
+        }
     }
 
     wait_for_function_task(&context, 2000);

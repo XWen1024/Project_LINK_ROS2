@@ -9,6 +9,8 @@ pcm_path=""
 runs=10
 max_attempts=15
 expect_function_call=false
+feedback_strategy="cloud"
+local_feedback_pcm=""
 run_root=""
 
 usage() {
@@ -19,6 +21,8 @@ Options:
   --runs N                 Number of identical runs (default: 10).
   --max-attempts N         Stop after N attempts (default: 15).
   --expect-function-call   Require the get_magic_number round trip.
+  --feedback-strategy NAME cloud, cloud-short, input-tts, or local-pcm.
+  --local-feedback-pcm P   Local feedback PCM for local-pcm.
   --run-root PATH          Exact artifact directory (must not exist).
 EOF
 }
@@ -44,6 +48,14 @@ while (($# > 0)); do
     --expect-function-call)
       expect_function_call=true
       shift
+      ;;
+    --feedback-strategy)
+      feedback_strategy="${2:?--feedback-strategy requires a value}"
+      shift 2
+      ;;
+    --local-feedback-pcm)
+      local_feedback_pcm="${2:?--local-feedback-pcm requires a value}"
+      shift 2
       ;;
     --run-root)
       run_root="${2:?--run-root requires a value}"
@@ -78,6 +90,10 @@ if [[ ! -f "${pcm_path}" ]]; then
   echo "ERROR: PCM input not found: ${pcm_path}" >&2
   exit 2
 fi
+if [[ "${feedback_strategy}" == "local-pcm" && ! -f "${local_feedback_pcm}" ]]; then
+  echo "ERROR: local-pcm requires --local-feedback-pcm" >&2
+  exit 2
+fi
 
 pcm_path="$(readlink -f "${pcm_path}")"
 if [[ -z "${run_root}" ]]; then
@@ -99,6 +115,12 @@ git_commit="$(git -C "${EXPERIMENT_DIR}" rev-parse HEAD 2>/dev/null || true)"
   printf 'runs=%s\n' "${runs}"
   printf 'max_attempts=%s\n' "${max_attempts}"
   printf 'expect_function_call=%s\n' "${expect_function_call}"
+  printf 'feedback_strategy=%s\n' "${feedback_strategy}"
+  if [[ -n "${local_feedback_pcm}" ]]; then
+    local_feedback_pcm="$(readlink -f "${local_feedback_pcm}")"
+    printf 'local_feedback_pcm=%s\n' "${local_feedback_pcm}"
+    printf 'local_feedback_sha256=%s\n' "$(sha256sum "${local_feedback_pcm}" | awk '{print $1}')"
+  fi
   printf 'pcm_path=%s\n' "${pcm_path}"
   printf 'pcm_sha256=%s\n' "${pcm_sha256}"
   printf 'pcm_bytes=%s\n' "${pcm_bytes}"
@@ -125,6 +147,10 @@ while ((successful_runs < runs && attempt < max_attempts)); do
   )
   if [[ "${expect_function_call}" == true ]]; then
     smoke_args+=(--expect-function-call)
+  fi
+  smoke_args+=(--feedback-strategy "${feedback_strategy}")
+  if [[ -n "${local_feedback_pcm}" ]]; then
+    smoke_args+=(--local-feedback-pcm "${local_feedback_pcm}")
   fi
 
   set +e
@@ -165,6 +191,13 @@ metrics=(
   first_final_audio_to_audio_done_ms
   first_final_audio_to_response_done_ms
   input_end_to_response_done_ms
+  input_tts_send_ms
+  input_tts_to_first_ai_audio_ms
+  function_output_to_local_playback_start_ms
+  function_call_to_local_playback_start_ms
+  input_end_to_local_playback_start_ms
+  vad_stop_to_local_playback_start_ms
+  local_playback_duration_ms
 )
 
 raw_tsv="${run_root}/latency_runs.tsv"
