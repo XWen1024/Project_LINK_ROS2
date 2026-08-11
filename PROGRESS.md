@@ -341,9 +341,25 @@ CPU/memory/temperature observations for each test.
 * Added an emergency no-map LLM voice car demo path for the current field
   constraint: `llm_motion_demo.launch.py` plus
   `scripts/start_llm_voice_car_demo.sh`. It bypasses SLAM/waypoints/arm but keeps
-  SiliconFlow Tool Calling and Volcano TTS. It exposes `/voice_demo/text_input`
+  DeepSeek official Tool Calling and Volcano TTS. It exposes `/voice_demo/text_input`
   and `/voice_demo/status`, and the only LLM tool can publish bounded short
   `/cmd_vel` actions: forward, backward, left, right, spin, and stop.
+* Added per-interaction structured debug and timing JSONL logs with one
+  `trace_id` across VAD, ASR, DeepSeek requests and response parsing, Python tool
+  execution, TTS dispatch/first-audio/synthesis, and total response latency.
+  Timing lines are visible with `[VOICE_TIMING]`; the default persistent files
+  are under `~/.ros/project_link_voice/` and are created with mode `0600`.
+* Added the production Nav2 voice backend. Named-waypoint and fetch tools keep
+  the existing local confirmation/cancellation state machine, but confirmed
+  motion now sends `NavigateToPose` and only starts `TrackAndGrasp` after Nav2
+  succeeds. Direct drive remains an explicit fallback.
+* Added `voice_nav2.launch.py` and `scripts/start_voice_nav2_stack.sh`. They
+  default to dry-run, never send a goal at startup, and require both
+  `--enable-motion` and spoken confirmation before Nav2 receives a target.
+* Improved wake latency and robustness: AIUI serial matching now survives split
+  binary frames, and `我在，请说。` is cached at
+  `~/.cache/project_link_voice/wakeup_ack.mp3`, played locally to completion,
+  then FunVAD recording starts.
 
 ### Second-camera fall response module
 

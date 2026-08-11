@@ -714,6 +714,35 @@ For the fastest site procedure, use
 capture, voice waypoint saving, iFlytek wake testing, USB speaker checks, direct
 drive enablement, and visual-grasp bringup.
 
+### Production Voice With Navigation2
+
+Start Navigation Two plus the production ASR/DeepSeek/TTS voice node in safe
+dry-run mode:
+
+```bash
+cd /home/wte/wheeltec_robot
+bash scripts/start_voice_nav2_stack.sh --restart
+```
+
+After named waypoints, Nav2 costmaps, TF, the physical E-stop, and the test area
+have been checked, allow confirmed navigation goals:
+
+```bash
+bash scripts/start_voice_nav2_stack.sh --restart --enable-motion
+```
+
+Only after visual grasp passes its independent safety checks:
+
+```bash
+bash scripts/start_voice_nav2_stack.sh --restart --with-visual \
+  --enable-motion --enable-visual-grasp
+```
+
+The voice node never publishes production `/cmd_vel` in Nav2 mode. A named
+waypoint task requires `确认开始`; `停止` or `取消` bypasses the LLM and cancels the
+active Nav2 and grasp goals. The wake response is cached locally at
+`~/.cache/project_link_voice/wakeup_ack.mp3` and finishes before recording.
+
 ### Standalone LLM Voice Car Demo
 
 If the site has no lidar/map/arm setup available, use the standalone LLM voice
@@ -727,8 +756,9 @@ cd /home/wte/wheeltec_robot
 bash scripts/start_llm_voice_car_demo.sh --restart
 ```
 
-This path uses SiliconFlow Tool Calling when `SILICONFLOW_API_KEY` is set. The
-LLM can only call `demo_motion` with `forward`, `backward`, `turn_left`,
+This path uses the official DeepSeek API with `deepseek-v4-flash` when
+`DEEPSEEK_API_KEY` is set. The LLM can only call `demo_motion` with `forward`,
+`backward`, `turn_left`,
 `turn_right`, `spin`, or `stop`. If the LLM is unavailable, it falls back to the
 same local words for emergency demos.
 
@@ -756,20 +786,27 @@ This mode publishes `/cmd_vel` directly for short bounded durations. Keep the
 robot clear, low speed, and physically ready to E-stop. Set the USB speaker as
 the OS default audio output; Volcano TTS uses the default pygame output device.
 
+Every microphone or `/voice_demo/text_input` request has a `trace_id`.
+Per-stage timing is printed with `[VOICE_TIMING]` and persisted to
+`~/.ros/project_link_voice/voice_timing.jsonl`; ordinary state/debug events go
+to `~/.ros/project_link_voice/voice_debug.jsonl`. The measured phases include
+FunVAD recording, faster-whisper ASR, DeepSeek API/response parsing, Python tool
+execution, TTS dispatch, first audio, synthesis completion, and total latency.
+
 The path is:
 
 ```text
 serial wake event -> FunASR fsmn-vad endpointing -> faster-whisper
--> SiliconFlow LLM Tool Calling
+-> DeepSeek official LLM Tool Calling
 -> Python safety validation and spoken confirmation
--> /voice/drive_to_point Action
+-> Nav2 /navigate_to_pose in production, or /voice/drive_to_point as fallback
 -> optional /visual_grasp/track_and_grasp after arrival
 ```
 
 Safety rules:
 
 - `enable_motion:=false` is the default. In this mode confirmations are dry-run
-  only and the drive Action server rejects every goal.
+  only and the voice node sends no navigation goal.
 - The LLM may choose a whitelisted tool and fill arguments, but Python validates
   every tool call. It never lets the LLM publish `/cmd_vel`, enable torque, or
   call ROS actions directly.
@@ -778,10 +815,10 @@ Safety rules:
   active Action immediately.
 - Voice commands only accept saved `map` waypoints. Free-form coordinates from
   speech or LLM output are rejected.
-- `ab_drive_server` stops on cancel, TF loss, action timeout, watchdog expiry,
-  process shutdown, or goal completion. A physical E-stop is still mandatory.
-- Do not launch it alongside `scripts/rviz_ab_drive.py --enable-motion`, because
-  both can publish `/cmd_vel`.
+- In Nav2 mode the voice node does not publish `/cmd_vel`; cancellation goes
+  through `NavigateToPose`. A physical E-stop is still mandatory.
+- The direct-drive fallback stops on cancel, TF loss, timeout, watchdog expiry,
+  shutdown, or completion. Do not run it beside `rviz_ab_drive.py` motion.
 
 ### Orin setup
 
@@ -807,7 +844,7 @@ chmod 600 /home/wte/.config/project_link/voice_api.env
 Required values:
 
 ```bash
-export SILICONFLOW_API_KEY=...
+export DEEPSEEK_API_KEY=...
 export VOLCANO_APP_ID=...
 export VOLCANO_ACCESS_TOKEN=...
 export VOLCANO_RESOURCE_ID=seed-tts-2.0

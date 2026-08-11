@@ -566,8 +566,8 @@ priority, update:
 - FunASR `fsmn-vad` replaces RMS recording cutoff. Keep its model and the
   faster-whisper model pre-downloaded on Orin; use an Orin-specific virtual
   environment with a JetPack-compatible PyTorch build.
-- Voice motion is LLM-selected but Python-executed: ASR text goes to SiliconFlow
-  Tool Calling, the LLM chooses only whitelisted tools, and Python validates
+- Voice motion is LLM-selected but Python-executed: ASR text goes to the
+  official DeepSeek API for Tool Calling, the LLM chooses only whitelisted tools, and Python validates
   named map waypoints plus SLAM/TF readiness before creating a pending task.
 - The LLM must never publish `/cmd_vel`, enable SO-101 torque, or call ROS
   actions directly. Motion/fetch tools require the local fixed safety summary
@@ -576,17 +576,34 @@ priority, update:
   `scripts/start_llm_voice_car_demo.sh` intentionally keep LLM Tool Calling and
   Volcano TTS while publishing bounded short `/cmd_vel` commands without SLAM.
   Do not use that mode as production navigation.
+- Production named-waypoint motion uses `voice_nav2.launch.py` through
+  `scripts/start_voice_nav2_stack.sh`. The voice node sends only confirmed Nav2
+  `NavigateToPose` goals and must not create a production `/cmd_vel` publisher;
+  `velocity_smoother` and `behavior_server` remain the allowed Nav2 publishers.
+  `voice_direct_drive.launch.py` is retained only as an explicit supervised
+  fallback.
+- The fixed wake acknowledgement is a runtime-generated local MP3 at
+  `~/.cache/project_link_voice/wakeup_ack.mp3`. It must finish playback before
+  FunVAD recording begins. Serial wake matching uses a rolling binary buffer so
+  split AIUI frames do not lose the `aiui_event` marker.
+- Voice interactions use one `trace_id` across VAD, ASR, DeepSeek Tool Calling,
+  Python tool execution, and Volcano TTS. Keep ordinary debug events in
+  `~/.ros/project_link_voice/voice_debug.jsonl` and timing-only events in
+  `voice_timing.jsonl`; new files are private mode `0600`. Timing console lines
+  use `[VOICE_TIMING]`. Disable ordinary debug logging when recognized-text
+  previews must not be persisted, without disabling timing diagnostics.
 - API secrets live only in `/home/wte/.config/project_link/voice_api.env`, which
-  must be sourced before launch. Do not commit `SILICONFLOW_API_KEY`,
+  must be sourced before launch. Do not commit `DEEPSEEK_API_KEY`,
+  `SILICONFLOW_API_KEY`,
   `VOLCANO_APP_ID`, `VOLCANO_ACCESS_TOKEN`, Feishu keys, weather keys, or model
   cache artifacts.
 
 ## Voice-To-Grasp Task Integration
 
 - `voice_dialog_node` accepts fetch intent through LLM `fetch_item_from_location`
-  tool calls. It maps the named waypoint to direct drive and maps spoken object
+  tool calls. It maps the named waypoint to the configured Nav2 or direct-drive backend and maps spoken object
   aliases to YOLO-World targets, for example `药瓶=medicine bottle`.
-- The fetch chain is only valid after the direct-drive Action succeeds and the
+- The fetch chain is only valid after the configured navigation Action succeeds and the
   base has stopped at a verified safe manipulation pose. Then it may call
   `/visual_grasp/connect_arm`, `/visual_grasp/set_torque`, and
   `/visual_grasp/track_and_grasp`.
