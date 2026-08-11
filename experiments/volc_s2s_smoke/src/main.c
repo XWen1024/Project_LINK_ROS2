@@ -258,7 +258,7 @@ static int send_json_message(smoke_context_t *context, cJSON *root) {
     volc_message_info_t info = {.is_binary = false};
     int result = volc_send_message(context->engine, json, strlen(json), &info);
     free(json);
-    return result;
+    return result < 0 ? result : 0;
 }
 
 static void *function_output_thread(void *argument) {
@@ -846,7 +846,7 @@ static int send_pcm_file(smoke_context_t *context, const char *path, int frame_m
         };
         const int64_t send_start = monotonic_ms();
         const int send_result = volc_send_audio_data(context->engine, buffer, count, &info);
-        if (send_result != 0) {
+        if (send_result < 0) {
             fprintf(stderr, "ERROR: volc_send_audio_data returned %d after %zu bytes\n", send_result, total_sent);
             result = -1;
             break;

@@ -101,6 +101,18 @@ searched, and no credential values were printed.
 The credential-gate run exited with code `2` and saved its redacted diagnostic
 to `artifacts/smoke.log`.
 
+## First credentialed runs
+
+- Connection-only WSS test passed: device registration completed in `373 ms`,
+  WebSocket connected in `2422 ms`, and shutdown was clean.
+- The first PCM run reached the service, received `session.created`, server VAD
+  LISTENING/THINKING states, and `54,976` bytes of PCM response audio.
+- That run stopped at the final commit because the CLI initially treated the
+  SDK's positive WebSocket byte-count return (`69`) as an error. Official
+  low-load code returns a positive send length from the commit-triggered
+  `response.create`; only negative values indicate failure. The CLI was corrected
+  without patching the official SDK, and the complete S2S run must be repeated.
+
 ## Timing evidence
 
 No online timing samples are available yet. The executable records T0 through
