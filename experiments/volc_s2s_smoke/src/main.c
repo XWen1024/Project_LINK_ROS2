@@ -59,6 +59,7 @@ typedef struct {
     bool connected;
     bool disconnected;
     bool response_done;
+    bool response_done_after_input;
     bool function_call_received;
     bool function_task_started;
     bool function_task_finished;
@@ -544,7 +545,10 @@ static void on_volc_conversation_status(
         case VOLC_CONV_STATUS_ANSWER_FINISH:
             context->response_done = true;
             context->response_done_count++;
-            context->t_response_done_ms = now;
+            if (context->input_complete) {
+                context->response_done_after_input = true;
+                context->t_response_done_ms = now;
+            }
             if (context->function_output_returned &&
                 now >= context->t_function_output_sent_ms) {
                 context->final_response_after_function = true;
@@ -682,11 +686,11 @@ static void on_volc_message_data(
             context->t_asr_completed_ms = message_time;
         }
         if (strcmp(type, "response.created") == 0 &&
-            context->function_output_returned && context->t_response_created_ms < 0) {
+            context->input_complete && context->t_response_created_ms < 0) {
             context->t_response_created_ms = message_time;
         }
         if (strcmp(type, "response.audio.done") == 0 &&
-            context->function_output_returned) {
+            context->input_complete) {
             context->t_response_audio_done_ms = message_time;
         }
         pthread_mutex_unlock(&context->mutex);
@@ -964,6 +968,8 @@ static bool wait_for_response(
         const bool disconnected = context->disconnected;
         const bool has_audio = context->total_audio_bytes > 0;
         const bool response_done = context->response_done;
+        const bool response_done_after_input = context->response_done_after_input;
+        const bool audio_after_input = context->t_first_ai_audio_after_input_ms >= 0;
         const bool function_call_received = context->function_call_received;
         const bool function_output_returned = context->function_output_returned;
         const bool final_response_after_function = context->final_response_after_function;
@@ -976,7 +982,7 @@ static bool wait_for_response(
                 final_response_after_function && audio_after_function) {
                 return true;
             }
-        } else if (has_audio && response_done) {
+        } else if (has_audio && response_done && response_done_after_input && audio_after_input) {
             return true;
         }
         if (disconnected) {
@@ -1088,6 +1094,10 @@ static void print_metrics(smoke_context_t *context) {
         context->t_response_created_ms,
         context->t_first_ai_audio_after_function_ms);
     print_duration(
+        "response_created_to_first_ai_audio_ms",
+        context->t_response_created_ms,
+        context->t_first_ai_audio_after_input_ms);
+    print_duration(
         "function_output_to_first_final_audio_ms",
         context->t_function_output_sent_ms,
         context->t_first_ai_audio_after_function_ms);
@@ -1109,6 +1119,7 @@ static void print_metrics(smoke_context_t *context) {
     printf("audio_sample_rate=%u\n", AUDIO_SAMPLE_RATE);
     printf("audio_channels=%u\n", AUDIO_CHANNELS);
     printf("response_done_count=%u\n", context->response_done_count);
+    printf("response_done_after_input=%s\n", context->response_done_after_input ? "true" : "false");
     printf("function_call_received=%s\n", context->function_call_received ? "true" : "false");
     printf("function_output_returned=%s\n", context->function_output_returned ? "true" : "false");
     printf("response_create_sent=%s\n", context->response_create_sent ? "true" : "false");
