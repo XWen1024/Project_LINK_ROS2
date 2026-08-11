@@ -5,6 +5,7 @@ WORKSPACE="${PROJECT_LINK_WORKSPACE:-/home/wte/wheeltec_robot}"
 VOICE_ENV="${PROJECT_LINK_VOICE_ENV:-/home/wte/.config/project_link/voice_api.env}"
 WAYPOINTS="${PROJECT_LINK_VOICE_WAYPOINTS:-/home/wte/.ros/project_link_voice/waypoints.json}"
 VOICE_SESSION="${PROJECT_LINK_VOICE_NAV2_SESSION:-project_link_voice_nav2}"
+DEMO_SESSION="${PROJECT_LINK_LLM_VOICE_DEMO_SESSION:-project_link_llm_voice_car_demo}"
 START_NAVIGATION=1
 START_VISUAL=0
 ENABLE_MOTION=false
@@ -63,6 +64,14 @@ set -u
 
 mkdir -p "$(dirname "$WAYPOINTS")"
 [[ -f "$WAYPOINTS" ]] || printf '{}\n' > "$WAYPOINTS"
+
+if tmux has-session -t "$DEMO_SESSION" 2>/dev/null; then
+  echo "Stopping incompatible LLM motion demo session: $DEMO_SESSION"
+  timeout 5 ros2 topic pub --once /voice_demo/text_input std_msgs/msg/String \
+    "data: '停止'" >/dev/null 2>&1 || true
+  sleep 1
+  tmux kill-session -t "$DEMO_SESSION"
+fi
 
 if [[ "$START_NAVIGATION" -eq 1 ]]; then
   navigation_args=(--no-attach)
