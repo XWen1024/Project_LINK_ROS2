@@ -92,41 +92,37 @@ from the native static build, and no RTC library is present.
     and played the complete file without an error.
 
 - [PASS] mixed orchestration
-  - Speech requesting the magic number caused the server to emit a Function
-    Call over the same low-load WebSocket session.
+  - The corrected Bot definition caused the server to emit a Function Call,
+    accept the local result, and continue to a completed audio response over
+    the same low-load WebSocket session. No separate Ark connection or callback
+    relay was used.
 
 - [PASS] function call received
   - Received both `conversation.item.created` with `item.type=function_call`
     and `response.function_call_arguments.done`.
-  - Observed call ID: `call_1wklv3udz2t2knfwv9t7uop0`.
+  - Observed call ID: `call_9mfspjhprb6acvp15nyjz5tz`.
+  - Observed function name: `get_magic_number`.
   - Observed arguments: `{}`.
 
-- [FAIL] function output returned
-  - Observed: the server function name was `get_magic_numbe`.
-  - Expected: the locally whitelisted name `get_magic_number`.
-  - Error: the Bot definition is missing the final `r`; the smoke program
-    rejected it fail-closed and did not return `{"number":42}`.
-  - Probable layer: Case A, Bot/business Function Calling configuration.
-  - Next action: rename the console function exactly to `get_magic_number` and
-    repeat the same PCM test. Do not add a local typo alias merely to turn the
-    test green.
+- [PASS] function output returned
+  - Returned `conversation.item.create` with the same `call_id`, item type
+    `function_call_output`, and output `{"number":42}`.
+  - The SDK send succeeded and the follow-up `response.create` was sent on the
+    same WebSocket.
 
-- [FAIL] final AI response
-  - Not produced because no function output was returned after the strict name
-    mismatch.
+- [PASS] final AI response
+  - Received AI PCM after the Function Call result, followed by
+    `response.done` with status `completed`. The Level 4 process exited `0`.
 
 The completed online runs used `VOLC_BOT_ID`, `VOLC_INSTANCE_ID`,
 `VOLC_PRODUCT_KEY`, `VOLC_PRODUCT_SECRET`, and `VOLC_DEVICE_NAME` from ignored
 `.env.local`. No credential values are stored in this report. Function Calling
-still requires the appropriate Bot/account console configuration.
+was validated with the corrected Bot/account console configuration.
 
 ## Current blocker
 
-Levels 1 through 3 pass, and Level 4 has reached the real WebSocket Function
-Call. The remaining blocker is the console function name `get_magic_numbe`
-versus required `get_magic_number`. The Spike does not fabricate this cloud
-configuration, accept the typo silently, or substitute a separate Ark
-connection.
+None for the defined Spike. Levels 1 through 4 pass with the official low-load
+WebSocket transport on native Orin ARM64.
 
 ## First credentialed runs
 
@@ -141,6 +137,11 @@ connection.
   without patching the official SDK.
 - The repeated complete run passed PCM upload, AI PCM receive, WAV generation,
   structural/playback validation, and clean shutdown.
+- The first Function Calling attempt exposed a console typo:
+  `get_magic_numbe`. The strict local whitelist rejected it fail-closed, which
+  classified the failure as Case A (Bot/business configuration) without adding
+  a typo alias. After the console name was corrected to `get_magic_number`, the
+  repeated Level 4 run passed end to end.
 
 ## Final Level 3 timing sample
 
@@ -160,10 +161,62 @@ the first observed speech-stop event (welcome/overlapping server-VAD turns).
 Therefore this bundled multi-utterance asset proves transport and audio flow but
 is not a clean single-turn latency benchmark.
 
+## Level 4 Function Calling evidence
+
+Input file:
+
+```text
+assets/get_magic_number.pcm
+PCM S16LE / 16000 Hz / mono
+86780 bytes / 2.711875 seconds
+```
+
+Observed sequence:
+
+```text
+conversation.item.created
+  item.type=function_call
+  item.name=get_magic_number
+  item.call_id=call_...
+
+response.function_call_arguments.done
+  arguments={}
+
+conversation.item.create
+  item.type=function_call_output
+  item.call_id=<same call_id>
+  item.output={"number":42}
+
+response.create
+response audio
+response.done status=completed
+```
+
+Level 4 metrics:
+
+```text
+authentication_registration_ms=1168
+connect_ms=399
+T2_first_input_audio_sent=1569 ms
+T3_last_input_audio_sent=4278 ms
+T4_speech_started=3189 ms
+T5_speech_stopped=4635 ms
+T6_first_ai_audio=2862 ms
+T7_response_done=13551 ms
+response_total_ms=9273
+total_audio_bytes=148472
+```
+
+The final `response.wav` is PCM S16LE, 16 kHz, mono, `4.639750 s`, and passed
+`soxi`, `ffprobe`, and `aplay -D null`. Sanitized Function Call evidence contains
+three JSONL records in `artifacts/function_calls.jsonl`: call notification,
+arguments completion, and same-session output return.
+
 ## Timing evidence
 
-The final Level 3 sample above was recorded with `CLOCK_MONOTONIC`. Missing or
-temporally invalid derived events remain `N/A`; no latency value is synthesized.
+The Level 3 and Level 4 samples above were recorded with `CLOCK_MONOTONIC`.
+Missing or temporally invalid derived events remain `N/A`; no latency value is
+synthesized.
 
 ## Artifact locations
 
