@@ -92,6 +92,7 @@ typedef struct {
     int64_t t_response_create_sent_ms;
     int64_t t_response_created_ms;
     int64_t t_response_audio_done_ms;
+    int64_t t_first_ai_audio_after_response_created_ms;
     int64_t t_first_ai_audio_after_function_ms;
     char pending_call_id[256];
     char pending_function_name[128];
@@ -574,6 +575,7 @@ static void on_volc_audio_data(
     bool write_error = false;
     bool first_audio = false;
     bool first_after_input = false;
+    bool first_after_response_created = false;
     bool first_after_function = false;
     bool log_audio = false;
 
@@ -586,6 +588,11 @@ static void on_volc_audio_data(
         context->t_first_ai_audio_after_input_ms < 0) {
         context->t_first_ai_audio_after_input_ms = now;
         first_after_input = true;
+    }
+    if (context->t_response_created_ms >= 0 &&
+        context->t_first_ai_audio_after_response_created_ms < 0) {
+        context->t_first_ai_audio_after_response_created_ms = now;
+        first_after_response_created = true;
     }
     if (context->function_output_returned &&
         context->t_first_ai_audio_after_function_ms < 0) {
@@ -612,9 +619,10 @@ static void on_volc_audio_data(
     }
     pthread_mutex_unlock(&context->mutex);
 
-    if (first_audio || first_after_input || first_after_function || log_audio || write_error) {
+    if (first_audio || first_after_input || first_after_response_created ||
+        first_after_function || log_audio || write_error) {
         printf(
-            "audio_callback bytes=%zu total=%zu data_type=%d format=PCM_S16LE sample_rate=%u channels=%u first=%s first_after_input=%s first_after_function=%s%s\n",
+            "audio_callback bytes=%zu total=%zu data_type=%d format=PCM_S16LE sample_rate=%u channels=%u first=%s first_after_input=%s first_after_response_created=%s first_after_function=%s%s\n",
             data_len,
             total,
             info_ptr != NULL ? (int)info_ptr->data_type : -1,
@@ -622,6 +630,7 @@ static void on_volc_audio_data(
             AUDIO_CHANNELS,
             first_audio ? "true" : "false",
             first_after_input ? "true" : "false",
+            first_after_response_created ? "true" : "false",
             first_after_function ? "true" : "false",
             write_error ? " write_error=true" : "");
         fflush(stdout);
@@ -1043,6 +1052,10 @@ static void print_metrics(smoke_context_t *context) {
     print_timestamp("T16_first_ai_audio_after_input", context->t_first_ai_audio_after_input_ms, context->process_start_ms);
     print_timestamp("T17_first_ai_audio_after_function", context->t_first_ai_audio_after_function_ms, context->process_start_ms);
     print_timestamp("T18_response_audio_done", context->t_response_audio_done_ms, context->process_start_ms);
+    print_timestamp(
+        "T19_first_ai_audio_after_response_created",
+        context->t_first_ai_audio_after_response_created_ms,
+        context->process_start_ms);
     print_duration("connect_ms", context->t_connect_start_ms, context->t_connected_ms);
     print_duration(
         "speech_end_to_first_audio_ms",
@@ -1096,7 +1109,15 @@ static void print_metrics(smoke_context_t *context) {
     print_duration(
         "response_created_to_first_ai_audio_ms",
         context->t_response_created_ms,
-        context->t_first_ai_audio_after_input_ms);
+        context->t_first_ai_audio_after_response_created_ms);
+    print_duration(
+        "input_end_to_first_response_audio_ms",
+        context->t_last_input_audio_ms,
+        context->t_first_ai_audio_after_response_created_ms);
+    print_duration(
+        "vad_stop_to_first_response_audio_ms",
+        context->t_speech_stopped_ms,
+        context->t_first_ai_audio_after_response_created_ms);
     print_duration(
         "function_output_to_first_final_audio_ms",
         context->t_function_output_sent_ms,
@@ -1246,6 +1267,7 @@ int main(int argc, char **argv) {
     context.t_response_create_sent_ms = -1;
     context.t_response_created_ms = -1;
     context.t_response_audio_done_ms = -1;
+    context.t_first_ai_audio_after_response_created_ms = -1;
     context.t_first_ai_audio_after_function_ms = -1;
 
     struct utsname platform;
