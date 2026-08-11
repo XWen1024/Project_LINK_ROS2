@@ -65,8 +65,11 @@ typedef struct {
     bool function_output_returned;
     bool response_create_sent;
     bool final_response_after_function;
+    bool final_commit_started;
+    bool input_complete;
     size_t total_audio_bytes;
     size_t audio_bytes_at_function_output;
+    size_t next_audio_log_bytes;
     unsigned response_done_count;
     int last_sdk_event;
     int64_t process_start_ms;
@@ -77,9 +80,17 @@ typedef struct {
     int64_t t_speech_started_ms;
     int64_t t_speech_stopped_ms;
     int64_t t_first_ai_audio_ms;
+    int64_t t_first_ai_audio_after_input_ms;
     int64_t t_response_done_ms;
-    int64_t t_function_call_ms;
-    int64_t t_function_output_ms;
+    int64_t t_input_commit_ack_ms;
+    int64_t t_asr_completed_ms;
+    int64_t t_function_call_created_ms;
+    int64_t t_function_args_done_ms;
+    int64_t t_function_output_send_start_ms;
+    int64_t t_function_output_sent_ms;
+    int64_t t_response_create_sent_ms;
+    int64_t t_response_created_ms;
+    int64_t t_response_audio_done_ms;
     int64_t t_first_ai_audio_after_function_ms;
     char pending_call_id[256];
     char pending_function_name[128];
@@ -275,7 +286,9 @@ static void *function_output_thread(void *argument) {
     cJSON_AddStringToObject(item, "object", "realtime.item");
     cJSON_AddStringToObject(item, "output", result_json);
 
+    const int64_t output_send_start = monotonic_ms();
     int output_result = send_json_message(context, root);
+    const int64_t output_sent = monotonic_ms();
     write_function_debug(
         context,
         "client_to_server",
@@ -286,6 +299,13 @@ static void *function_output_thread(void *argument) {
         result_json,
         root);
     cJSON_Delete(root);
+
+    pthread_mutex_lock(&context->mutex);
+    context->function_output_returned = output_result == 0;
+    context->t_function_output_send_start_ms = output_send_start;
+    context->t_function_output_sent_ms = output_sent;
+    context->audio_bytes_at_function_output = context->total_audio_bytes;
+    pthread_mutex_unlock(&context->mutex);
 
     bool response_create_sent = false;
     if (output_result == 0) {
@@ -302,10 +322,10 @@ static void *function_output_thread(void *argument) {
     }
 
     pthread_mutex_lock(&context->mutex);
-    context->function_output_returned = output_result == 0;
     context->response_create_sent = response_create_sent;
-    context->t_function_output_ms = monotonic_ms();
-    context->audio_bytes_at_function_output = context->total_audio_bytes;
+    if (response_create_sent) {
+        context->t_response_create_sent_ms = monotonic_ms();
+    }
     context->function_task_finished = true;
     pthread_mutex_unlock(&context->mutex);
 
@@ -344,7 +364,9 @@ static void schedule_magic_function(
 
     pthread_mutex_lock(&context->mutex);
     context->function_call_received = true;
-    context->t_function_call_ms = monotonic_ms();
+    if (context->t_function_call_created_ms < 0) {
+        context->t_function_call_created_ms = monotonic_ms();
+    }
     copy_text(context->pending_call_id, sizeof(context->pending_call_id), call_id);
     copy_text(
         context->pending_function_name,
@@ -413,7 +435,7 @@ static void handle_function_item(
         copy_text(context->pending_arguments, sizeof(context->pending_arguments), arguments);
     }
     context->function_call_received = true;
-    context->t_function_call_ms = monotonic_ms();
+    context->t_function_call_created_ms = monotonic_ms();
     pthread_mutex_unlock(&context->mutex);
 
     write_function_debug(
@@ -446,6 +468,7 @@ static void handle_function_arguments_done(
     char cached_arguments[2048];
 
     pthread_mutex_lock(&context->mutex);
+    context->t_function_args_done_ms = monotonic_ms();
     copy_text(cached_call_id, sizeof(cached_call_id), context->pending_call_id);
     copy_text(cached_name, sizeof(cached_name), context->pending_function_name);
     copy_text(cached_arguments, sizeof(cached_arguments), context->pending_arguments);
@@ -522,7 +545,8 @@ static void on_volc_conversation_status(
             context->response_done = true;
             context->response_done_count++;
             context->t_response_done_ms = now;
-            if (context->function_output_returned && now >= context->t_function_output_ms) {
+            if (context->function_output_returned &&
+                now >= context->t_function_output_sent_ms) {
                 context->final_response_after_function = true;
             }
             break;
@@ -544,14 +568,25 @@ static void on_volc_audio_data(
     smoke_context_t *context = (smoke_context_t *)user_data;
     const int64_t now = monotonic_ms();
     bool write_error = false;
+    bool first_audio = false;
+    bool first_after_input = false;
+    bool first_after_function = false;
+    bool log_audio = false;
 
     pthread_mutex_lock(&context->mutex);
     if (context->t_first_ai_audio_ms < 0) {
         context->t_first_ai_audio_ms = now;
+        first_audio = true;
+    }
+    if (context->input_complete &&
+        context->t_first_ai_audio_after_input_ms < 0) {
+        context->t_first_ai_audio_after_input_ms = now;
+        first_after_input = true;
     }
     if (context->function_output_returned &&
         context->t_first_ai_audio_after_function_ms < 0) {
         context->t_first_ai_audio_after_function_ms = now;
+        first_after_function = true;
     }
     if (context->response_pcm == NULL ||
         fwrite(data_ptr, 1, data_len, context->response_pcm) != data_len) {
@@ -565,17 +600,28 @@ static void on_volc_audio_data(
     }
     context->total_audio_bytes += data_len;
     const size_t total = context->total_audio_bytes;
+    if (total >= context->next_audio_log_bytes) {
+        log_audio = true;
+        while (context->next_audio_log_bytes <= total) {
+            context->next_audio_log_bytes += 64u * 1024u;
+        }
+    }
     pthread_mutex_unlock(&context->mutex);
 
-    printf(
-        "audio_callback bytes=%zu total=%zu data_type=%d format=PCM_S16LE sample_rate=%u channels=%u%s\n",
-        data_len,
-        total,
-        info_ptr != NULL ? (int)info_ptr->data_type : -1,
-        AUDIO_SAMPLE_RATE,
-        AUDIO_CHANNELS,
-        write_error ? " write_error=true" : "");
-    fflush(stdout);
+    if (first_audio || first_after_input || first_after_function || log_audio || write_error) {
+        printf(
+            "audio_callback bytes=%zu total=%zu data_type=%d format=PCM_S16LE sample_rate=%u channels=%u first=%s first_after_input=%s first_after_function=%s%s\n",
+            data_len,
+            total,
+            info_ptr != NULL ? (int)info_ptr->data_type : -1,
+            AUDIO_SAMPLE_RATE,
+            AUDIO_CHANNELS,
+            first_audio ? "true" : "false",
+            first_after_input ? "true" : "false",
+            first_after_function ? "true" : "false",
+            write_error ? " write_error=true" : "");
+        fflush(stdout);
+    }
 }
 
 static void on_volc_video_data(
@@ -624,6 +670,27 @@ static void on_volc_message_data(
     }
 
     const char *type = json_string(root, "type");
+    const int64_t message_time = monotonic_ms();
+    if (type != NULL) {
+        pthread_mutex_lock(&context->mutex);
+        if (strcmp(type, "input_audio_buffer.committed") == 0 &&
+            context->final_commit_started && context->t_input_commit_ack_ms < 0) {
+            context->t_input_commit_ack_ms = message_time;
+        }
+        if (strstr(type, "transcription") != NULL &&
+            (strstr(type, "completed") != NULL || strstr(type, "done") != NULL)) {
+            context->t_asr_completed_ms = message_time;
+        }
+        if (strcmp(type, "response.created") == 0 &&
+            context->function_output_returned && context->t_response_created_ms < 0) {
+            context->t_response_created_ms = message_time;
+        }
+        if (strcmp(type, "response.audio.done") == 0 &&
+            context->function_output_returned) {
+            context->t_response_audio_done_ms = message_time;
+        }
+        pthread_mutex_unlock(&context->mutex);
+    }
     char *sanitized = sanitized_json_string(root);
     printf(
         "message_callback type=%s bytes=%zu binary=%s json=%s\n",
@@ -844,6 +911,11 @@ static int send_pcm_file(smoke_context_t *context, const char *path, int frame_m
             .data_type = VOLC_AUDIO_DATA_TYPE_PCM,
             .commit = commit,
         };
+        if (commit) {
+            pthread_mutex_lock(&context->mutex);
+            context->final_commit_started = true;
+            pthread_mutex_unlock(&context->mutex);
+        }
         const int64_t send_start = monotonic_ms();
         const int send_result = volc_send_audio_data(context->engine, buffer, count, &info);
         if (send_result < 0) {
@@ -852,11 +924,15 @@ static int send_pcm_file(smoke_context_t *context, const char *path, int frame_m
             break;
         }
 
+        const int64_t sent_time = monotonic_ms();
         pthread_mutex_lock(&context->mutex);
         if (context->t_first_input_audio_ms < 0) {
-            context->t_first_input_audio_ms = monotonic_ms();
+            context->t_first_input_audio_ms = sent_time;
         }
-        context->t_last_input_audio_ms = monotonic_ms();
+        context->t_last_input_audio_ms = sent_time;
+        if (commit) {
+            context->input_complete = true;
+        }
         pthread_mutex_unlock(&context->mutex);
 
         total_sent += count;
@@ -950,12 +1026,84 @@ static void print_metrics(smoke_context_t *context) {
     print_timestamp("T5_speech_stopped", context->t_speech_stopped_ms, context->process_start_ms);
     print_timestamp("T6_first_ai_audio", context->t_first_ai_audio_ms, context->process_start_ms);
     print_timestamp("T7_response_done", context->t_response_done_ms, context->process_start_ms);
+    print_timestamp("T8_input_commit_ack", context->t_input_commit_ack_ms, context->process_start_ms);
+    print_timestamp("T9_asr_completed", context->t_asr_completed_ms, context->process_start_ms);
+    print_timestamp("T10_function_call_created", context->t_function_call_created_ms, context->process_start_ms);
+    print_timestamp("T11_function_args_done", context->t_function_args_done_ms, context->process_start_ms);
+    print_timestamp("T12_function_output_send_start", context->t_function_output_send_start_ms, context->process_start_ms);
+    print_timestamp("T13_function_output_sent", context->t_function_output_sent_ms, context->process_start_ms);
+    print_timestamp("T14_response_create_sent", context->t_response_create_sent_ms, context->process_start_ms);
+    print_timestamp("T15_response_created", context->t_response_created_ms, context->process_start_ms);
+    print_timestamp("T16_first_ai_audio_after_input", context->t_first_ai_audio_after_input_ms, context->process_start_ms);
+    print_timestamp("T17_first_ai_audio_after_function", context->t_first_ai_audio_after_function_ms, context->process_start_ms);
+    print_timestamp("T18_response_audio_done", context->t_response_audio_done_ms, context->process_start_ms);
     print_duration("connect_ms", context->t_connect_start_ms, context->t_connected_ms);
     print_duration(
         "speech_end_to_first_audio_ms",
         context->t_speech_stopped_ms,
         context->t_first_ai_audio_ms);
     print_duration("response_total_ms", context->t_last_input_audio_ms, context->t_response_done_ms);
+    print_duration(
+        "input_end_to_first_ai_audio_ms",
+        context->t_last_input_audio_ms,
+        context->t_first_ai_audio_after_input_ms);
+    print_duration(
+        "input_end_to_first_final_audio_ms",
+        context->t_last_input_audio_ms,
+        context->t_first_ai_audio_after_function_ms);
+    print_duration(
+        "input_end_to_vad_stop_ms",
+        context->t_last_input_audio_ms,
+        context->t_speech_stopped_ms);
+    print_duration(
+        "vad_stop_to_asr_complete_ms",
+        context->t_speech_stopped_ms,
+        context->t_asr_completed_ms);
+    print_duration(
+        "vad_stop_to_function_call_ms",
+        context->t_speech_stopped_ms,
+        context->t_function_call_created_ms);
+    print_duration(
+        "input_end_to_function_call_ms",
+        context->t_last_input_audio_ms,
+        context->t_function_call_created_ms);
+    print_duration(
+        "function_call_to_args_done_ms",
+        context->t_function_call_created_ms,
+        context->t_function_args_done_ms);
+    print_duration(
+        "local_function_output_ms",
+        context->t_function_args_done_ms,
+        context->t_function_output_sent_ms);
+    print_duration(
+        "function_output_send_ms",
+        context->t_function_output_send_start_ms,
+        context->t_function_output_sent_ms);
+    print_duration(
+        "function_output_to_response_created_ms",
+        context->t_function_output_sent_ms,
+        context->t_response_created_ms);
+    print_duration(
+        "response_created_to_first_final_audio_ms",
+        context->t_response_created_ms,
+        context->t_first_ai_audio_after_function_ms);
+    print_duration(
+        "function_output_to_first_final_audio_ms",
+        context->t_function_output_sent_ms,
+        context->t_first_ai_audio_after_function_ms);
+    print_duration(
+        "first_final_audio_to_audio_done_ms",
+        context->t_first_ai_audio_after_function_ms,
+        context->t_response_audio_done_ms);
+    print_duration(
+        "first_final_audio_to_response_done_ms",
+        context->t_first_ai_audio_after_function_ms,
+        context->t_response_done_ms);
+    print_duration(
+        "input_end_to_response_done_ms",
+        context->t_last_input_audio_ms,
+        context->t_response_done_ms);
+    printf("asr_event_observed=%s\n", context->t_asr_completed_ms >= 0 ? "true" : "false");
     printf("total_audio_bytes=%zu\n", context->total_audio_bytes);
     printf("audio_format=PCM_S16LE\n");
     printf("audio_sample_rate=%u\n", AUDIO_SAMPLE_RATE);
@@ -1067,6 +1215,7 @@ int main(int argc, char **argv) {
     smoke_context_t context;
     memset(&context, 0, sizeof(context));
     pthread_mutex_init(&context.mutex, NULL);
+    context.next_audio_log_bytes = 64u * 1024u;
     context.process_start_ms = monotonic_ms();
     context.t_connect_start_ms = -1;
     context.t_connected_ms = -1;
@@ -1075,9 +1224,17 @@ int main(int argc, char **argv) {
     context.t_speech_started_ms = -1;
     context.t_speech_stopped_ms = -1;
     context.t_first_ai_audio_ms = -1;
+    context.t_first_ai_audio_after_input_ms = -1;
     context.t_response_done_ms = -1;
-    context.t_function_call_ms = -1;
-    context.t_function_output_ms = -1;
+    context.t_input_commit_ack_ms = -1;
+    context.t_asr_completed_ms = -1;
+    context.t_function_call_created_ms = -1;
+    context.t_function_args_done_ms = -1;
+    context.t_function_output_send_start_ms = -1;
+    context.t_function_output_sent_ms = -1;
+    context.t_response_create_sent_ms = -1;
+    context.t_response_created_ms = -1;
+    context.t_response_audio_done_ms = -1;
     context.t_first_ai_audio_after_function_ms = -1;
 
     struct utsname platform;
@@ -1134,6 +1291,7 @@ int main(int argc, char **argv) {
         sdk_result,
         volc_err_2_str(sdk_result),
         auth_done - auth_start);
+    printf("authentication_registration_ms=%" PRId64 "ms\n", auth_done - auth_start);
     if (sdk_result != 0) {
         fprintf(stderr, "ERROR: volc_create failed; probable layer=authentication_or_device_registration\n");
         close_artifacts(&context);

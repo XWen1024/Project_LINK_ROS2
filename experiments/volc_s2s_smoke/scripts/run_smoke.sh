@@ -7,6 +7,18 @@ BINARY="${EXPERIMENT_DIR}/build/volc_ws_smoke"
 ARTIFACT_DIR="${EXPERIMENT_DIR}/artifacts"
 ENV_FILE="${EXPERIMENT_DIR}/.env.local"
 
+args=("$@")
+for ((index = 0; index < ${#args[@]}; index++)); do
+  if [[ "${args[index]}" == "--artifact-dir" ]]; then
+    if ((index + 1 >= ${#args[@]})); then
+      echo "ERROR: --artifact-dir requires a value" >&2
+      exit 2
+    fi
+    ARTIFACT_DIR="${args[index + 1]}"
+    break
+  fi
+done
+
 umask 077
 mkdir -p "${ARTIFACT_DIR}"
 exec > >(tee "${ARTIFACT_DIR}/smoke.log") 2>&1
@@ -55,7 +67,7 @@ echo "Credentials: present (values redacted)"
 echo "Log: ${ARTIFACT_DIR}/smoke.log"
 
 set +e
-stdbuf -oL -eL "${BINARY}" --artifact-dir "${ARTIFACT_DIR}" "$@"
+stdbuf -oL -eL "${BINARY}" --artifact-dir "${ARTIFACT_DIR}" "${args[@]}"
 status=$?
 set -e
 
