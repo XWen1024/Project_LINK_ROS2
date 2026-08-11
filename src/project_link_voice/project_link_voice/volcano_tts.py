@@ -545,9 +545,12 @@ class VolcanoTts:
         self.stop()
         self._cmd_queue.put(None)
         self._audio_queue.put(None)
-        if self._loop and self._loop.is_running():
-            self._loop.call_soon_threadsafe(self._loop.stop)
         if self._loop_thread:
-            self._loop_thread.join(timeout=2.0)
+            self._loop_thread.join(timeout=3.0)
+            if self._loop_thread.is_alive() and self._loop and self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                self._loop_thread.join(timeout=1.0)
+        if self._play_thread:
+            self._play_thread.join(timeout=1.0)
         if self._mixer_ready:
             pygame.mixer.quit()
