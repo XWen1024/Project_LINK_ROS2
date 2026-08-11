@@ -15,6 +15,7 @@ voice_dialog_node:
     # so the default only treats AIUI event frames as wakeups.
     wakeup_match_text: aiui_event
     wakeup_serial_max_buffer_bytes: 16384
+    wakeup_log_raw: false
     wakeup_ack_text: 我在，请说。
     wakeup_ack_cache_file: ~/.cache/project_link_voice/wakeup_ack.mp3
     wakeup_ack_cache_timeout_sec: 20.0

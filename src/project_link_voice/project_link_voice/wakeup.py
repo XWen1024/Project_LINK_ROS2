@@ -16,8 +16,11 @@ class SerialWakeDetector:
         if not self._needle:
             return data.decode("utf-8", errors="backslashreplace")
         self._buffer.extend(data)
-        if self._needle in self._buffer:
-            matched = bytes(self._buffer)
+        match_index = self._buffer.find(self._needle)
+        if match_index >= 0:
+            end = match_index + len(self._needle)
+            start = max(0, end - 2048)
+            matched = bytes(self._buffer[start:end])
             self._buffer.clear()
             return matched.decode("utf-8", errors="backslashreplace")
         if len(self._buffer) > self._max_buffer_bytes:

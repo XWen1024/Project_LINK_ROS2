@@ -158,6 +158,7 @@ class LlmMotionDemoNode(Node):
         self.declare_parameter("wakeup_serial_baud", 115200)
         self.declare_parameter("wakeup_match_text", "aiui_event")
         self.declare_parameter("wakeup_serial_max_buffer_bytes", 16384)
+        self.declare_parameter("wakeup_log_raw", False)
         self.declare_parameter("wakeup_ack_text", "我在，请说。")
         self.declare_parameter("wakeup_ack_cache_file", "~/.cache/project_link_voice/wakeup_ack.mp3")
         self.declare_parameter("wakeup_ack_cache_timeout_sec", 20.0)
@@ -488,8 +489,9 @@ class LlmMotionDemoNode(Node):
             while not self._stop_event.is_set():
                 data = serial_port.read(max(1, min(serial_port.in_waiting, 4096)))
                 if data:
-                    decoded = data.decode("utf-8", errors="backslashreplace")
-                    print(f"WAKEUP raw={data!r} text={decoded}", flush=True)
+                    if bool(self.get_parameter("wakeup_log_raw").value):
+                        decoded = data.decode("utf-8", errors="backslashreplace")
+                        print(f"WAKEUP raw={data!r} text={decoded}", flush=True)
                     matched = detector.feed(data)
                     if matched is not None:
                         return matched
