@@ -21,7 +21,7 @@ usage() {
 Usage: ./scripts/start_volc_s2s_voice.sh [options]
 
 Safe pure-voice chain:
-  iFlytek wake -> cached ack -> USB mic -> FunVAD hard endpoint
+  iFlytek wake -> cached ack -> USB mic raw PCM -> Volcengine server_vad
   -> persistent native Volcengine low-load WebSocket S2S -> USB speaker
 
 This launch does not start the base and does not publish /cmd_vel.
@@ -179,9 +179,10 @@ Timing phases include:
   volc_device_registration
   volc_ws_connect
   wakeup_ack_playback
-  local_vad_record
+  raw_pcm_capture
   volc_wakeup_to_first_input_audio
   volc_last_input_to_speech_stopped
+  volc_last_input_to_server_commit
   volc_commit_to_server_ack
   volc_vad_stop_to_function_call
   volc_last_input_to_function_call

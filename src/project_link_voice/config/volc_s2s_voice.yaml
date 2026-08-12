@@ -11,13 +11,10 @@ volc_s2s_voice_node:
     wakeup_log_raw: false
     wakeup_ack_cache_file: ~/.cache/project_link_voice/wakeup_ack.mp3
     wakeup_ack_playback_timeout_sec: 5.0
-    funvad_device: cuda
     audio_sample_rate: 16000
-    audio_chunk_ms: 200
-    audio_pre_roll_ms: 400
+    audio_chunk_ms: 100
     audio_no_speech_timeout_sec: 8.0
-    audio_max_utterance_sec: 12.0
-    audio_min_speech_sec: 0.30
+    audio_max_utterance_sec: 30.0
     audio_input_device_index: 0
     audio_input_device_name: XFM-DP-V0.0.18
     audio_output_device_index: -1

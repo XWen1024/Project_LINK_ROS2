@@ -29,9 +29,9 @@ C:\Users\XWen1024\Documents\ROS2小车-volc-voice
 讯飞本地唤醒
 -> 本地缓存“我在，请说”
 -> XFM USB 麦克风 16 kHz mono
--> FunVAD 本地硬端点与超时
+-> 原始 PCM 持续上传（本地不做 VAD/ASR）
 -> 持久 native volc_ws_bridge
--> 官方 Embedded Kit low-load WebSocket S2S
+-> 官方 Embedded Kit low-load WebSocket S2S + server_vad
 -> native PCM callback
 -> Python 有界播放队列
 -> USB 扬声器
@@ -76,7 +76,7 @@ colcon build --packages-up-to project_link_voice
 - 从启动 trace 到 connected 共 `1329.106 ms`；
 - 服务端返回实际模型 `doubao-seed-2-1-turbo-260628`、PCM16 输入输出和
   `server_vad`；
-- FunVAD 已在长连接建立后完成预热；
+- S2S 新路径已取消 FunVAD 加载和推理；Legacy 路径仍保留 FunVAD；
 - PyAudio 已成功打开 16 kHz 单声道 Pulse 播放流；
 - ROS graph 中持续存在 `/volc_s2s_voice_node` 和 `/voice_s2s/status`。
 
@@ -140,12 +140,12 @@ volc_device_registration
 volc_ws_connect
 wakeup_ack_playback
 wakeup_ack_to_first_input_audio
-local_vad_record
+raw_pcm_capture
 volc_wakeup_to_first_input_audio
 volc_first_input_to_speech_started
-volc_last_input_to_commit
-volc_commit_to_server_ack
 volc_last_input_to_speech_stopped
+volc_last_input_to_server_commit
+volc_commit_to_server_ack（云端自动 committed；最长录音保护触发时除外）
 volc_last_input_to_response_created
 volc_vad_stop_to_function_call
 volc_last_input_to_function_call

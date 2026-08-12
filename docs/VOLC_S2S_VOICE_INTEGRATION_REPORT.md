@@ -25,7 +25,7 @@ fallback. The new launch starts no chassis process and does not publish
 | Embedded Kit registration | PASS | Three observed runs: 857, 918, and 1203 ms |
 | Persistent low-load WSS | PASS | Three observed runs: 465, 421, and 867 ms |
 | Session configuration | PASS | `doubao-seed-2-1-turbo-260628`, PCM16 input/output, `server_vad` |
-| FunVAD warm-up | PASS | Ready without loading faster-whisper or DeepSeek |
+| Local FunVAD dependency | REMOVED | Current S2S node sends raw PCM and uses cloud `server_vad`; Legacy path unchanged |
 | Wake acknowledgement | PASS (board-audio test) | Cached file played successfully in 1909.611 and 1898.789 ms |
 | Audio streaming entry | PASS (board-input test) | First 16 kHz frame sent; ack end to first input was 315.021 ms |
 | Empty-turn safety | PASS | 8-second local no-speech timeout cleared input without commit |
@@ -120,7 +120,7 @@ PROJECT_LINK_WORKSPACE=/home/wte/wheeltec_robot-volc-voice \
 tmux attach -t project_link_volc_s2s_voice
 ```
 
-Expected real-trace edges include local VAD, last input to cloud speech stop,
+Expected real-trace edges include raw PCM capture, last input to cloud speech stop,
 last input to first AI audio, callback to speaker write, last input to speaker
 write, response completion, and playback drain. The timing file remains:
 
@@ -135,7 +135,7 @@ serial `0004`, XFM PyAudio input index `25`, and C-Media output index `24`. The
 C-Media Pulse profile required one off/on refresh before its stable analog sink
 was created.
 
-The first real turn passed wake, acknowledgement, XFM capture, local FunVAD,
+The first real turn passed wake, acknowledgement, XFM capture, the initial local FunVAD revision,
 realtime WSS upload, Turbo S2S response, native PCM callback, and C-Media speaker
 write. Observed trace `7eacadf4833d`:
 
@@ -158,3 +158,34 @@ forward that event through `on_volc_message_data` in this run. It did forward
 callback. The integration now treats `ANSWER_FINISH` as the primary completion
 signal while retaining `response.done` as a compatible alternate, preventing a
 false 45-second response timeout after audio has already completed.
+
+## Cloud server-VAD revision
+
+The first hardware revision reused the Legacy FunVAD recorder as a local turn
+endpoint. Live logs then proved that this was redundant for S2S: the server
+advertised `turn_detection.type=server_vad`, entered `THINKING`, emitted
+`input_audio_buffer.committed`, and could begin returning AI audio while the
+local FunVAD loop was still recording. A later manual commit could duplicate the
+server transition and risk feeding speaker audio back into the microphone.
+
+The current isolated S2S path now uses:
+
+```text
+iFlytek wake -> cached acknowledgement -> raw 16 kHz mono PCM (100 ms cadence)
+-> cloud server_vad endpoint / automatic commit -> S2S or Function Calling
+-> AI PCM -> C-Media speaker
+```
+
+Normal turns do not run local VAD, local ASR, or `input_audio_buffer.commit`.
+Local code retains only an 8-second no-speech guard and a 30-second maximum
+utterance guard so a hardware/cloud failure cannot leave the microphone open
+forever. The maximum-duration guard may issue a manual commit only when that
+safety limit is actually reached. Legacy voice nodes still use `funvad.py` and
+were not changed.
+
+New timing uses `raw_pcm_capture` and treats cloud speech-stop/automatic
+committed events as authoritative. `volc_last_input_to_server_commit` measures
+the final locally sent PCM to the server's committed event. The older
+`local_vad_record` and manual
+commit measurements above remain historical baseline data and must not be
+reported as measurements of the current server-VAD-only revision.

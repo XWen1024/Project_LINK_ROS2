@@ -16,7 +16,6 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from .funvad import FunVadRecorder, VadSettings
 from .voice_debug import VoiceDebugSink, VoiceTrace
 from .volc_s2s_bridge import (
     EVT_AUDIO,
@@ -34,6 +33,7 @@ from .volc_s2s_tools import (
     function_call_from_item,
     function_calls_from_legacy_array,
 )
+from .volc_s2s_microphone import RawPcmCaptureSettings, ServerVadPcmRecorder
 from .wakeup import SerialWakeDetector, resolve_wakeup_serial_port
 
 
@@ -42,6 +42,7 @@ class TurnState:
     trace: VoiceTrace
     wake_ns: int
     done: threading.Event = field(default_factory=threading.Event)
+    server_input_done: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     first_input_ns: int | None = None
     last_input_ns: int | None = None
@@ -244,14 +245,10 @@ class VolcS2SVoiceNode(Node):
         self.declare_parameter("wakeup_log_raw", False)
         self.declare_parameter("wakeup_ack_cache_file", "~/.cache/project_link_voice/wakeup_ack.mp3")
         self.declare_parameter("wakeup_ack_playback_timeout_sec", 5.0)
-        self.declare_parameter("funvad_model", os.environ.get("PROJECT_LINK_FUNVAD_MODEL", "fsmn-vad"))
-        self.declare_parameter("funvad_device", "cuda")
         self.declare_parameter("audio_sample_rate", 16000)
-        self.declare_parameter("audio_chunk_ms", 200)
-        self.declare_parameter("audio_pre_roll_ms", 400)
+        self.declare_parameter("audio_chunk_ms", 100)
         self.declare_parameter("audio_no_speech_timeout_sec", 8.0)
-        self.declare_parameter("audio_max_utterance_sec", 12.0)
-        self.declare_parameter("audio_min_speech_sec", 0.30)
+        self.declare_parameter("audio_max_utterance_sec", 30.0)
         self.declare_parameter("audio_input_device_index", 0)
         self.declare_parameter("audio_input_device_name", "XFM-DP-V0.0.18")
         self.declare_parameter("audio_output_device_index", -1)
@@ -484,8 +481,29 @@ class VolcS2SVoiceNode(Node):
                     status=value.get("status"),
                     name=status_name,
                 )
+                event_ns = frame.monotonic_ns
+                if status_name == "LISTENING":
+                    with turn.lock:
+                        if turn.server_speech_started_ns is None:
+                            turn.server_speech_started_ns = event_ns
+                            self._record_turn_interval(
+                                turn,
+                                "volc_first_input_to_speech_started",
+                                turn.first_input_ns,
+                                event_ns,
+                            )
+                elif status_name in {"THINKING", "ANSWERING"}:
+                    with turn.lock:
+                        if turn.server_speech_stopped_ns is None:
+                            turn.server_speech_stopped_ns = event_ns
+                            self._record_turn_interval(
+                                turn,
+                                "volc_last_input_to_speech_stopped",
+                                turn.last_input_ns,
+                                event_ns,
+                            )
+                    turn.server_input_done.set()
                 if status_name == "ANSWER_FINISH":
-                    event_ns = frame.monotonic_ns
                     with turn.lock:
                         function_response_ready = (
                             turn.function_call_ns is None
@@ -556,7 +574,16 @@ class VolcS2SVoiceNode(Node):
                     turn.last_input_ns,
                     event_ns,
                 )
+                turn.server_input_done.set()
             elif event_type == "input_audio_buffer.committed":
+                turn.server_input_done.set()
+                self._record_turn_interval(
+                    turn,
+                    "volc_last_input_to_server_commit",
+                    turn.last_input_ns,
+                    event_ns,
+                    commit_owner="server_vad" if turn.commit_ns is None else "local_safety_guard",
+                )
                 self._record_turn_interval(
                     turn,
                     "volc_commit_to_server_ack",
@@ -564,6 +591,7 @@ class VolcS2SVoiceNode(Node):
                     event_ns,
                 )
             elif event_type == "response.created" and turn.response_created_ns is None:
+                turn.server_input_done.set()
                 turn.response_created_ns = event_ns
                 self._record_turn_interval(
                     turn,
@@ -652,6 +680,7 @@ class VolcS2SVoiceNode(Node):
         if turn is None:
             return
         with turn.lock:
+            turn.server_input_done.set()
             turn.audio_bytes += len(frame.payload)
             if turn.first_ai_audio_ns is None:
                 turn.first_ai_audio_ns = frame.monotonic_ns
@@ -730,32 +759,24 @@ class VolcS2SVoiceNode(Node):
             )
 
     def _audio_loop(self) -> None:
-        settings = VadSettings(
+        settings = RawPcmCaptureSettings(
             sample_rate=int(self.get_parameter("audio_sample_rate").value),
             chunk_ms=int(self.get_parameter("audio_chunk_ms").value),
-            pre_roll_ms=int(self.get_parameter("audio_pre_roll_ms").value),
             no_speech_timeout_sec=float(self.get_parameter("audio_no_speech_timeout_sec").value),
             max_utterance_sec=float(self.get_parameter("audio_max_utterance_sec").value),
-            min_speech_sec=float(self.get_parameter("audio_min_speech_sec").value),
         )
         input_index = int(self.get_parameter("audio_input_device_index").value)
-        recorder = FunVadRecorder(
+        recorder = ServerVadPcmRecorder(
             settings,
-            str(self.get_parameter("funvad_model").value),
-            str(self.get_parameter("funvad_device").value),
             input_device_index=input_index if input_index >= 0 else None,
             input_device_name=str(self.get_parameter("audio_input_device_name").value),
             device_selected_callback=lambda index, name: self.get_logger().info(
                 f"Selected microphone index={index if index is not None else 'default'} name={name}"
             ),
         )
-        try:
-            self.get_logger().info("Loading FunVAD before accepting wake events.")
-            recorder.warm_up()
-            self.get_logger().info("FunVAD is ready; faster-whisper and DeepSeek are not used in S2S mode.")
-        except Exception as exc:
-            self.get_logger().error(f"FunVAD warm-up failed: {exc}")
-            return
+        self.get_logger().info(
+            "Cloud server_vad owns speech endpointing; local FunVAD, faster-whisper, and DeepSeek are not used."
+        )
         if not self._player.wait_ready(10.0):
             self.get_logger().error(self._player.ready_error or "S2S speaker did not become ready")
             return
@@ -820,37 +841,49 @@ class VolcS2SVoiceNode(Node):
                             )
                         turn.last_input_ns = sent_ns
 
-                with trace.phase("local_vad_record"):
-                    pcm, reason = recorder.record(chunk_callback=stream_chunk)
+                def speech_started_ns() -> int | None:
+                    with turn.lock:
+                        return turn.server_speech_started_ns
+
+                with trace.phase("raw_pcm_capture"):
+                    pcm_bytes, reason = recorder.record(
+                        turn.server_input_done,
+                        speech_started_ns,
+                        stream_chunk,
+                    )
                 with turn.lock:
                     last_input_ns = turn.last_input_ns
                 if last_input_ns is not None:
                     self._mark_at(trace, "last_input_audio_sent", last_input_ns)
                 trace.debug(
-                    "local_vad_finished",
+                    "cloud_vad_capture_finished",
                     reason=reason,
-                    retained_pcm_bytes=len(pcm),
+                    pcm_bytes_sent=pcm_bytes,
                     streamed_audio=True,
                 )
 
-                if reason == "no_speech_timeout" or not pcm:
+                if reason == "no_speech_timeout" or pcm_bytes == 0:
                     self._bridge.clear()
                     trace.complete(reason if reason else "empty_audio")
                     self._status("ready")
                     continue
 
-                commit_ns, commit_result = self._bridge.commit_checked()
-                if commit_result != 0:
-                    raise RuntimeError(f"Volcengine commit failed result={commit_result}")
-                with turn.lock:
-                    turn.commit_ns = commit_ns
-                self._mark_at(trace, "input_commit_sent", commit_ns)
-                self._record_turn_interval(
-                    turn,
-                    "volc_last_input_to_commit",
-                    last_input_ns,
-                    commit_ns,
-                )
+                if reason == "max_utterance_timeout":
+                    # Safety-only hard bound. Normal turns are committed and
+                    # advanced automatically by the cloud server_vad session.
+                    commit_ns, commit_result = self._bridge.commit_checked()
+                    if commit_result != 0:
+                        raise RuntimeError(f"Volcengine hard-timeout commit failed result={commit_result}")
+                    with turn.lock:
+                        turn.commit_ns = commit_ns
+                    self._mark_at(trace, "input_commit_sent", commit_ns, hard_timeout=True)
+                    self._record_turn_interval(
+                        turn,
+                        "volc_last_input_to_commit",
+                        last_input_ns,
+                        commit_ns,
+                        hard_timeout=True,
+                    )
                 self._status("waiting_response")
                 completed = turn.done.wait(float(self.get_parameter("response_timeout_sec").value))
                 if completed:

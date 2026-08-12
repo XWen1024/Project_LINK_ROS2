@@ -3,8 +3,14 @@
 ## Volcengine Embedded Kit S2S local voice integration - 2026-08-12
 
 * Added an isolated pure-voice integration that preserves the existing iFlytek
-  serial wake detector, cached wake acknowledgement, USB microphone, FunVAD hard
-  endpoint, and USB speaker.
+  serial wake detector, cached wake acknowledgement, USB microphone, and USB
+  speaker.
+* Removed local FunVAD from the isolated Volc S2S path after live evidence showed
+  the session already uses `server_vad` and automatically advances through
+  LISTENING, THINKING, committed, and response creation. The node now sends raw
+  16 kHz mono PCM in 100 ms chunks and stops capture on the cloud endpoint. It
+  keeps only no-speech and maximum-duration hard guards; Legacy voice nodes and
+  their FunVAD implementation are unchanged.
 * Added `volc_ws_bridge`, a persistent native ARM64 process around the validated
   official Embedded Kit low-load WebSocket transport. Python and the native SDK
   communicate through a private inherited Unix socketpair with framed binary
@@ -14,8 +20,8 @@
   `scripts/start_volc_s2s_voice.sh`. The initial integration is deliberately
   pure voice: it does not start the base and does not publish `/cmd_vel`.
 * Extended the timing logger with monotonic marks and per-edge intervals. New
-  measurements include registration, WSS connect, wake acknowledgement, local
-  VAD, first/last input audio, cloud speech start/stop, commit acknowledgement,
+  measurements include registration, WSS connect, wake acknowledgement, raw PCM
+  capture, first/last input audio, cloud speech start/stop, commit acknowledgement,
   Function Call boundaries, first AI audio, speaker write, response completion,
   and playback drain.
 * The legacy Whisper/DeepSeek/TTS nodes and their launch scripts remain intact as

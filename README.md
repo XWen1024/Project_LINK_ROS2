@@ -22,8 +22,10 @@ another `/cmd_vel` publisher.
 
 An isolated Volcengine end-to-end voice integration is also available on the
 `codex/volc-s2s-voice-integration` branch. It keeps the iFlytek local wake event,
-USB microphone, FunVAD hard endpoint, and USB speaker, while a persistent native
-ARM64 process owns the official Embedded Kit low-load WebSocket S2S connection.
+USB microphone, and USB speaker, while a persistent native ARM64 process owns
+the official Embedded Kit low-load WebSocket S2S connection. Microphone PCM is
+sent without local speech inference; cloud `server_vad` owns normal endpointing
+and automatic turn commit.
 The first launch is pure voice only: it starts no chassis process and publishes
 no `/cmd_vel`.
 

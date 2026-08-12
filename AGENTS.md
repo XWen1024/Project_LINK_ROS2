@@ -8,19 +8,20 @@ file together with `PROGRESS.md` and `README.md`.
 
 - A separate Volcengine Embedded Kit pure-voice integration now lives on
   `codex/volc-s2s-voice-integration`. It reuses local iFlytek wake, cached wake
-  acknowledgement, USB microphone, FunVAD hard endpoint, and USB speaker, while
-  a persistent native ARM64 helper owns the low-load WebSocket S2S connection.
+  acknowledgement, USB microphone, and USB speaker, while a persistent native
+  ARM64 helper owns the low-load WebSocket S2S connection. This path sends raw
+  PCM and uses cloud `server_vad`; it must not load local FunVAD or manually
+  commit normal turns. Legacy voice paths still own FunVAD.
   Its first launch starts no chassis process and must remain a non-`/cmd_vel`
   publisher until pure voice latency and cancellation have been accepted.
 - Start it with `scripts/start_volc_s2s_voice.sh`; keep the legacy
   `start_llm_voice_car_demo.sh` and production voice launch untouched as rollback
   paths. Do not run both voice stacks against the same wake serial/microphone at
   the same time.
-- Orin native build, ROS dependencies, 15 focused tests, persistent WSS, FunVAD
-  warm-up, and a safe keyboard/no-speech state-machine turn pass. Real acoustic
-  wake-to-speaker validation is still gated on the iFlytek wake board, XFM USB
-  microphone, and C-Media USB speaker actually enumerating on the Orin USB bus.
-  See `docs/VOLC_S2S_VOICE_INTEGRATION_REPORT.md`.
+- Orin native build, ROS dependencies, persistent WSS, and the real
+  iFlytek/XFM/C-Media acoustic loop pass. Revalidate cloud-only endpointing and
+  Function Calling after each S2S state-machine change. See
+  `docs/VOLC_S2S_VOICE_INTEGRATION_REPORT.md`.
 
 - Current phase: Point-LIO Phase B, live slam_toolbox mapping, C63A velocity
   feedback, and Nav2 are running as a known-good supervised navigation stack.
