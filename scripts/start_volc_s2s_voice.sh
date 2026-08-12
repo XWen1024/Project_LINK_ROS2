@@ -80,13 +80,17 @@ fi
 if [[ -f "$VOICE_ENV" ]]; then
   # shellcheck disable=SC1090
   set +u
+  set -a
   source "$VOICE_ENV"
+  set +a
   set -u
 fi
 if [[ -f "$S2S_ENV" ]]; then
   # shellcheck disable=SC1090
   set +u
+  set -a
   source "$S2S_ENV"
+  set +a
   set -u
 else
   echo "ERROR: Volcengine S2S env file not found: $S2S_ENV" >&2
@@ -127,9 +131,9 @@ tmux new-session -d -s "$SESSION" -n voice
 voice_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh"
 voice_cmd+=" && source '$WORKSPACE/install/setup.bash'"
 if [[ -f "$VOICE_ENV" ]]; then
-  voice_cmd+=" && source '$VOICE_ENV'"
+  voice_cmd+=" && set -a && source '$VOICE_ENV' && set +a"
 fi
-voice_cmd+=" && source '$S2S_ENV'"
+voice_cmd+=" && set -a && source '$S2S_ENV' && set +a"
 voice_cmd+=" && export PROJECT_LINK_VOLC_BRIDGE_BIN='$BRIDGE_BIN'"
 voice_cmd+=" && export PULSE_SINK='$PULSE_SINK'"
 voice_cmd+=" && ros2 launch project_link_voice volc_s2s_voice.launch.py"
