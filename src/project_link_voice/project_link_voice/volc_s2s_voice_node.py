@@ -411,6 +411,35 @@ class VolcS2SVoiceNode(Node):
             result=output,
         )
 
+    def _schedule_function_output(self, turn: TurnState, call: FunctionCall) -> None:
+        """Return tool output outside the native bridge reader thread.
+
+        send_json_checked() waits for a command_result frame.  That frame is
+        consumed by the bridge reader thread, so waiting from the reader
+        callback itself deadlocks until the timeout expires.
+        """
+
+        def worker() -> None:
+            try:
+                self._return_function_output(turn, call)
+            except Exception as exc:
+                turn.trace.debug(
+                    "volc_function_output_failed",
+                    function=call.name,
+                    call_id=call.call_id,
+                    error=str(exc),
+                )
+                self.get_logger().error(
+                    f"Failed to return Volcengine function output "
+                    f"function={call.name}: {exc}"
+                )
+
+        threading.Thread(
+            target=worker,
+            name="volc-s2s-function-output",
+            daemon=True,
+        ).start()
+
     def _on_bridge_frame(self, frame: BridgeFrame) -> None:
         if frame.message_type == EVT_AUDIO:
             self._handle_audio_frame(frame)
@@ -612,11 +641,11 @@ class VolcS2SVoiceNode(Node):
                 ready_call = None
 
         if event_type == "response.function_call_arguments.done" and ready_call is not None:
-            self._return_function_output(turn, ready_call)
+            self._schedule_function_output(turn, ready_call)
         for legacy_call in function_calls_from_legacy_array(root):
             with turn.lock:
                 self._remember_function_call_locked(turn, legacy_call, event_ns, "tool_calls")
-            self._return_function_output(turn, legacy_call)
+            self._schedule_function_output(turn, legacy_call)
 
     def _handle_audio_frame(self, frame: BridgeFrame) -> None:
         turn = self._current_turn()

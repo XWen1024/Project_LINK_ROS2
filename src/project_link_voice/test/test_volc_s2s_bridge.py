@@ -3,6 +3,8 @@ import socket
 import threading
 import time
 
+import pytest
+
 from project_link_voice.volc_s2s_bridge import (
     BridgeFrame,
     HEADER,
@@ -50,3 +52,10 @@ def test_command_result_can_be_waited_by_client_timestamp():
     )
     waiter.join(timeout=1.0)
     assert result == [-7]
+
+
+def test_command_result_wait_rejects_bridge_reader_thread():
+    bridge = VolcS2SBridgeProcess("/not-started", lambda _frame: None)
+    bridge._reader_thread = threading.current_thread()
+    with pytest.raises(RuntimeError, match="bridge reader thread"):
+        bridge.wait_command_result(123, 0.01)

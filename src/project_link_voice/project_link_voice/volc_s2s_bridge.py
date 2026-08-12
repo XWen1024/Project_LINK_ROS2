@@ -156,6 +156,8 @@ class VolcS2SBridgeProcess:
         return self._send(CMD_RAW_JSON, text.encode("utf-8"))
 
     def wait_command_result(self, timestamp_ns: int, timeout_sec: float = 3.0) -> int | None:
+        if threading.current_thread() is self._reader_thread:
+            raise RuntimeError("cannot wait for command_result from the bridge reader thread")
         deadline = time.monotonic() + max(0.0, float(timeout_sec))
         with self._command_condition:
             while int(timestamp_ns) not in self._command_results and not self._stop.is_set():
