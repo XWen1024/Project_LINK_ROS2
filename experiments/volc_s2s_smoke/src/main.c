@@ -52,6 +52,11 @@ typedef enum {
     FEEDBACK_LOCAL_PCM,
 } feedback_strategy_e;
 
+typedef enum {
+    INPUT_END_SERVER_VAD = 0,
+    INPUT_END_CLIENT_COMMIT,
+} input_end_strategy_e;
+
 typedef struct {
     const char *pcm_path;
     const char *artifact_dir;
@@ -60,6 +65,7 @@ typedef struct {
     int response_timeout_sec;
     bool expect_function_call;
     feedback_strategy_e feedback_strategy;
+    input_end_strategy_e input_end_strategy;
     const char *local_feedback_pcm;
 } cli_options_t;
 
@@ -83,6 +89,7 @@ typedef struct {
     bool local_playback_started;
     bool local_playback_finished;
     bool final_response_after_function;
+    bool final_frame_started;
     bool final_commit_started;
     bool input_complete;
     size_t total_audio_bytes;
@@ -95,6 +102,8 @@ typedef struct {
     int64_t t_connected_ms;
     int64_t t_first_input_audio_ms;
     int64_t t_last_input_audio_ms;
+    int64_t t_last_frame_send_start_ms;
+    int64_t t_last_frame_send_done_ms;
     int64_t t_speech_started_ms;
     int64_t t_speech_stopped_ms;
     int64_t t_first_ai_audio_ms;
@@ -116,6 +125,7 @@ typedef struct {
     int64_t t_local_playback_start_ms;
     int64_t t_local_playback_done_ms;
     feedback_strategy_e feedback_strategy;
+    input_end_strategy_e input_end_strategy;
     char local_feedback_pcm[PATH_MAX];
     char pending_call_id[256];
     char pending_function_name[128];
@@ -130,6 +140,17 @@ typedef struct {
 } function_task_t;
 
 static volatile sig_atomic_t g_stop_requested = 0;
+
+static const char *input_end_strategy_name(input_end_strategy_e strategy) {
+    switch (strategy) {
+        case INPUT_END_SERVER_VAD:
+            return "server-vad";
+        case INPUT_END_CLIENT_COMMIT:
+            return "client-commit";
+        default:
+            return "unknown";
+    }
+}
 
 static int64_t monotonic_ms(void) {
     struct timespec now;
@@ -833,7 +854,7 @@ static void on_volc_message_data(
     if (type != NULL) {
         pthread_mutex_lock(&context->mutex);
         if (strcmp(type, "input_audio_buffer.committed") == 0 &&
-            context->final_commit_started && context->t_input_commit_ack_ms < 0) {
+            context->final_frame_started && context->t_input_commit_ack_ms < 0) {
             context->t_input_commit_ack_ms = message_time;
         }
         if (strstr(type, "transcription") != NULL &&
@@ -1011,7 +1032,11 @@ static bool wait_for_connection(smoke_context_t *context, int timeout_sec) {
     return false;
 }
 
-static int send_pcm_file(smoke_context_t *context, const char *path, int frame_ms) {
+static int send_pcm_file(
+    smoke_context_t *context,
+    const char *path,
+    int frame_ms,
+    input_end_strategy_e input_end_strategy) {
     FILE *input = fopen(path, "rb");
     if (input == NULL) {
         fprintf(stderr, "ERROR: cannot open PCM input %s: %s\n", path, strerror(errno));
@@ -1065,14 +1090,17 @@ static int send_pcm_file(smoke_context_t *context, const char *path, int frame_m
             result = -1;
             break;
         }
-        const bool commit = total_sent + count == file_size;
+        const bool final_frame = total_sent + count == file_size;
+        const bool commit = final_frame && input_end_strategy == INPUT_END_CLIENT_COMMIT;
         volc_audio_frame_info_t info = {
             .data_type = VOLC_AUDIO_DATA_TYPE_PCM,
             .commit = commit,
         };
-        if (commit) {
+        if (final_frame) {
             pthread_mutex_lock(&context->mutex);
-            context->final_commit_started = true;
+            context->final_frame_started = true;
+            context->final_commit_started = commit;
+            context->t_last_frame_send_start_ms = monotonic_ms();
             pthread_mutex_unlock(&context->mutex);
         }
         const int64_t send_start = monotonic_ms();
@@ -1089,15 +1117,22 @@ static int send_pcm_file(smoke_context_t *context, const char *path, int frame_m
             context->t_first_input_audio_ms = sent_time;
         }
         context->t_last_input_audio_ms = sent_time;
-        if (commit) {
+        if (final_frame) {
+            context->t_last_frame_send_done_ms = sent_time;
             context->input_complete = true;
         }
         pthread_mutex_unlock(&context->mutex);
 
         total_sent += count;
-        printf("pcm_frame bytes=%zu total=%zu commit=%s\n", count, total_sent, commit ? "true" : "false");
+        printf(
+            "pcm_frame bytes=%zu total=%zu final=%s commit=%s input_end_strategy=%s\n",
+            count,
+            total_sent,
+            final_frame ? "true" : "false",
+            commit ? "true" : "false",
+            input_end_strategy_name(input_end_strategy));
         fflush(stdout);
-        if (!commit) {
+        if (!final_frame) {
             const int64_t elapsed = monotonic_ms() - send_start;
             if (elapsed < frame_ms) {
                 sleep_ms(frame_ms - (int)elapsed);
@@ -1108,7 +1143,11 @@ static int send_pcm_file(smoke_context_t *context, const char *path, int frame_m
     free(buffer);
     fclose(input);
     if (result == 0) {
-        printf("pcm_upload_complete bytes=%zu\n", total_sent);
+        printf(
+            "pcm_upload_complete bytes=%zu input_end_strategy=%s client_commit=%s\n",
+            total_sent,
+            input_end_strategy_name(input_end_strategy),
+            input_end_strategy == INPUT_END_CLIENT_COMMIT ? "true" : "false");
     }
     return result;
 }
@@ -1199,6 +1238,8 @@ static void print_metrics(smoke_context_t *context) {
     print_timestamp("T1_websocket_connected", context->t_connected_ms, context->process_start_ms);
     print_timestamp("T2_first_input_audio_sent", context->t_first_input_audio_ms, context->process_start_ms);
     print_timestamp("T3_last_input_audio_sent", context->t_last_input_audio_ms, context->process_start_ms);
+    print_timestamp("T3a_last_frame_send_start", context->t_last_frame_send_start_ms, context->process_start_ms);
+    print_timestamp("T3b_last_frame_send_done", context->t_last_frame_send_done_ms, context->process_start_ms);
     print_timestamp("T4_speech_started", context->t_speech_started_ms, context->process_start_ms);
     print_timestamp("T5_speech_stopped", context->t_speech_stopped_ms, context->process_start_ms);
     print_timestamp("T6_first_ai_audio", context->t_first_ai_audio_ms, context->process_start_ms);
@@ -1241,6 +1282,18 @@ static void print_metrics(smoke_context_t *context) {
         context->t_last_input_audio_ms,
         context->t_speech_stopped_ms);
     print_duration(
+        "input_end_to_commit_ack_ms",
+        context->t_last_input_audio_ms,
+        context->t_input_commit_ack_ms);
+    print_duration(
+        "last_frame_start_to_commit_ack_ms",
+        context->t_last_frame_send_start_ms,
+        context->t_input_commit_ack_ms);
+    print_duration(
+        "last_frame_send_ms",
+        context->t_last_frame_send_start_ms,
+        context->t_last_frame_send_done_ms);
+    print_duration(
         "vad_stop_to_asr_complete_ms",
         context->t_speech_stopped_ms,
         context->t_asr_completed_ms);
@@ -1251,6 +1304,14 @@ static void print_metrics(smoke_context_t *context) {
     print_duration(
         "input_end_to_function_call_ms",
         context->t_last_input_audio_ms,
+        context->t_function_call_created_ms);
+    print_duration(
+        "last_frame_start_to_function_call_ms",
+        context->t_last_frame_send_start_ms,
+        context->t_function_call_created_ms);
+    print_duration(
+        "commit_ack_to_function_call_ms",
+        context->t_input_commit_ack_ms,
         context->t_function_call_created_ms);
     print_duration(
         "function_call_to_args_done_ms",
@@ -1335,6 +1396,9 @@ static void print_metrics(smoke_context_t *context) {
     printf("function_call_received=%s\n", context->function_call_received ? "true" : "false");
     printf("function_output_returned=%s\n", context->function_output_returned ? "true" : "false");
     printf("response_create_sent=%s\n", context->response_create_sent ? "true" : "false");
+    printf("input_end_strategy=%s\n", input_end_strategy_name(context->input_end_strategy));
+    printf("client_commit_sent=%s\n", context->final_commit_started ? "true" : "false");
+    printf("commit_ack_observed=%s\n", context->t_input_commit_ack_ms >= 0 ? "true" : "false");
     printf("feedback_strategy=%s\n", feedback_strategy_name(context->feedback_strategy));
     printf("input_tts_sent=%s\n", context->input_tts_sent ? "true" : "false");
     printf("local_playback_started=%s\n", context->local_playback_started ? "true" : "false");
@@ -1355,6 +1419,7 @@ static void usage(const char *program) {
         "  --pcm PATH                  Send headerless PCM S16LE/16kHz/mono.\n"
         "  --artifact-dir PATH         Output directory (default: artifacts).\n"
         "  --frame-ms N                Realtime send cadence (default: 100).\n"
+        "  --input-end NAME            server-vad (M0) or client-commit (M1, default).\n"
         "  --connect-timeout-sec N     Connection timeout (default: 20).\n"
         "  --response-timeout-sec N    Response timeout (default: 45).\n"
         "  --expect-function-call      Require get_magic_number round trip.\n"
@@ -1384,6 +1449,7 @@ static int parse_args(int argc, char **argv, cli_options_t *options) {
         .response_timeout_sec = DEFAULT_RESPONSE_TIMEOUT_SEC,
         .expect_function_call = false,
         .feedback_strategy = FEEDBACK_CLOUD,
+        .input_end_strategy = INPUT_END_CLIENT_COMMIT,
         .local_feedback_pcm = NULL,
     };
 
@@ -1408,6 +1474,15 @@ static int parse_args(int argc, char **argv, cli_options_t *options) {
         } else if (strcmp(argv[index - 1], "--frame-ms") == 0) {
             if (!parse_positive_int(value, &options->frame_ms) || options->frame_ms > 1000) {
                 fprintf(stderr, "ERROR: --frame-ms must be in 1..1000\n");
+                return -1;
+            }
+        } else if (strcmp(argv[index - 1], "--input-end") == 0) {
+            if (strcmp(value, "server-vad") == 0) {
+                options->input_end_strategy = INPUT_END_SERVER_VAD;
+            } else if (strcmp(value, "client-commit") == 0) {
+                options->input_end_strategy = INPUT_END_CLIENT_COMMIT;
+            } else {
+                fprintf(stderr, "ERROR: --input-end must be server-vad or client-commit\n");
                 return -1;
             }
         } else if (strcmp(argv[index - 1], "--connect-timeout-sec") == 0) {
@@ -1479,6 +1554,7 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&context.mutex, NULL);
     context.next_audio_log_bytes = 64u * 1024u;
     context.feedback_strategy = options.feedback_strategy;
+    context.input_end_strategy = options.input_end_strategy;
     copy_text(
         context.local_feedback_pcm,
         sizeof(context.local_feedback_pcm),
@@ -1488,6 +1564,8 @@ int main(int argc, char **argv) {
     context.t_connected_ms = -1;
     context.t_first_input_audio_ms = -1;
     context.t_last_input_audio_ms = -1;
+    context.t_last_frame_send_start_ms = -1;
+    context.t_last_frame_send_done_ms = -1;
     context.t_speech_started_ms = -1;
     context.t_speech_stopped_ms = -1;
     context.t_first_ai_audio_ms = -1;
@@ -1524,6 +1602,7 @@ int main(int argc, char **argv) {
     printf("transport=websocket_low_load\n");
     printf("rtc_transport=disabled\n");
     printf("feedback_strategy=%s\n", feedback_strategy_name(context.feedback_strategy));
+    printf("input_end_strategy=%s\n", input_end_strategy_name(context.input_end_strategy));
     printf("credentials=present_values_redacted\n");
 
     if (strcmp(platform.machine, "aarch64") != 0 && strcmp(platform.machine, "arm64") != 0) {
@@ -1602,7 +1681,11 @@ int main(int argc, char **argv) {
 
     int exit_code = 0;
     if (options.pcm_path != NULL) {
-        if (send_pcm_file(&context, options.pcm_path, options.frame_ms) != 0) {
+        if (send_pcm_file(
+                &context,
+                options.pcm_path,
+                options.frame_ms,
+                options.input_end_strategy) != 0) {
             exit_code = 20;
         } else {
             const bool completed = wait_for_response(

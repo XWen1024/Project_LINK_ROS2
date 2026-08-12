@@ -10,6 +10,7 @@ runs=10
 max_attempts=15
 expect_function_call=false
 feedback_strategy="cloud"
+input_end="client-commit"
 local_feedback_pcm=""
 run_root=""
 
@@ -22,6 +23,7 @@ Options:
   --max-attempts N         Stop after N attempts (default: 15).
   --expect-function-call   Require the get_magic_number round trip.
   --feedback-strategy NAME cloud, cloud-short, input-tts, or local-pcm.
+  --input-end NAME         server-vad (M0) or client-commit (M1).
   --local-feedback-pcm P   Local feedback PCM for local-pcm.
   --run-root PATH          Exact artifact directory (must not exist).
 EOF
@@ -51,6 +53,10 @@ while (($# > 0)); do
       ;;
     --feedback-strategy)
       feedback_strategy="${2:?--feedback-strategy requires a value}"
+      shift 2
+      ;;
+    --input-end)
+      input_end="${2:?--input-end requires a value}"
       shift 2
       ;;
     --local-feedback-pcm)
@@ -94,6 +100,10 @@ if [[ "${feedback_strategy}" == "local-pcm" && ! -f "${local_feedback_pcm}" ]]; 
   echo "ERROR: local-pcm requires --local-feedback-pcm" >&2
   exit 2
 fi
+if [[ "${input_end}" != "server-vad" && "${input_end}" != "client-commit" ]]; then
+  echo "ERROR: --input-end must be server-vad or client-commit" >&2
+  exit 2
+fi
 
 pcm_path="$(readlink -f "${pcm_path}")"
 if [[ -z "${run_root}" ]]; then
@@ -116,6 +126,7 @@ git_commit="$(git -C "${EXPERIMENT_DIR}" rev-parse HEAD 2>/dev/null || true)"
   printf 'max_attempts=%s\n' "${max_attempts}"
   printf 'expect_function_call=%s\n' "${expect_function_call}"
   printf 'feedback_strategy=%s\n' "${feedback_strategy}"
+  printf 'input_end_strategy=%s\n' "${input_end}"
   if [[ -n "${local_feedback_pcm}" ]]; then
     local_feedback_pcm="$(readlink -f "${local_feedback_pcm}")"
     printf 'local_feedback_pcm=%s\n' "${local_feedback_pcm}"
@@ -144,6 +155,7 @@ while ((successful_runs < runs && attempt < max_attempts)); do
     --artifact-dir "${run_dir}"
     --pcm "${pcm_path}"
     --response-timeout-sec 90
+    --input-end "${input_end}"
   )
   if [[ "${expect_function_call}" == true ]]; then
     smoke_args+=(--expect-function-call)
@@ -174,9 +186,14 @@ metrics=(
   authentication_registration_ms
   connect_ms
   input_end_to_vad_stop_ms
+  input_end_to_commit_ack_ms
+  last_frame_start_to_commit_ack_ms
+  last_frame_send_ms
   vad_stop_to_asr_complete_ms
   vad_stop_to_function_call_ms
   input_end_to_function_call_ms
+  last_frame_start_to_function_call_ms
+  commit_ack_to_function_call_ms
   function_call_to_args_done_ms
   local_function_output_ms
   function_output_send_ms
