@@ -128,8 +128,11 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
 fi
 
 tmux new-session -d -s "$SESSION" -n voice
-voice_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh"
-voice_cmd+=" && source '$WORKSPACE/install/setup.bash'"
+voice_cmd="cd '$WORKSPACE'"
+voice_cmd+=" && export ROS_DOMAIN_ID=42 ROS_LOCALHOST_ONLY=0"
+voice_cmd+=" && unset AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH PYTHONPATH"
+voice_cmd+=" && source /opt/ros/humble/setup.bash"
+voice_cmd+=" && source '$WORKSPACE/install/local_setup.bash'"
 if [[ -f "$VOICE_ENV" ]]; then
   voice_cmd+=" && set -a && source '$VOICE_ENV' && set +a"
 fi

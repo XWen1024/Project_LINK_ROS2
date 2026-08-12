@@ -86,6 +86,10 @@ first-write measurement is claimed for this run.
    `/dev/tty`; the real serial wake path is unchanged.
 4. Timing now includes the direct `wakeup_ack_to_first_input_audio` edge in
    addition to wake-relative measurements.
+5. The long-lived tmux server retained the main workspace ROS overlay and could
+   resolve `project_link_voice` to the legacy install after a restart. The pure
+   S2S tmux command now clears inherited ROS overlay variables, sources Humble,
+   then sources only the dedicated worktree `local_setup.bash`.
 
 ## Hardware blocker and next command
 
