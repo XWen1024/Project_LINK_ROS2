@@ -72,16 +72,22 @@ source scripts/project_link_env.sh
 set -u
 if [[ -f "$WORKSPACE/install/setup.bash" ]]; then
   # shellcheck disable=SC1090
+  set +u
   source "$WORKSPACE/install/setup.bash"
+  set -u
 fi
 
 if [[ -f "$VOICE_ENV" ]]; then
   # shellcheck disable=SC1090
+  set +u
   source "$VOICE_ENV"
+  set -u
 fi
 if [[ -f "$S2S_ENV" ]]; then
   # shellcheck disable=SC1090
+  set +u
   source "$S2S_ENV"
+  set -u
 else
   echo "ERROR: Volcengine S2S env file not found: $S2S_ENV" >&2
   exit 2
