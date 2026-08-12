@@ -37,6 +37,11 @@ C:\Users\XWen1024\Documents\ROS2小车-volc-voice
 -> USB 扬声器
 ```
 
+当前默认是有界半双工连续对话：一次讯飞唤醒后最多连续 8 轮；每次 AI 播放队列
+排空后自动重新打开麦克风，不重复播放“我在，请说”。后续 8 秒无人说话、WSS
+断开、响应超时或达到轮数上限时退出，重新等待讯飞唤醒。由于当前没有 AEC，AI
+播放期间不会同时录音。
+
 首版刻意不接运动控制：
 
 - 不启动底盘；
@@ -119,6 +124,12 @@ cd /home/wte/wheeltec_robot-volc-voice
 tmux attach -t project_link_volc_s2s_voice
 ```
 
+临时切回单轮：
+
+```bash
+./scripts/start_volc_s2s_voice.sh --restart --no-continuous --no-attach
+```
+
 如果只想先检查设备和变量名是否齐全：
 
 ```bash
@@ -159,7 +170,10 @@ volc_wakeup_to_speaker_write
 volc_first_audio_to_audio_done
 volc_last_input_to_response_done
 speaker_playback_drain
+continuous_listen_to_first_input_audio
 ```
+
+控制台另有可读事件：`[SESSION]`、`[TURN]`、`[TOOL]`、`[RESPONSE]`。
 
 这里的 `speaker_write` 是进入 PyAudio `stream.write()` 的时间，不是扬声器
 物理振膜真正发出第一采样的硬件测量。它比“收到网络音频”更接近用户体感，

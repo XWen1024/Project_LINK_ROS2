@@ -12,6 +12,8 @@ file together with `PROGRESS.md` and `README.md`.
   ARM64 helper owns the low-load WebSocket S2S connection. This path sends raw
   PCM and uses cloud `server_vad`; it must not load local FunVAD or manually
   commit normal turns. Legacy voice paths still own FunVAD.
+  One wake starts a bounded half-duplex continuous session; only reopen the mic
+  after AI playback drains because the current hardware path has no AEC.
   Its first launch starts no chassis process and must remain a non-`/cmd_vel`
   publisher until pure voice latency and cancellation have been accepted.
 - Start it with `scripts/start_volc_s2s_voice.sh`; keep the legacy

@@ -189,3 +189,28 @@ the final locally sent PCM to the server's committed event. The older
 `local_vad_record` and manual
 commit measurements above remain historical baseline data and must not be
 reported as measurements of the current server-VAD-only revision.
+
+## Continuous conversation and reconnect race fix
+
+Two real turns on the same cloud session produced `resp_round_1` and
+`resp_round_2`, proving the service retains multi-turn context. The previous
+Python wrapper nevertheless returned to iFlytek wake after every reply. It also
+allowed microphone upload before a reconnect's `session.created` and treated any
+AI audio as an input endpoint; a short session greeting could therefore stop
+capture and corrupt latency.
+
+The current wrapper uses a bounded half-duplex session:
+
+```text
+one wake + one acknowledgement
+-> user turn -> cloud reply/tool reply -> speaker drain
+-> automatically listen for the next user turn
+-> silence/connection loss/timeout/max-turns -> wake-word mode
+```
+
+It waits for `session.created` before PCM, accepts endpoint events only after
+the first user PCM frame, requires the cloud endpoint before `response.created`,
+and drops audio that arrives before the current turn owns a response. Default
+limits are 8 seconds of continuation silence and 8 turns. Full duplex is not
+enabled because the current microphone/speaker path has no acoustic echo
+cancellation.

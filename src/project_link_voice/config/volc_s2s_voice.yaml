@@ -3,6 +3,8 @@ volc_s2s_voice_node:
     native_bridge_executable: /home/wte/wheeltec_robot/experiments/volc_s2s_smoke/build/volc_ws_bridge
     bridge_connect_timeout_sec: 30.0
     response_timeout_sec: 45.0
+    continuous_conversation_enabled: true
+    continuous_max_turns: 8
     keyboard_wakeup: false
     wakeup_serial_port: auto
     wakeup_serial_baud: 115200

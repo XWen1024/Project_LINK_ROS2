@@ -27,7 +27,9 @@ the official Embedded Kit low-load WebSocket S2S connection. Microphone PCM is
 sent without local speech inference; cloud `server_vad` owns normal endpointing
 and automatic turn commit.
 The first launch is pure voice only: it starts no chassis process and publishes
-no `/cmd_vel`.
+no `/cmd_vel`. One iFlytek wake starts a half-duplex continuous session: after
+each AI reply finishes playing, the microphone automatically opens for the next
+turn. Eight seconds of silence or eight turns exits back to wake-word mode.
 
 ```bash
 cd /home/wte/wheeltec_robot-volc-voice
@@ -36,6 +38,9 @@ source /opt/ros/humble/setup.bash
 colcon build --packages-up-to project_link_voice
 ./scripts/start_volc_s2s_voice.sh --restart --no-attach
 ```
+
+Use `--no-continuous` to restore one-wake-per-turn behavior, or
+`--continuous-max-turns N` to change the bounded session length.
 
 Detailed setup, timing phases, and rollback instructions are in
 `docs/VOLCENGINE_END_TO_END_VOICE_MIGRATION_HANDOFF.md`. The first Orin field

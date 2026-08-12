@@ -11,6 +11,15 @@
   16 kHz mono PCM in 100 ms chunks and stops capture on the cloud endpoint. It
   keeps only no-speech and maximum-duration hard guards; Legacy voice nodes and
   their FunVAD implementation are unchanged.
+* Added bounded half-duplex continuous conversation. One wake acknowledgement is
+  followed by up to eight cloud-S2S turns; after each AI playback drains, raw PCM
+  capture automatically resumes. Eight seconds without new speech, connection
+  loss, response timeout, or the turn limit exits to iFlytek wake-word mode.
+  Session readiness is gated on `session.created`, greeting/pre-response audio is
+  dropped, and only cloud speech-stop/committed events may end microphone input.
+* Added human-readable `[SESSION]`, `[TURN]`, `[TOOL]`, and `[RESPONSE]` console
+  lines. Function output success now prints the function, call ID, and sanitized
+  local result without credentials.
 * Added `volc_ws_bridge`, a persistent native ARM64 process around the validated
   official Embedded Kit low-load WebSocket transport. Python and the native SDK
   communicate through a private inherited Unix socketpair with framed binary

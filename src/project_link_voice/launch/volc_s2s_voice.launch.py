@@ -18,6 +18,8 @@ def generate_launch_description() -> LaunchDescription:
     )
     params_file = LaunchConfiguration("params_file")
     keyboard_wakeup = LaunchConfiguration("keyboard_wakeup")
+    continuous_conversation_enabled = LaunchConfiguration("continuous_conversation_enabled")
+    continuous_max_turns = LaunchConfiguration("continuous_max_turns")
     wakeup_serial_port = LaunchConfiguration("wakeup_serial_port")
     audio_input_device_index = LaunchConfiguration("audio_input_device_index")
     audio_input_device_name = LaunchConfiguration("audio_input_device_name")
@@ -28,6 +30,8 @@ def generate_launch_description() -> LaunchDescription:
         [
             DeclareLaunchArgument("params_file", default_value=default_params),
             DeclareLaunchArgument("keyboard_wakeup", default_value="false"),
+            DeclareLaunchArgument("continuous_conversation_enabled", default_value="true"),
+            DeclareLaunchArgument("continuous_max_turns", default_value="8"),
             DeclareLaunchArgument("wakeup_serial_port", default_value="auto"),
             DeclareLaunchArgument("audio_input_device_index", default_value="0"),
             DeclareLaunchArgument("audio_input_device_name", default_value="XFM-DP-V0.0.18"),
@@ -52,6 +56,14 @@ def generate_launch_description() -> LaunchDescription:
                     params_file,
                     {
                         "keyboard_wakeup": keyboard_wakeup,
+                        "continuous_conversation_enabled": ParameterValue(
+                            continuous_conversation_enabled,
+                            value_type=bool,
+                        ),
+                        "continuous_max_turns": ParameterValue(
+                            continuous_max_turns,
+                            value_type=int,
+                        ),
                         "wakeup_serial_port": ParameterValue(wakeup_serial_port, value_type=str),
                         "audio_input_device_index": audio_input_device_index,
                         "audio_input_device_name": ParameterValue(audio_input_device_name, value_type=str),

@@ -12,6 +12,8 @@ AUDIO_INPUT_NAME="${AUDIO_INPUT_NAME:-XFM-DP-V0.0.18}"
 AUDIO_OUTPUT_INDEX="${AUDIO_OUTPUT_INDEX:--1}"
 PULSE_SINK="${PULSE_SINK:-alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo}"
 KEYBOARD_WAKEUP=false
+CONTINUOUS_CONVERSATION=true
+CONTINUOUS_MAX_TURNS=8
 RESTART=0
 ATTACH=1
 SCAN_ONLY=0
@@ -30,6 +32,8 @@ Options:
   --restart                  Replace the existing tmux session.
   --scan-only                Only scan IO devices and credential variable presence.
   --keyboard-wakeup          Press Enter instead of using the iFlytek serial wake event.
+  --no-continuous            Require a new wake word after every response.
+  --continuous-max-turns N   Maximum turns after one wake. Default: $CONTINUOUS_MAX_TURNS
   --wakeup-port PATH|auto    Default: $WAKEUP_PORT
   --audio-input-index N      Default: $AUDIO_INPUT_INDEX
   --audio-input-name NAME    Preferred stable microphone name. Default: $AUDIO_INPUT_NAME
@@ -54,6 +58,8 @@ while [[ $# -gt 0 ]]; do
     --restart) RESTART=1 ;;
     --scan-only) SCAN_ONLY=1 ;;
     --keyboard-wakeup) KEYBOARD_WAKEUP=true ;;
+    --no-continuous) CONTINUOUS_CONVERSATION=false ;;
+    --continuous-max-turns) CONTINUOUS_MAX_TURNS="$2"; shift ;;
     --wakeup-port) WAKEUP_PORT="$2"; shift ;;
     --audio-input-index) AUDIO_INPUT_INDEX="$2"; shift ;;
     --audio-input-name) AUDIO_INPUT_NAME="$2"; shift ;;
@@ -155,6 +161,8 @@ voice_cmd+=" && export PROJECT_LINK_VOLC_BRIDGE_BIN='$BRIDGE_BIN'"
 voice_cmd+=" && export PULSE_SINK='$PULSE_SINK'"
 voice_cmd+=" && ros2 launch project_link_voice volc_s2s_voice.launch.py"
 voice_cmd+=" keyboard_wakeup:=$KEYBOARD_WAKEUP"
+voice_cmd+=" continuous_conversation_enabled:=$CONTINUOUS_CONVERSATION"
+voice_cmd+=" continuous_max_turns:=$CONTINUOUS_MAX_TURNS"
 voice_cmd+=" wakeup_serial_port:='$WAKEUP_PORT'"
 voice_cmd+=" audio_input_device_index:=$AUDIO_INPUT_INDEX"
 voice_cmd+=" audio_input_device_name:='$AUDIO_INPUT_NAME'"
