@@ -123,3 +123,34 @@ write, response completion, and playback drain. The timing file remains:
 ```text
 ~/.ros/project_link_voice/voice_timing.jsonl
 ```
+
+## First complete acoustic turn
+
+After the three USB devices were connected, Orin enumerated the stable iFlytek
+serial `0004`, XFM PyAudio input index `25`, and C-Media output index `24`. The
+C-Media Pulse profile required one off/on refresh before its stable analog sink
+was created.
+
+The first real turn passed wake, acknowledgement, XFM capture, local FunVAD,
+realtime WSS upload, Turbo S2S response, native PCM callback, and C-Media speaker
+write. Observed trace `7eacadf4833d`:
+
+```text
+wakeup_ack_playback                 1970.765 ms
+wakeup_ack_to_first_input_audio      208.928 ms
+local_vad_record                    4644.046 ms
+volc_last_input_to_commit             41.404 ms
+volc_commit_to_server_ack            119.750 ms
+volc_last_input_to_response_created 3190.857 ms
+volc_last_input_to_first_ai_audio   3191.512 ms
+volc_audio_callback_to_speaker_write   7.775 ms
+volc_last_input_to_speaker_write    3199.287 ms
+volc_first_audio_to_audio_done      1690.689 ms
+```
+
+The official low-load SDK printed raw `response.done` internally but did not
+forward that event through `on_volc_message_data` in this run. It did forward
+`VOLC_CONV_STATUS_ANSWER_FINISH` through the documented conversation-status
+callback. The integration now treats `ANSWER_FINISH` as the primary completion
+signal while retaining `response.done` as a compatible alternate, preventing a
+false 45-second response timeout after audio has already completed.

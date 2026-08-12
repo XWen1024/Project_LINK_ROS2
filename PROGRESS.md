@@ -38,6 +38,14 @@
   the node to ready without committing an empty turn. Added a direct
   `wakeup_ack_to_first_input_audio` edge so future hardware traces do not need to
   infer that gap by subtraction.
+* With all three USB devices connected, the first real acoustic turn completed
+  iFlytek wake, acknowledgement, XFM capture, FunVAD, persistent WSS upload,
+  Turbo S2S PCM response, and C-Media speaker write. Last input to first AI PCM
+  was 3191.512 ms and last input to PyAudio speaker write was 3199.287 ms.
+* The SDK printed raw `response.done` internally but exposed completion to the
+  application as `VOLC_CONV_STATUS_ANSWER_FINISH`. The node now completes the
+  turn on that official conversation-status callback, with `response.done`
+  retained as a compatible alternate, instead of falsely waiting 45 seconds.
 
 ## UWB summon/follow ROS 2 and Nav2 migration - 2026-08-04
 

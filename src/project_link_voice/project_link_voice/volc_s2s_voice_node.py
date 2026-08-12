@@ -310,11 +310,27 @@ class VolcS2SVoiceNode(Node):
         elif event == "conversation_status":
             turn = self._current_turn()
             if turn is not None:
+                status_name = str(value.get("name", "UNKNOWN"))
                 turn.trace.debug(
                     "volc_conversation_status",
                     status=value.get("status"),
-                    name=value.get("name"),
+                    name=status_name,
                 )
+                if status_name == "ANSWER_FINISH":
+                    event_ns = frame.monotonic_ns
+                    with turn.lock:
+                        if turn.response_done_ns is None:
+                            turn.response_done_ns = event_ns
+                            turn.response_status = "completed"
+                            self._record_turn_interval(
+                                turn,
+                                "volc_last_input_to_response_done",
+                                turn.last_input_ns,
+                                event_ns,
+                                response_status=turn.response_status,
+                                completion_signal="VOLC_CONV_STATUS_ANSWER_FINISH",
+                            )
+                            turn.done.set()
         elif event == "command_result":
             turn = self._current_turn()
             if turn is not None:
@@ -423,17 +439,19 @@ class VolcS2SVoiceNode(Node):
                     event_ns,
                 )
             elif event_type == "response.done":
-                turn.response_done_ns = event_ns
                 response = root.get("response") if isinstance(root.get("response"), dict) else {}
-                turn.response_status = str(response.get("status", "unknown"))
-                self._record_turn_interval(
-                    turn,
-                    "volc_last_input_to_response_done",
-                    turn.last_input_ns,
-                    event_ns,
-                    response_status=turn.response_status,
-                )
-                turn.done.set()
+                if turn.response_done_ns is None:
+                    turn.response_done_ns = event_ns
+                    turn.response_status = str(response.get("status", "unknown"))
+                    self._record_turn_interval(
+                        turn,
+                        "volc_last_input_to_response_done",
+                        turn.last_input_ns,
+                        event_ns,
+                        response_status=turn.response_status,
+                        completion_signal="response.done",
+                    )
+                    turn.done.set()
             elif event_type == "error":
                 turn.trace.debug("volc_server_error", error=root.get("error"))
 
