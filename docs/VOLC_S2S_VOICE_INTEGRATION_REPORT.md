@@ -29,10 +29,10 @@ fallback. The new launch starts no chassis process and does not publish
 | Wake acknowledgement | PASS (board-audio test) | Cached file played successfully in 1909.611 and 1898.789 ms |
 | Audio streaming entry | PASS (board-input test) | First 16 kHz frame sent; ack end to first input was 315.021 ms |
 | Empty-turn safety | PASS | 8-second local no-speech timeout cleared input without commit |
-| iFlytek hardware wake | NOT TESTED | Wake board absent from USB and `/dev/serial/by-id` empty |
-| XFM microphone capture | NOT TESTED | XFM USB audio device absent from USB/ALSA/PyAudio |
-| C-Media speaker playback | NOT TESTED | C-Media USB device and Pulse sink absent |
-| Real speech to AI speaker response | NOT TESTED | Blocked by the three absent USB devices |
+| iFlytek hardware wake | PASS | Stable serial `0004` produced a real wake trace |
+| XFM microphone capture | PASS | PyAudio index 25 streamed 16 kHz mono PCM through FunVAD/WSS |
+| C-Media speaker playback | PASS | Stable Pulse sink received the AI PCM playback stream |
+| Real speech to AI speaker response | PASS | Trace `7eacadf4833d`; last input to speaker write 3199.287 ms |
 
 ## Observed startup latency
 
