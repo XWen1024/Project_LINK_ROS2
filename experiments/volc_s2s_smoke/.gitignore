@@ -1,0 +1,7 @@
+/build/
+/.env
+/.env.local
+/assets/*.pcm
+/assets/*.wav
+/artifacts/*
+!/artifacts/.gitkeep

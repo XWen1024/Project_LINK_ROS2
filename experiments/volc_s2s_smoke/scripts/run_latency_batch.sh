@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+EXPERIMENT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+
+label=""
+pcm_path=""
+runs=10
+max_attempts=15
+expect_function_call=false
+feedback_strategy="cloud"
+local_feedback_pcm=""
+run_root=""
+
+usage() {
+  cat <<'EOF'
+Usage: run_latency_batch.sh --label LABEL --pcm PATH [options]
+
+Options:
+  --runs N                 Number of identical runs (default: 10).
+  --max-attempts N         Stop after N attempts (default: 15).
+  --expect-function-call   Require the get_magic_number round trip.
+  --feedback-strategy NAME cloud, cloud-short, input-tts, or local-pcm.
+  --local-feedback-pcm P   Local feedback PCM for local-pcm.
+  --run-root PATH          Exact artifact directory (must not exist).
+EOF
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --label)
+      label="${2:?--label requires a value}"
+      shift 2
+      ;;
+    --pcm)
+      pcm_path="${2:?--pcm requires a value}"
+      shift 2
+      ;;
+    --runs)
+      runs="${2:?--runs requires a value}"
+      shift 2
+      ;;
+    --max-attempts)
+      max_attempts="${2:?--max-attempts requires a value}"
+      shift 2
+      ;;
+    --expect-function-call)
+      expect_function_call=true
+      shift
+      ;;
+    --feedback-strategy)
+      feedback_strategy="${2:?--feedback-strategy requires a value}"
+      shift 2
+      ;;
+    --local-feedback-pcm)
+      local_feedback_pcm="${2:?--local-feedback-pcm requires a value}"
+      shift 2
+      ;;
+    --run-root)
+      run_root="${2:?--run-root requires a value}"
+      shift 2
+      ;;
+    --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "${label}" || -z "${pcm_path}" ]]; then
+  echo "ERROR: --label and --pcm are required" >&2
+  usage >&2
+  exit 2
+fi
+if [[ ! "${runs}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: --runs must be a positive integer" >&2
+  exit 2
+fi
+if [[ ! "${max_attempts}" =~ ^[1-9][0-9]*$ ]] || ((max_attempts < runs)); then
+  echo "ERROR: --max-attempts must be an integer >= --runs" >&2
+  exit 2
+fi
+if [[ ! -f "${pcm_path}" ]]; then
+  echo "ERROR: PCM input not found: ${pcm_path}" >&2
+  exit 2
+fi
+if [[ "${feedback_strategy}" == "local-pcm" && ! -f "${local_feedback_pcm}" ]]; then
+  echo "ERROR: local-pcm requires --local-feedback-pcm" >&2
+  exit 2
+fi
+
+pcm_path="$(readlink -f "${pcm_path}")"
+if [[ -z "${run_root}" ]]; then
+  run_root="${EXPERIMENT_DIR}/artifacts/ab_latency/${label}_$(date +%Y%m%d_%H%M%S)"
+fi
+if [[ -e "${run_root}" ]]; then
+  echo "ERROR: run output path already exists: ${run_root}" >&2
+  exit 2
+fi
+mkdir -p "${run_root}"
+
+pcm_sha256="$(sha256sum "${pcm_path}" | awk '{print $1}')"
+pcm_bytes="$(stat -c '%s' "${pcm_path}")"
+git_branch="$(git -C "${EXPERIMENT_DIR}" branch --show-current 2>/dev/null || true)"
+git_commit="$(git -C "${EXPERIMENT_DIR}" rev-parse HEAD 2>/dev/null || true)"
+
+{
+  printf 'label=%s\n' "${label}"
+  printf 'runs=%s\n' "${runs}"
+  printf 'max_attempts=%s\n' "${max_attempts}"
+  printf 'expect_function_call=%s\n' "${expect_function_call}"
+  printf 'feedback_strategy=%s\n' "${feedback_strategy}"
+  if [[ -n "${local_feedback_pcm}" ]]; then
+    local_feedback_pcm="$(readlink -f "${local_feedback_pcm}")"
+    printf 'local_feedback_pcm=%s\n' "${local_feedback_pcm}"
+    printf 'local_feedback_sha256=%s\n' "$(sha256sum "${local_feedback_pcm}" | awk '{print $1}')"
+  fi
+  printf 'pcm_path=%s\n' "${pcm_path}"
+  printf 'pcm_sha256=%s\n' "${pcm_sha256}"
+  printf 'pcm_bytes=%s\n' "${pcm_bytes}"
+  printf 'pcm_format=PCM_S16LE/16000Hz/mono\n'
+  printf 'git_branch=%s\n' "${git_branch}"
+  printf 'git_commit=%s\n' "${git_commit}"
+  printf 'started_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'percentile_method=nearest-rank\n'
+} >"${run_root}/metadata.env"
+
+run_status_tsv="${run_root}/run_status.tsv"
+printf 'attempt\tsuccess_run\texit_code\tlog\n' >"${run_status_tsv}"
+
+attempt=0
+successful_runs=0
+while ((successful_runs < runs && attempt < max_attempts)); do
+  attempt=$((attempt + 1))
+  run_dir="${run_root}/attempt_$(printf '%02d' "${attempt}")"
+  echo "===== ${label} attempt ${attempt}/${max_attempts}; successes ${successful_runs}/${runs} ====="
+  smoke_args=(
+    --artifact-dir "${run_dir}"
+    --pcm "${pcm_path}"
+    --response-timeout-sec 90
+  )
+  if [[ "${expect_function_call}" == true ]]; then
+    smoke_args+=(--expect-function-call)
+  fi
+  smoke_args+=(--feedback-strategy "${feedback_strategy}")
+  if [[ -n "${local_feedback_pcm}" ]]; then
+    smoke_args+=(--local-feedback-pcm "${local_feedback_pcm}")
+  fi
+
+  set +e
+  "${SCRIPT_DIR}/run_smoke.sh" "${smoke_args[@]}"
+  status=$?
+  set -e
+  success_run="N/A"
+  if ((status == 0)); then
+    successful_runs=$((successful_runs + 1))
+    success_run="${successful_runs}"
+  fi
+  printf '%s\t%s\t%s\t%s\n' \
+    "${attempt}" "${success_run}" "${status}" "${run_dir}/smoke.log" >>"${run_status_tsv}"
+done
+
+if ((successful_runs < runs)); then
+  echo "ERROR: only ${successful_runs}/${runs} successful runs after ${attempt} attempts" >&2
+fi
+
+metrics=(
+  authentication_registration_ms
+  connect_ms
+  input_end_to_vad_stop_ms
+  vad_stop_to_asr_complete_ms
+  vad_stop_to_function_call_ms
+  input_end_to_function_call_ms
+  function_call_to_args_done_ms
+  local_function_output_ms
+  function_output_send_ms
+  function_output_to_response_created_ms
+  response_created_to_first_ai_audio_ms
+  input_end_to_first_response_audio_ms
+  vad_stop_to_first_response_audio_ms
+  response_created_to_first_final_audio_ms
+  function_output_to_first_final_audio_ms
+  input_end_to_first_ai_audio_ms
+  input_end_to_first_final_audio_ms
+  first_final_audio_to_audio_done_ms
+  first_final_audio_to_response_done_ms
+  input_end_to_response_done_ms
+  input_tts_send_ms
+  input_tts_to_first_ai_audio_ms
+  function_output_to_local_playback_start_ms
+  function_call_to_local_playback_start_ms
+  input_end_to_local_playback_start_ms
+  vad_stop_to_local_playback_start_ms
+  local_playback_duration_ms
+)
+
+raw_tsv="${run_root}/latency_runs.tsv"
+summary_tsv="${run_root}/latency_summary.tsv"
+
+{
+  printf 'attempt\tsuccess_run\texit_code'
+  for metric in "${metrics[@]}"; do
+    printf '\t%s' "${metric}"
+  done
+  printf '\n'
+
+  for ((current_attempt = 1; current_attempt <= attempt; current_attempt++)); do
+    run_name="attempt_$(printf '%02d' "${current_attempt}")"
+    log_file="${run_root}/${run_name}/smoke.log"
+    status_row="$(awk -F '\t' -v wanted="${current_attempt}" '$1 == wanted {print $0}' "${run_status_tsv}")"
+    success_run="$(printf '%s' "${status_row}" | cut -f2)"
+    exit_code="$(printf '%s' "${status_row}" | cut -f3)"
+    printf '%s\t%s\t%s' "${current_attempt}" "${success_run:-N/A}" "${exit_code:-N/A}"
+    for metric in "${metrics[@]}"; do
+      value="$(grep -E "^${metric}=" "${log_file}" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+      value="${value%ms}"
+      printf '\t%s' "${value:-N/A}"
+    done
+    printf '\n'
+  done
+} >"${raw_tsv}"
+
+awk -F '\t' '
+  function sort_values(column, count,    i, j, key) {
+    for (i = 2; i <= count; i++) {
+      key = values[column, i]
+      j = i - 1
+      while (j >= 1 && values[column, j] > key) {
+        values[column, j + 1] = values[column, j]
+        j--
+      }
+      values[column, j + 1] = key
+    }
+  }
+  function ceil_number(value) {
+    return value == int(value) ? value : int(value) + 1
+  }
+  NR == 1 {
+    for (column = 4; column <= NF; column++) name[column] = $column
+    next
+  }
+  {
+    if ($3 != "0") next
+    for (column = 4; column <= NF; column++) {
+      if ($column != "N/A" && $column != "") {
+        value = $column + 0
+        count[column]++
+        values[column, count[column]] = value
+        sum[column] += value
+      }
+    }
+  }
+  END {
+    print "metric\tcount\tmean_ms\tp50_ms\tp90_ms\tmin_ms\tmax_ms"
+    for (column = 4; column <= NF; column++) {
+      if (count[column] > 0) {
+        sort_values(column, count[column])
+        p50_index = ceil_number(0.50 * count[column])
+        p90_index = ceil_number(0.90 * count[column])
+        printf "%s\t%d\t%.1f\t%.0f\t%.0f\t%.0f\t%.0f\n", \
+          name[column], count[column], sum[column] / count[column], \
+          values[column, p50_index], values[column, p90_index], \
+          values[column, 1], values[column, count[column]]
+      } else {
+        printf "%s\t0\tN/A\tN/A\tN/A\tN/A\tN/A\n", name[column]
+      }
+    }
+  }
+' "${raw_tsv}" >"${summary_tsv}"
+
+printf 'completed_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"${run_root}/metadata.env"
+printf 'attempts=%s\n' "${attempt}" >>"${run_root}/metadata.env"
+printf 'successful_runs=%s\n' "${successful_runs}" >>"${run_root}/metadata.env"
+
+echo "===== raw runs ====="
+column -t -s $'\t' "${raw_tsv}" 2>/dev/null || cat "${raw_tsv}"
+echo "===== summary ====="
+column -t -s $'\t' "${summary_tsv}" 2>/dev/null || cat "${summary_tsv}"
+echo "Artifacts: ${run_root}"
+
+if ((successful_runs < runs)); then
+  exit 1
+fi
