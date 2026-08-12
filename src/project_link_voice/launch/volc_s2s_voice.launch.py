@@ -20,6 +20,7 @@ def generate_launch_description() -> LaunchDescription:
     keyboard_wakeup = LaunchConfiguration("keyboard_wakeup")
     wakeup_serial_port = LaunchConfiguration("wakeup_serial_port")
     audio_input_device_index = LaunchConfiguration("audio_input_device_index")
+    audio_input_device_name = LaunchConfiguration("audio_input_device_name")
     audio_output_device_index = LaunchConfiguration("audio_output_device_index")
     native_bridge_executable = LaunchConfiguration("native_bridge_executable")
     pulse_sink = LaunchConfiguration("pulse_sink")
@@ -29,6 +30,7 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("keyboard_wakeup", default_value="false"),
             DeclareLaunchArgument("wakeup_serial_port", default_value="auto"),
             DeclareLaunchArgument("audio_input_device_index", default_value="0"),
+            DeclareLaunchArgument("audio_input_device_name", default_value="XFM-DP-V0.0.18"),
             DeclareLaunchArgument("audio_output_device_index", default_value="-1"),
             DeclareLaunchArgument(
                 "native_bridge_executable",
@@ -52,6 +54,7 @@ def generate_launch_description() -> LaunchDescription:
                         "keyboard_wakeup": keyboard_wakeup,
                         "wakeup_serial_port": ParameterValue(wakeup_serial_port, value_type=str),
                         "audio_input_device_index": audio_input_device_index,
+                        "audio_input_device_name": ParameterValue(audio_input_device_name, value_type=str),
                         "audio_output_device_index": audio_output_device_index,
                         "native_bridge_executable": native_bridge_executable,
                         "pulse_sink": pulse_sink,
@@ -60,4 +63,3 @@ def generate_launch_description() -> LaunchDescription:
             ),
         ]
     )
-

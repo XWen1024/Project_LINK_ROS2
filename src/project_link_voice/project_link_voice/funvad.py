@@ -95,14 +95,51 @@ def extract_vad_events(result: Any) -> list[tuple[int, int]]:
     return events
 
 
+def resolve_input_device_index(
+    audio: Any,
+    preferred_name: str = "",
+    fallback_index: int | None = None,
+) -> tuple[int | None, str]:
+    """Resolve an input device on every open so USB index changes are harmless."""
+    wanted = preferred_name.strip().casefold()
+    if wanted:
+        matches: list[tuple[int, str]] = []
+        for index in range(int(audio.get_device_count())):
+            info = audio.get_device_info_by_index(index)
+            name = str(info.get("name", ""))
+            if int(info.get("maxInputChannels", 0)) > 0 and wanted in name.casefold():
+                matches.append((index, name))
+        if not matches:
+            raise RuntimeError(f"audio input device not found by name: {preferred_name}")
+        return matches[0]
+    if fallback_index is not None and fallback_index >= 0:
+        info = audio.get_device_info_by_index(int(fallback_index))
+        if int(info.get("maxInputChannels", 0)) < 1:
+            raise RuntimeError(
+                f"audio input index {fallback_index} has no input channels: {info.get('name', 'unknown')}"
+            )
+        return int(fallback_index), str(info.get("name", "unknown"))
+    return None, "default"
+
+
 class FunVadRecorder:
     """Captures 16 kHz PCM and terminates only on VAD or an explicit hard bound."""
 
-    def __init__(self, settings: VadSettings, model_name: str, device: str = "cuda", input_device_index: int | None = None) -> None:
+    def __init__(
+        self,
+        settings: VadSettings,
+        model_name: str,
+        device: str = "cuda",
+        input_device_index: int | None = None,
+        input_device_name: str = "",
+        device_selected_callback: Callable[[int | None, str], None] | None = None,
+    ) -> None:
         self.settings = settings
         self.model_name = model_name
         self.device = device
         self.input_device_index = input_device_index
+        self.input_device_name = input_device_name
+        self.device_selected_callback = device_selected_callback
         self._model: Any = None
 
     def _model_instance(self) -> Any:
@@ -155,6 +192,13 @@ class FunVadRecorder:
         state = VadEndpointState(self.settings)
         cache: dict[str, Any] = {}
         audio = pyaudio.PyAudio()
+        selected_index, selected_name = resolve_input_device_index(
+            audio,
+            self.input_device_name,
+            self.input_device_index,
+        )
+        if self.device_selected_callback is not None:
+            self.device_selected_callback(selected_index, selected_name)
         open_kwargs = {
             "format": pyaudio.paInt16,
             "channels": 1,
@@ -162,8 +206,8 @@ class FunVadRecorder:
             "input": True,
             "frames_per_buffer": self.settings.chunk_bytes // 2,
         }
-        if self.input_device_index is not None and self.input_device_index >= 0:
-            open_kwargs["input_device_index"] = self.input_device_index
+        if selected_index is not None:
+            open_kwargs["input_device_index"] = selected_index
         stream = audio.open(**open_kwargs)
         try:
             while True:

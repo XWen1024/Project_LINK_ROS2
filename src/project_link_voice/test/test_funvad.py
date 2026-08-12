@@ -1,6 +1,12 @@
 import numpy as np
 
-from project_link_voice.funvad import FunVadRecorder, VadEndpointState, VadSettings, extract_vad_events
+from project_link_voice.funvad import (
+    FunVadRecorder,
+    VadEndpointState,
+    VadSettings,
+    extract_vad_events,
+    resolve_input_device_index,
+)
 
 
 def test_vad_end_keeps_preroll_and_finishes():
@@ -49,3 +55,38 @@ def test_recorder_passes_normalized_waveform_and_streaming_chunk_size():
     assert calls[0]["chunk_size"] == 200
     assert calls[0]["is_final"] is False
     assert events == [(0, -1)]
+
+
+def test_resolve_input_device_by_name_ignores_changed_numeric_index():
+    class FakeAudio:
+        devices = [
+            {"name": "pulse", "maxInputChannels": 32},
+            {"name": "XFM-DP-V0.0.18: USB Audio (hw:3,0)", "maxInputChannels": 1},
+        ]
+
+        def get_device_count(self):
+            return len(self.devices)
+
+        def get_device_info_by_index(self, index):
+            return self.devices[index]
+
+    assert resolve_input_device_index(FakeAudio(), "XFM-DP-V0.0.18", 99) == (
+        1,
+        "XFM-DP-V0.0.18: USB Audio (hw:3,0)",
+    )
+
+
+def test_resolve_input_device_rejects_output_only_index():
+    class FakeAudio:
+        def get_device_count(self):
+            return 1
+
+        def get_device_info_by_index(self, index):
+            return {"name": "USB speaker", "maxInputChannels": 0}
+
+    try:
+        resolve_input_device_index(FakeAudio(), "", 0)
+    except RuntimeError as exc:
+        assert "no input channels" in str(exc)
+    else:
+        raise AssertionError("output-only index should be rejected")

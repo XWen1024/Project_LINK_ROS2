@@ -8,6 +8,7 @@ SESSION="${PROJECT_LINK_VOLC_S2S_SESSION:-project_link_volc_s2s_voice}"
 BRIDGE_BIN="${PROJECT_LINK_VOLC_BRIDGE_BIN:-$WORKSPACE/experiments/volc_s2s_smoke/build/volc_ws_bridge}"
 WAKEUP_PORT="${WAKEUP_PORT:-auto}"
 AUDIO_INPUT_INDEX="${AUDIO_INPUT_INDEX:-0}"
+AUDIO_INPUT_NAME="${AUDIO_INPUT_NAME:-XFM-DP-V0.0.18}"
 AUDIO_OUTPUT_INDEX="${AUDIO_OUTPUT_INDEX:--1}"
 PULSE_SINK="${PULSE_SINK:-alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo}"
 KEYBOARD_WAKEUP=false
@@ -31,6 +32,7 @@ Options:
   --keyboard-wakeup          Press Enter instead of using the iFlytek serial wake event.
   --wakeup-port PATH|auto    Default: $WAKEUP_PORT
   --audio-input-index N      Default: $AUDIO_INPUT_INDEX
+  --audio-input-name NAME    Preferred stable microphone name. Default: $AUDIO_INPUT_NAME
   --audio-output-index N     PyAudio output index, -1 uses the default/Pulse sink.
   --pulse-sink NAME          Stable PulseAudio sink name.
   --voice-env PATH           Legacy TTS/model env file. Default: $VOICE_ENV
@@ -54,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --keyboard-wakeup) KEYBOARD_WAKEUP=true ;;
     --wakeup-port) WAKEUP_PORT="$2"; shift ;;
     --audio-input-index) AUDIO_INPUT_INDEX="$2"; shift ;;
+    --audio-input-name) AUDIO_INPUT_NAME="$2"; shift ;;
     --audio-output-index) AUDIO_OUTPUT_INDEX="$2"; shift ;;
     --pulse-sink) PULSE_SINK="$2"; shift ;;
     --voice-env) VOICE_ENV="$2"; shift ;;
@@ -118,6 +121,17 @@ if [[ ! -x "$BRIDGE_BIN" ]]; then
   exit 2
 fi
 
+PULSE_CARD="alsa_card.usb-C-Media_Electronics_Inc._USB_Audio_Device-00"
+if command -v pactl >/dev/null 2>&1 && pactl list short cards | grep -Fq "$PULSE_CARD"; then
+  if ! pactl list short sinks | grep -Fq "$PULSE_SINK"; then
+    pactl set-card-profile "$PULSE_CARD" off || true
+    sleep 1
+    pactl set-card-profile "$PULSE_CARD" output:analog-stereo || true
+    sleep 1
+  fi
+  pactl set-default-sink "$PULSE_SINK" || true
+fi
+
 if tmux has-session -t "$SESSION" 2>/dev/null; then
   if [[ "$RESTART" -eq 1 ]]; then
     tmux kill-session -t "$SESSION"
@@ -143,6 +157,7 @@ voice_cmd+=" && ros2 launch project_link_voice volc_s2s_voice.launch.py"
 voice_cmd+=" keyboard_wakeup:=$KEYBOARD_WAKEUP"
 voice_cmd+=" wakeup_serial_port:='$WAKEUP_PORT'"
 voice_cmd+=" audio_input_device_index:=$AUDIO_INPUT_INDEX"
+voice_cmd+=" audio_input_device_name:='$AUDIO_INPUT_NAME'"
 voice_cmd+=" audio_output_device_index:=$AUDIO_OUTPUT_INDEX"
 voice_cmd+=" native_bridge_executable:='$BRIDGE_BIN'"
 voice_cmd+=" pulse_sink:='$PULSE_SINK'"

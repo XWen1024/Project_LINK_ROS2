@@ -25,6 +25,15 @@ from .volc_s2s_bridge import (
     BridgeFrame,
     VolcS2SBridgeProcess,
 )
+from .volc_s2s_tools import (
+    FunctionCall,
+    build_followup_response_event,
+    build_function_output_event,
+    execute_safe_function,
+    function_call_from_arguments_done,
+    function_call_from_item,
+    function_calls_from_legacy_array,
+)
 from .wakeup import SerialWakeDetector, resolve_wakeup_serial_port
 
 
@@ -46,6 +55,13 @@ class TurnState:
     first_speaker_write_ns: int | None = None
     response_audio_done_ns: int | None = None
     response_done_ns: int | None = None
+    function_output_sent_ns: int | None = None
+    pending_call_id: str = ""
+    pending_function_name: str = ""
+    pending_arguments: str = "{}"
+    function_output_sent: bool = False
+    final_response_created_ns: int | None = None
+    first_ai_audio_after_function_ns: int | None = None
     audio_bytes: int = 0
     response_status: str = ""
 
@@ -178,6 +194,7 @@ class VolcS2SVoiceNode(Node):
         self._active_turn: TurnState | None = None
         self._session_model = "unknown"
         self._startup_trace = self._debug_sink.start_trace("volc_s2s_startup")
+        self._bridge_lock = threading.Lock()
 
         output_index = int(self.get_parameter("audio_output_device_index").value)
         self._player = PcmPlaybackWorker(
@@ -188,9 +205,9 @@ class VolcS2SVoiceNode(Node):
             error_callback=self.get_logger().error,
         )
 
-        executable = str(self.get_parameter("native_bridge_executable").value)
+        self._bridge_executable = str(self.get_parameter("native_bridge_executable").value)
         self._bridge = VolcS2SBridgeProcess(
-            executable,
+            self._bridge_executable,
             self._on_bridge_frame,
             self.get_logger().error,
         )
@@ -236,6 +253,7 @@ class VolcS2SVoiceNode(Node):
         self.declare_parameter("audio_max_utterance_sec", 12.0)
         self.declare_parameter("audio_min_speech_sec", 0.30)
         self.declare_parameter("audio_input_device_index", 0)
+        self.declare_parameter("audio_input_device_name", "XFM-DP-V0.0.18")
         self.declare_parameter("audio_output_device_index", -1)
         self.declare_parameter(
             "pulse_sink",
@@ -271,6 +289,117 @@ class VolcS2SVoiceNode(Node):
         if start_ns is None or end_ns is None or end_ns < start_ns:
             return
         turn.trace.record(phase, (end_ns - start_ns) / 1_000_000.0, **fields)
+
+    def _restart_bridge(self) -> bool:
+        with self._bridge_lock:
+            if self._bridge.connected:
+                return True
+            started_ns = time.monotonic_ns()
+            self.get_logger().warning("Volcengine WSS is disconnected; recreating the native bridge.")
+            self._status("reconnecting")
+            self._bridge.close()
+            replacement = VolcS2SBridgeProcess(
+                self._bridge_executable,
+                self._on_bridge_frame,
+                self.get_logger().error,
+            )
+            replacement.start()
+            self._bridge = replacement
+            connected = replacement.wait_connected(
+                float(self.get_parameter("bridge_connect_timeout_sec").value)
+            )
+            elapsed_ms = (time.monotonic_ns() - started_ns) / 1_000_000.0
+            self.get_logger().info(
+                f"Volcengine WSS reconnect success={connected} elapsed_ms={elapsed_ms:.3f}"
+            )
+            self._status("connected" if connected else "disconnected")
+            return connected
+
+    def _begin_reconnect_if_needed(self) -> threading.Thread | None:
+        if self._bridge.connected:
+            return None
+        thread = threading.Thread(target=self._restart_bridge, name="volc-s2s-reconnect", daemon=True)
+        thread.start()
+        return thread
+
+    def _remember_function_call_locked(
+        self,
+        turn: TurnState,
+        call: FunctionCall,
+        event_ns: int,
+        event_type: str,
+    ) -> None:
+        turn.pending_call_id = call.call_id
+        turn.pending_function_name = call.name
+        turn.pending_arguments = call.arguments
+        if turn.function_call_ns is None:
+            turn.function_call_ns = event_ns
+            self._record_turn_interval(
+                turn,
+                "volc_vad_stop_to_function_call",
+                turn.server_speech_stopped_ns,
+                event_ns,
+                function=call.name,
+            )
+            self._record_turn_interval(
+                turn,
+                "volc_last_input_to_function_call",
+                turn.last_input_ns,
+                event_ns,
+                function=call.name,
+            )
+        turn.trace.debug(
+            "volc_function_call_received",
+            event_type=event_type,
+            function=call.name,
+            call_id=call.call_id,
+            arguments=call.arguments[:2048],
+        )
+
+    def _return_function_output(self, turn: TurnState, call: FunctionCall) -> None:
+        with turn.lock:
+            if turn.function_output_sent or self._current_turn() is not turn:
+                return
+            turn.function_output_sent = True
+        execute_started_ns = time.monotonic_ns()
+        output = execute_safe_function(call)
+        execute_done_ns = time.monotonic_ns()
+        turn.trace.record(
+            "volc_local_function_execute",
+            (execute_done_ns - execute_started_ns) / 1_000_000.0,
+            function=call.name,
+            success="error" not in output,
+        )
+        try:
+            output_sent_ns = self._bridge.send_json(
+                build_function_output_event(call.call_id, output)
+            )
+            response_create_ns = self._bridge.send_json(build_followup_response_event())
+        except Exception:
+            with turn.lock:
+                turn.function_output_sent = False
+            raise
+        with turn.lock:
+            turn.function_output_sent_ns = output_sent_ns
+        self._record_turn_interval(
+            turn,
+            "volc_function_call_to_output_sent",
+            turn.function_call_ns,
+            output_sent_ns,
+            function=call.name,
+        )
+        turn.trace.record(
+            "volc_function_output_to_response_create_sent",
+            (response_create_ns - output_sent_ns) / 1_000_000.0,
+            function=call.name,
+        )
+        turn.trace.debug(
+            "volc_function_output_returned",
+            function=call.name,
+            call_id=call.call_id,
+            arguments=call.arguments[:2048],
+            result=output,
+        )
 
     def _on_bridge_frame(self, frame: BridgeFrame) -> None:
         if frame.message_type == EVT_AUDIO:
@@ -319,7 +448,12 @@ class VolcS2SVoiceNode(Node):
                 if status_name == "ANSWER_FINISH":
                     event_ns = frame.monotonic_ns
                     with turn.lock:
-                        if turn.response_done_ns is None:
+                        function_response_ready = (
+                            turn.function_call_ns is None
+                            or turn.final_response_created_ns is not None
+                            or turn.first_ai_audio_after_function_ns is not None
+                        )
+                        if turn.response_done_ns is None and function_response_ready:
                             turn.response_done_ns = event_ns
                             turn.response_status = "completed"
                             self._record_turn_interval(
@@ -398,31 +532,36 @@ class VolcS2SVoiceNode(Node):
                     turn.last_input_ns,
                     event_ns,
                 )
+            elif (
+                event_type == "response.created"
+                and turn.function_output_sent_ns is not None
+                and event_ns >= turn.function_output_sent_ns
+                and turn.final_response_created_ns is None
+            ):
+                turn.final_response_created_ns = event_ns
+                self._record_turn_interval(
+                    turn,
+                    "volc_function_output_to_response_created",
+                    turn.function_output_sent_ns,
+                    event_ns,
+                )
             elif event_type in {"conversation.item.created", "response.output_item.done"}:
                 item = root.get("item") if isinstance(root.get("item"), dict) else {}
-                if item.get("type") == "function_call" and turn.function_call_ns is None:
-                    turn.function_call_ns = event_ns
-                    self._record_turn_interval(
-                        turn,
-                        "volc_vad_stop_to_function_call",
-                        turn.server_speech_stopped_ns,
-                        event_ns,
-                        function=item.get("name"),
-                    )
-                    self._record_turn_interval(
-                        turn,
-                        "volc_last_input_to_function_call",
-                        turn.last_input_ns,
-                        event_ns,
-                        function=item.get("name"),
-                    )
-                    turn.trace.debug(
-                        "volc_function_call_received",
-                        function=item.get("name"),
-                        call_id=item.get("call_id"),
-                    )
+                call = function_call_from_item(item)
+                if call is not None:
+                    self._remember_function_call_locked(turn, call, event_ns, event_type)
             elif event_type == "response.function_call_arguments.done":
                 turn.function_args_done_ns = event_ns
+                fallback = None
+                if turn.pending_call_id and turn.pending_function_name:
+                    fallback = FunctionCall(
+                        turn.pending_call_id,
+                        turn.pending_function_name,
+                        turn.pending_arguments,
+                    )
+                ready_call = function_call_from_arguments_done(root, fallback)
+                if ready_call is not None:
+                    self._remember_function_call_locked(turn, ready_call, event_ns, event_type)
                 self._record_turn_interval(
                     turn,
                     "volc_function_call_to_arguments_done",
@@ -440,7 +579,12 @@ class VolcS2SVoiceNode(Node):
                 )
             elif event_type == "response.done":
                 response = root.get("response") if isinstance(root.get("response"), dict) else {}
-                if turn.response_done_ns is None:
+                function_response_ready = (
+                    turn.function_call_ns is None
+                    or turn.final_response_created_ns is not None
+                    or turn.first_ai_audio_after_function_ns is not None
+                )
+                if turn.response_done_ns is None and function_response_ready:
                     turn.response_done_ns = event_ns
                     turn.response_status = str(response.get("status", "unknown"))
                     self._record_turn_interval(
@@ -454,6 +598,15 @@ class VolcS2SVoiceNode(Node):
                     turn.done.set()
             elif event_type == "error":
                 turn.trace.debug("volc_server_error", error=root.get("error"))
+            else:
+                ready_call = None
+
+        if event_type == "response.function_call_arguments.done" and ready_call is not None:
+            self._return_function_output(turn, ready_call)
+        for legacy_call in function_calls_from_legacy_array(root):
+            with turn.lock:
+                self._remember_function_call_locked(turn, legacy_call, event_ns, "tool_calls")
+            self._return_function_output(turn, legacy_call)
 
     def _handle_audio_frame(self, frame: BridgeFrame) -> None:
         turn = self._current_turn()
@@ -468,6 +621,19 @@ class VolcS2SVoiceNode(Node):
                     turn,
                     "volc_last_input_to_first_ai_audio",
                     turn.last_input_ns,
+                    frame.monotonic_ns,
+                    model=self._session_model,
+                )
+            if (
+                turn.function_output_sent_ns is not None
+                and frame.monotonic_ns >= turn.function_output_sent_ns
+                and turn.first_ai_audio_after_function_ns is None
+            ):
+                turn.first_ai_audio_after_function_ns = frame.monotonic_ns
+                self._record_turn_interval(
+                    turn,
+                    "volc_function_output_to_first_ai_audio",
+                    turn.function_output_sent_ns,
                     frame.monotonic_ns,
                     model=self._session_model,
                 )
@@ -516,6 +682,13 @@ class VolcS2SVoiceNode(Node):
                 write_ns,
                 model=self._session_model,
             )
+            self._record_turn_interval(
+                turn,
+                "volc_function_output_to_speaker_write",
+                turn.function_output_sent_ns,
+                write_ns,
+                model=self._session_model,
+            )
 
     def _audio_loop(self) -> None:
         settings = VadSettings(
@@ -532,6 +705,10 @@ class VolcS2SVoiceNode(Node):
             str(self.get_parameter("funvad_model").value),
             str(self.get_parameter("funvad_device").value),
             input_device_index=input_index if input_index >= 0 else None,
+            input_device_name=str(self.get_parameter("audio_input_device_name").value),
+            device_selected_callback=lambda index, name: self.get_logger().info(
+                f"Selected microphone index={index if index is not None else 'default'} name={name}"
+            ),
         )
         try:
             self.get_logger().info("Loading FunVAD before accepting wake events.")
@@ -560,7 +737,15 @@ class VolcS2SVoiceNode(Node):
                 turn = TurnState(trace=trace, wake_ns=wake_ns)
                 self._set_active_turn(turn)
                 self._status("wakeup")
+                reconnect_thread = self._begin_reconnect_if_needed()
                 wakeup_ack_done_ns = self._play_wakeup_ack(trace)
+
+                if reconnect_thread is not None:
+                    reconnect_thread.join(
+                        timeout=float(self.get_parameter("bridge_connect_timeout_sec").value) + 2.0
+                    )
+                if not self._bridge.connected:
+                    raise RuntimeError("Volcengine WSS reconnect failed before microphone capture")
 
                 self._bridge.clear()
                 first_chunk = True
