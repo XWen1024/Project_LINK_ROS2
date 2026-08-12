@@ -96,6 +96,8 @@ class VolcS2SBridgeProcess:
         self._stop = threading.Event()
         self._connected = threading.Event()
         self._last_control: dict[str, Any] = {}
+        self._command_condition = threading.Condition()
+        self._command_results: dict[int, int] = {}
 
     @property
     def connected(self) -> bool:
@@ -153,6 +155,32 @@ class VolcS2SBridgeProcess:
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         return self._send(CMD_RAW_JSON, text.encode("utf-8"))
 
+    def wait_command_result(self, timestamp_ns: int, timeout_sec: float = 3.0) -> int | None:
+        deadline = time.monotonic() + max(0.0, float(timeout_sec))
+        with self._command_condition:
+            while int(timestamp_ns) not in self._command_results and not self._stop.is_set():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    return None
+                self._command_condition.wait(remaining)
+            return self._command_results.pop(int(timestamp_ns), None)
+
+    def clear_checked(self, timeout_sec: float = 3.0) -> tuple[int, int | None]:
+        timestamp_ns = self.clear()
+        return timestamp_ns, self.wait_command_result(timestamp_ns, timeout_sec)
+
+    def commit_checked(self, timeout_sec: float = 3.0) -> tuple[int, int | None]:
+        timestamp_ns = self.commit()
+        return timestamp_ns, self.wait_command_result(timestamp_ns, timeout_sec)
+
+    def send_json_checked(
+        self,
+        value: dict[str, Any] | str,
+        timeout_sec: float = 3.0,
+    ) -> tuple[int, int | None]:
+        timestamp_ns = self.send_json(value)
+        return timestamp_ns, self.wait_command_result(timestamp_ns, timeout_sec)
+
     def _send(self, message_type: int, payload: bytes = b"") -> int:
         sock = self._socket
         if sock is None or self._stop.is_set():
@@ -178,6 +206,8 @@ class VolcS2SBridgeProcess:
                 self._log_callback(f"Volcengine native bridge reader stopped: {exc}")
         finally:
             self._connected.clear()
+            with self._command_condition:
+                self._command_condition.notify_all()
 
     def _handle_control(self, payload: bytes) -> None:
         try:
@@ -187,6 +217,15 @@ class VolcS2SBridgeProcess:
         if not isinstance(control, dict):
             return
         self._last_control = control
+        if control.get("event") == "command_result":
+            try:
+                timestamp_ns = int(control["client_timestamp_ns"])
+                result = int(control["result"])
+            except (KeyError, TypeError, ValueError):
+                return
+            with self._command_condition:
+                self._command_results[timestamp_ns] = result
+                self._command_condition.notify_all()
         if control.get("event") == "sdk_event":
             if control.get("connected") is True:
                 self._connected.set()
@@ -201,6 +240,8 @@ class VolcS2SBridgeProcess:
         except (OSError, RuntimeError):
             pass
         self._stop.set()
+        with self._command_condition:
+            self._command_condition.notify_all()
         sock = self._socket
         if sock is not None:
             try:
@@ -223,4 +264,3 @@ class VolcS2SBridgeProcess:
                     process.kill()
                     process.wait(timeout=1.0)
         self._process = None
-

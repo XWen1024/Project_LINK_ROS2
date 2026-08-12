@@ -371,10 +371,20 @@ class VolcS2SVoiceNode(Node):
             success="error" not in output,
         )
         try:
-            output_sent_ns = self._bridge.send_json(
+            output_sent_ns, output_send_result = self._bridge.send_json_checked(
                 build_function_output_event(call.call_id, output)
             )
-            response_create_ns = self._bridge.send_json(build_followup_response_event())
+            if output_send_result != 0:
+                raise RuntimeError(
+                    f"function_call_output send failed result={output_send_result}"
+                )
+            response_create_ns, response_create_result = self._bridge.send_json_checked(
+                build_followup_response_event()
+            )
+            if response_create_result != 0:
+                raise RuntimeError(
+                    f"function follow-up response.create failed result={response_create_result}"
+                )
         except Exception:
             with turn.lock:
                 turn.function_output_sent = False
@@ -737,17 +747,26 @@ class VolcS2SVoiceNode(Node):
                 turn = TurnState(trace=trace, wake_ns=wake_ns)
                 self._set_active_turn(turn)
                 self._status("wakeup")
-                reconnect_thread = self._begin_reconnect_if_needed()
                 wakeup_ack_done_ns = self._play_wakeup_ack(trace)
-
-                if reconnect_thread is not None:
-                    reconnect_thread.join(
-                        timeout=float(self.get_parameter("bridge_connect_timeout_sec").value) + 2.0
-                    )
-                if not self._bridge.connected:
-                    raise RuntimeError("Volcengine WSS reconnect failed before microphone capture")
-
-                self._bridge.clear()
+                probe_started_ns = time.monotonic_ns()
+                clear_sent_ns, clear_result = self._bridge.clear_checked()
+                trace.record(
+                    "volc_pre_turn_connection_probe",
+                    (time.monotonic_ns() - probe_started_ns) / 1_000_000.0,
+                    result=clear_result,
+                )
+                if clear_result != 0:
+                    if not self._restart_bridge():
+                        raise RuntimeError("Volcengine WSS reconnect failed before microphone capture")
+                    clear_sent_ns, clear_result = self._bridge.clear_checked()
+                    if clear_result != 0:
+                        raise RuntimeError(
+                            f"Volcengine input clear failed after reconnect result={clear_result}"
+                        )
+                trace.debug(
+                    "volc_input_buffer_cleared",
+                    client_timestamp_ns=clear_sent_ns,
+                )
                 first_chunk = True
 
                 def stream_chunk(chunk: bytes) -> None:
@@ -791,7 +810,9 @@ class VolcS2SVoiceNode(Node):
                     self._status("ready")
                     continue
 
-                commit_ns = self._bridge.commit()
+                commit_ns, commit_result = self._bridge.commit_checked()
+                if commit_result != 0:
+                    raise RuntimeError(f"Volcengine commit failed result={commit_result}")
                 with turn.lock:
                     turn.commit_ns = commit_ns
                 self._mark_at(trace, "input_commit_sent", commit_ns)

@@ -1,7 +1,15 @@
+import json
 import socket
+import threading
 import time
 
-from project_link_voice.volc_s2s_bridge import BridgeFrame, HEADER, encode_frame, read_frame
+from project_link_voice.volc_s2s_bridge import (
+    BridgeFrame,
+    HEADER,
+    VolcS2SBridgeProcess,
+    encode_frame,
+    read_frame,
+)
 
 
 def test_bridge_frame_round_trip() -> None:
@@ -22,3 +30,23 @@ def test_bridge_frame_uses_monotonic_timestamp() -> None:
     after = time.monotonic_ns()
     _message_type, _version, _flags, _length, timestamp = HEADER.unpack(packet[: HEADER.size])
     assert before <= timestamp <= after
+
+
+def test_command_result_can_be_waited_by_client_timestamp():
+    bridge = VolcS2SBridgeProcess("/not-started", lambda _frame: None)
+    result = []
+
+    waiter = threading.Thread(target=lambda: result.append(bridge.wait_command_result(123, 1.0)))
+    waiter.start()
+    bridge._handle_control(
+        json.dumps(
+            {
+                "event": "command_result",
+                "command": "clear",
+                "result": -7,
+                "client_timestamp_ns": 123,
+            }
+        ).encode()
+    )
+    waiter.join(timeout=1.0)
+    assert result == [-7]
