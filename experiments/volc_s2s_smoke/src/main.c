@@ -40,6 +40,8 @@
 #define DEFAULT_FRAME_MS 100
 #define DEFAULT_CONNECT_TIMEOUT_SEC 20
 #define DEFAULT_RESPONSE_TIMEOUT_SEC 45
+#define SESSION_MIN_SETTLE_MS 2000
+#define SESSION_AUDIO_QUIET_MS 500
 #define MAX_LOGGED_JSON 16384u
 #define LOCAL_DUPLICATE_OBSERVE_MS 3000
 
@@ -78,6 +80,7 @@ typedef struct {
     bool wav_open;
     bool connected;
     bool disconnected;
+    bool session_created;
     bool response_done;
     bool response_done_after_input;
     bool function_call_received;
@@ -100,6 +103,8 @@ typedef struct {
     int64_t process_start_ms;
     int64_t t_connect_start_ms;
     int64_t t_connected_ms;
+    int64_t t_session_created_ms;
+    int64_t t_last_audio_callback_ms;
     int64_t t_first_input_audio_ms;
     int64_t t_last_input_audio_ms;
     int64_t t_last_frame_send_start_ms;
@@ -747,6 +752,7 @@ static void on_volc_audio_data(
     bool log_audio = false;
 
     pthread_mutex_lock(&context->mutex);
+    context->t_last_audio_callback_ms = now;
     if (context->t_first_ai_audio_ms < 0) {
         context->t_first_ai_audio_ms = now;
         first_audio = true;
@@ -853,6 +859,10 @@ static void on_volc_message_data(
     const int64_t message_time = monotonic_ms();
     if (type != NULL) {
         pthread_mutex_lock(&context->mutex);
+        if (strcmp(type, "session.created") == 0) {
+            context->session_created = true;
+            context->t_session_created_ms = message_time;
+        }
         if (strcmp(type, "input_audio_buffer.committed") == 0 &&
             context->final_frame_started && context->t_input_commit_ack_ms < 0) {
             context->t_input_commit_ack_ms = message_time;
@@ -1028,6 +1038,29 @@ static bool wait_for_connection(smoke_context_t *context, int timeout_sec) {
             return false;
         }
         sleep_ms(50);
+    }
+    return false;
+}
+
+static bool wait_for_session_settle(smoke_context_t *context, int timeout_sec) {
+    const int64_t deadline = monotonic_ms() + (int64_t)timeout_sec * 1000;
+    while (!g_stop_requested && monotonic_ms() < deadline) {
+        const int64_t now = monotonic_ms();
+        pthread_mutex_lock(&context->mutex);
+        const bool disconnected = context->disconnected;
+        const bool session_created = context->session_created;
+        const int64_t session_created_ms = context->t_session_created_ms;
+        const int64_t last_audio_ms = context->t_last_audio_callback_ms;
+        pthread_mutex_unlock(&context->mutex);
+        if (session_created &&
+            now - session_created_ms >= SESSION_MIN_SETTLE_MS &&
+            (last_audio_ms < session_created_ms || now - last_audio_ms >= SESSION_AUDIO_QUIET_MS)) {
+            return true;
+        }
+        if (disconnected) {
+            return false;
+        }
+        sleep_ms(25);
     }
     return false;
 }
@@ -1236,6 +1269,7 @@ static void print_metrics(smoke_context_t *context) {
     pthread_mutex_lock(&context->mutex);
     print_timestamp("T0_websocket_connect_start", context->t_connect_start_ms, context->process_start_ms);
     print_timestamp("T1_websocket_connected", context->t_connected_ms, context->process_start_ms);
+    print_timestamp("T1a_session_created", context->t_session_created_ms, context->process_start_ms);
     print_timestamp("T2_first_input_audio_sent", context->t_first_input_audio_ms, context->process_start_ms);
     print_timestamp("T3_last_input_audio_sent", context->t_last_input_audio_ms, context->process_start_ms);
     print_timestamp("T3a_last_frame_send_start", context->t_last_frame_send_start_ms, context->process_start_ms);
@@ -1399,6 +1433,7 @@ static void print_metrics(smoke_context_t *context) {
     printf("input_end_strategy=%s\n", input_end_strategy_name(context->input_end_strategy));
     printf("client_commit_sent=%s\n", context->final_commit_started ? "true" : "false");
     printf("commit_ack_observed=%s\n", context->t_input_commit_ack_ms >= 0 ? "true" : "false");
+    printf("session_created_observed=%s\n", context->session_created ? "true" : "false");
     printf("feedback_strategy=%s\n", feedback_strategy_name(context->feedback_strategy));
     printf("input_tts_sent=%s\n", context->input_tts_sent ? "true" : "false");
     printf("local_playback_started=%s\n", context->local_playback_started ? "true" : "false");
@@ -1562,6 +1597,8 @@ int main(int argc, char **argv) {
     context.process_start_ms = monotonic_ms();
     context.t_connect_start_ms = -1;
     context.t_connected_ms = -1;
+    context.t_session_created_ms = -1;
+    context.t_last_audio_callback_ms = -1;
     context.t_first_input_audio_ms = -1;
     context.t_last_input_audio_ms = -1;
     context.t_last_frame_send_start_ms = -1;
@@ -1678,6 +1715,17 @@ int main(int argc, char **argv) {
         return 12;
     }
     printf("connected transport=websocket\n");
+
+    if (!wait_for_session_settle(&context, options.connect_timeout_sec)) {
+        fprintf(stderr, "ERROR: session.created/initial audio did not settle before timeout\n");
+        print_metrics(&context);
+        volc_stop(context.engine);
+        volc_destroy(context.engine);
+        close_artifacts(&context);
+        pthread_mutex_destroy(&context.mutex);
+        return 13;
+    }
+    printf("session_ready=true initial_audio_quiet=true\n");
 
     int exit_code = 0;
     if (options.pcm_path != NULL) {
