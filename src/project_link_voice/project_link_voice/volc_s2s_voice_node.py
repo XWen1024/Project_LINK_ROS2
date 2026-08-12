@@ -37,6 +37,7 @@ from .volc_s2s_tools import (
 from .volc_s2s_microphone import RawPcmCaptureSettings, ServerVadPcmRecorder
 from .volc_s2s_session import (
     can_continue_session,
+    endpoint_event_belongs_to_turn,
     input_event_belongs_to_turn,
     no_speech_outcome,
     response_audio_belongs_to_turn,
@@ -536,7 +537,11 @@ class VolcS2SVoiceNode(Node):
                                 f"[TURN] speech started session={turn.session_id} "
                                 f"turn={turn.turn_index}"
                             )
-                elif status_name == "THINKING" and input_armed:
+                elif status_name == "THINKING" and endpoint_event_belongs_to_turn(
+                    turn.first_input_ns,
+                    turn.server_speech_started_ns,
+                    event_ns,
+                ):
                     with turn.lock:
                         if turn.server_speech_stopped_ns is None:
                             turn.server_speech_stopped_ns = event_ns
@@ -640,7 +645,11 @@ class VolcS2SVoiceNode(Node):
                 )
             elif (
                 event_type == "input_audio_buffer.speech_stopped"
-                and input_armed
+                and endpoint_event_belongs_to_turn(
+                    turn.first_input_ns,
+                    turn.server_speech_started_ns,
+                    event_ns,
+                )
                 and turn.server_speech_stopped_ns is None
             ):
                 turn.server_speech_stopped_ns = event_ns
@@ -654,7 +663,11 @@ class VolcS2SVoiceNode(Node):
                     f"[TURN] speech stopped session={turn.session_id} turn={turn.turn_index}"
                 )
                 turn.server_input_done.set()
-            elif event_type == "input_audio_buffer.committed" and input_armed:
+            elif event_type == "input_audio_buffer.committed" and endpoint_event_belongs_to_turn(
+                turn.first_input_ns,
+                turn.server_speech_started_ns,
+                event_ns,
+            ):
                 turn.server_input_done.set()
                 if turn.server_commit_ns is None:
                     turn.server_commit_ns = event_ns

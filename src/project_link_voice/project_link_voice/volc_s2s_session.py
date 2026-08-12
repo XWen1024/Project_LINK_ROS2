@@ -34,6 +34,19 @@ def response_event_belongs_to_turn(
     )
 
 
+def endpoint_event_belongs_to_turn(
+    first_input_ns: int | None,
+    speech_started_ns: int | None,
+    event_ns: int,
+) -> bool:
+    """Do not let a session greeting or previous turn stop current capture."""
+    return (
+        first_input_ns is not None
+        and speech_started_ns is not None
+        and int(event_ns) >= int(speech_started_ns)
+    )
+
+
 def no_speech_outcome(continuation: bool) -> str:
     return "continuous_silence_timeout" if continuation else "no_speech_timeout"
 
