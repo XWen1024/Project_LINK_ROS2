@@ -1,5 +1,26 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## Volcengine Embedded Kit S2S local voice integration - 2026-08-12
+
+* Added an isolated pure-voice integration that preserves the existing iFlytek
+  serial wake detector, cached wake acknowledgement, USB microphone, FunVAD hard
+  endpoint, and USB speaker.
+* Added `volc_ws_bridge`, a persistent native ARM64 process around the validated
+  official Embedded Kit low-load WebSocket transport. Python and the native SDK
+  communicate through a private inherited Unix socketpair with framed binary
+  messages; the cloud process never receives ROS credentials or direct ROS
+  control access.
+* Added `volc_s2s_voice_node`, launch/config, and
+  `scripts/start_volc_s2s_voice.sh`. The initial integration is deliberately
+  pure voice: it does not start the base and does not publish `/cmd_vel`.
+* Extended the timing logger with monotonic marks and per-edge intervals. New
+  measurements include registration, WSS connect, wake acknowledgement, local
+  VAD, first/last input audio, cloud speech start/stop, commit acknowledgement,
+  Function Call boundaries, first AI audio, speaker write, response completion,
+  and playback drain.
+* The legacy Whisper/DeepSeek/TTS nodes and their launch scripts remain intact as
+  the rollback path. Live Orin microphone/speaker validation is still required.
+
 ## UWB summon/follow ROS 2 and Nav2 migration - 2026-08-04
 
 * Imported the upstream `human-chocker-and-robot-dog/mcp-for-UWB` repository as

@@ -6,6 +6,17 @@ file together with `PROGRESS.md` and `README.md`.
 
 ## Current Priority
 
+- A separate Volcengine Embedded Kit pure-voice integration now lives on
+  `codex/volc-s2s-voice-integration`. It reuses local iFlytek wake, cached wake
+  acknowledgement, USB microphone, FunVAD hard endpoint, and USB speaker, while
+  a persistent native ARM64 helper owns the low-load WebSocket S2S connection.
+  Its first launch starts no chassis process and must remain a non-`/cmd_vel`
+  publisher until pure voice latency and cancellation have been accepted.
+- Start it with `scripts/start_volc_s2s_voice.sh`; keep the legacy
+  `start_llm_voice_car_demo.sh` and production voice launch untouched as rollback
+  paths. Do not run both voice stacks against the same wake serial/microphone at
+  the same time.
+
 - Current phase: Point-LIO Phase B, live slam_toolbox mapping, C63A velocity
   feedback, and Nav2 are running as a known-good supervised navigation stack.
   The immediate software milestone is BU03/BU04 UWB summon and person-following

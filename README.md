@@ -20,6 +20,24 @@ the person's relative position; Project LINK transforms it into `map`, applies a
 bounded standoff policy, and submits only high-level Nav2 goals. It never becomes
 another `/cmd_vel` publisher.
 
+An isolated Volcengine end-to-end voice integration is also available on the
+`codex/volc-s2s-voice-integration` branch. It keeps the iFlytek local wake event,
+USB microphone, FunVAD hard endpoint, and USB speaker, while a persistent native
+ARM64 process owns the official Embedded Kit low-load WebSocket S2S connection.
+The first launch is pure voice only: it starts no chassis process and publishes
+no `/cmd_vel`.
+
+```bash
+cd /home/wte/wheeltec_robot-volc-voice
+./experiments/volc_s2s_smoke/scripts/build.sh
+source /opt/ros/humble/setup.bash
+colcon build --packages-select project_link_voice
+./scripts/start_volc_s2s_voice.sh --restart --no-attach
+```
+
+Detailed setup, timing phases, and rollback instructions are in
+`docs/VOLCENGINE_END_TO_END_VOICE_MIGRATION_HANDOFF.md`.
+
 ## Current Status
 
 - Date: 2026-08-04.

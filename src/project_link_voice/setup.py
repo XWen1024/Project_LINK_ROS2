@@ -17,9 +17,13 @@ setup(
                 "launch/voice_pure_test.launch.py",
                 "launch/voice_demo_motion.launch.py",
                 "launch/llm_motion_demo.launch.py",
+                "launch/volc_s2s_voice.launch.py",
             ],
         ),
-        ("share/" + package_name + "/config", ["config/voice_direct_drive.yaml"]),
+        (
+            "share/" + package_name + "/config",
+            ["config/voice_direct_drive.yaml", "config/volc_s2s_voice.yaml"],
+        ),
         ("share/" + package_name + "/data", ["data/default_waypoints.json"]),
     ],
     install_requires=["setuptools", "numpy"],
@@ -34,6 +38,7 @@ setup(
             "llm_motion_demo_node = project_link_voice.llm_motion_demo_node:main",
             "ab_drive_server = project_link_voice.ab_drive_server:main",
             "voice_tts_node = project_link_voice.tts_node:main",
+            "volc_s2s_voice_node = project_link_voice.volc_s2s_voice_node:main",
         ],
     },
 )

@@ -115,6 +115,7 @@ class VoiceTrace:
         self._sink = sink
         self._started_at = time.perf_counter()
         self._phases: dict[str, float] = {}
+        self._marks: dict[str, float] = {}
         self._lock = threading.Lock()
         self._completed = False
         self._completion_fields: dict[str, Any] = {}
@@ -142,6 +143,51 @@ class VoiceTrace:
 
     def timing_callback(self, phase: str, elapsed_ms: float, fields: dict[str, Any] | None = None) -> None:
         self.record(phase, elapsed_ms, **(fields or {}))
+
+    def mark(self, name: str, **fields: Any) -> float:
+        now = time.perf_counter()
+        with self._lock:
+            self._marks[name] = now
+        self.debug("timing_mark", mark=name, **fields)
+        return now
+
+    def mark_at(self, name: str, monotonic_seconds: float, **fields: Any) -> float:
+        value = float(monotonic_seconds)
+        with self._lock:
+            self._marks[name] = value
+        self.debug("timing_mark", mark=name, externally_timestamped=True, **fields)
+        return value
+
+    def record_since(self, phase: str, start_mark: str, **fields: Any) -> float | None:
+        with self._lock:
+            started_at = self._marks.get(start_mark)
+        if started_at is None:
+            return None
+        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+        self.record(phase, elapsed_ms, start_mark=start_mark, **fields)
+        return elapsed_ms
+
+    def record_between(
+        self,
+        phase: str,
+        start_mark: str,
+        end_mark: str,
+        **fields: Any,
+    ) -> float | None:
+        with self._lock:
+            started_at = self._marks.get(start_mark)
+            ended_at = self._marks.get(end_mark)
+        if started_at is None or ended_at is None or ended_at < started_at:
+            return None
+        elapsed_ms = (ended_at - started_at) * 1000.0
+        self.record(
+            phase,
+            elapsed_ms,
+            start_mark=start_mark,
+            end_mark=end_mark,
+            **fields,
+        )
+        return elapsed_ms
 
     @contextmanager
     def phase(self, phase: str, **fields: Any) -> Iterator[None]:

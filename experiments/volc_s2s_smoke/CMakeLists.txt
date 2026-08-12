@@ -99,7 +99,16 @@ add_executable(volc_ws_smoke
   src/wav_writer.c
 )
 
+add_executable(volc_ws_bridge
+  src/bridge.c
+)
+
 target_compile_definitions(volc_ws_smoke PRIVATE
+  VOLC_SDK_COMMIT="${VOLC_SDK_COMMIT}"
+  VOLC_MBEDTLS_COMMIT="${MBEDTLS_COMMIT}"
+)
+
+target_compile_definitions(volc_ws_bridge PRIVATE
   VOLC_SDK_COMMIT="${VOLC_SDK_COMMIT}"
   VOLC_MBEDTLS_COMMIT="${MBEDTLS_COMMIT}"
 )
@@ -110,7 +119,14 @@ target_compile_options(volc_ws_smoke PRIVATE
   -Wpedantic
 )
 
+target_compile_options(volc_ws_bridge PRIVATE
+  -Wall
+  -Wextra
+  -Wpedantic
+)
+
 target_link_libraries(volc_ws_smoke PRIVATE volc::conv_ai_ws)
+target_link_libraries(volc_ws_bridge PRIVATE volc::conv_ai_ws)
 
 message(STATUS "Volc SDK commit: ${VOLC_SDK_COMMIT}")
 message(STATUS "mbedTLS commit: ${MBEDTLS_COMMIT}")

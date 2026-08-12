@@ -7,6 +7,173 @@ Orin 工作区：`/home/wte/wheeltec_robot`
 Orin 登录：`wte@orin`
 当前 Git 提交：`9a9fd33 Shut down Volcano TTS worker cleanly`
 
+## 0. 2026-08-12 Embedded Kit S2S 接入更新
+
+独立分支：`codex/volc-s2s-voice-integration`
+
+独立 Windows worktree：
+
+```text
+C:\Users\XWen1024\Documents\ROS2小车-volc-voice
+```
+
+建议 Orin 独立 worktree：
+
+```text
+/home/wte/wheeltec_robot-volc-voice
+```
+
+新增纯语音路径：
+
+```text
+讯飞本地唤醒
+-> 本地缓存“我在，请说”
+-> XFM USB 麦克风 16 kHz mono
+-> FunVAD 本地硬端点与超时
+-> 持久 native volc_ws_bridge
+-> 官方 Embedded Kit low-load WebSocket S2S
+-> native PCM callback
+-> Python 有界播放队列
+-> USB 扬声器
+```
+
+首版刻意不接运动控制：
+
+- 不启动底盘；
+- 不发布 `/cmd_vel`；
+- 不调用 Nav2；
+- 不调用机械臂；
+- 仅验证长连接纯语音和真实体感延迟。
+
+### 构建
+
+```bash
+cd /home/wte/wheeltec_robot-volc-voice
+git submodule update --init --recursive
+
+cd experiments/volc_s2s_smoke
+./scripts/build.sh
+
+cd /home/wte/wheeltec_robot-volc-voice
+source /opt/ros/humble/setup.bash
+colcon build --packages-select project_link_voice
+```
+
+### 凭证
+
+默认从以下文件加载 Embedded Kit 凭证：
+
+```text
+/home/wte/wheeltec_robot-volc-voice/experiments/volc_s2s_smoke/.env.local
+```
+
+需要：
+
+```text
+VOLC_BOT_ID
+VOLC_INSTANCE_ID
+VOLC_PRODUCT_KEY
+VOLC_PRODUCT_SECRET
+VOLC_DEVICE_NAME
+```
+
+不得打印或提交变量值。
+
+### 启动纯语音长连接
+
+先停止所有占用讯飞唤醒串口或麦克风的 Legacy 语音 tmux，再运行：
+
+```bash
+cd /home/wte/wheeltec_robot-volc-voice
+./scripts/start_volc_s2s_voice.sh --restart --no-attach
+tmux attach -t project_link_volc_s2s_voice
+```
+
+如果只想先检查设备和变量名是否齐全：
+
+```bash
+./scripts/start_volc_s2s_voice.sh --scan-only
+```
+
+键盘唤醒测试：
+
+```bash
+./scripts/start_volc_s2s_voice.sh --restart --keyboard-wakeup
+```
+
+### 新增 timing phase
+
+同一次人工交互沿用一个 `trace_id`。关键 phase：
+
+```text
+volc_device_registration
+volc_ws_connect
+wakeup_ack_playback
+local_vad_record
+volc_wakeup_to_first_input_audio
+volc_first_input_to_speech_started
+volc_last_input_to_commit
+volc_commit_to_server_ack
+volc_last_input_to_speech_stopped
+volc_last_input_to_response_created
+volc_vad_stop_to_function_call
+volc_last_input_to_function_call
+volc_function_call_to_arguments_done
+volc_last_input_to_first_ai_audio
+volc_vad_stop_to_first_ai_audio
+volc_wakeup_to_first_ai_audio
+volc_audio_callback_to_speaker_write
+volc_last_input_to_speaker_write
+volc_wakeup_to_speaker_write
+volc_first_audio_to_audio_done
+volc_last_input_to_response_done
+speaker_playback_drain
+```
+
+这里的 `speaker_write` 是进入 PyAudio `stream.write()` 的时间，不是扬声器
+物理振膜真正发出第一采样的硬件测量。它比“收到网络音频”更接近用户体感，
+但仍可能包含 ALSA/PulseAudio 缓冲误差。
+
+日志：
+
+```text
+~/.ros/project_link_voice/voice_debug.jsonl
+~/.ros/project_link_voice/voice_timing.jsonl
+```
+
+### 关键实现
+
+```text
+experiments/volc_s2s_smoke/src/bridge.c
+src/project_link_voice/project_link_voice/volc_s2s_bridge.py
+src/project_link_voice/project_link_voice/volc_s2s_voice_node.py
+src/project_link_voice/launch/volc_s2s_voice.launch.py
+src/project_link_voice/config/volc_s2s_voice.yaml
+scripts/start_volc_s2s_voice.sh
+```
+
+native helper 是长生命周期进程。Python 通过继承的 Unix `socketpair` 发送
+PCM/commit/interrupt，并接收服务端 JSON 与 PCM。SDK 的 callback 不直接做
+扬声器 I/O，避免阻塞 WebSocket 接收线程。
+
+### 回滚
+
+停止 S2S：
+
+```bash
+tmux kill-session -t project_link_volc_s2s_voice
+```
+
+恢复 Legacy 演示：
+
+```bash
+cd /home/wte/wheeltec_robot
+bash scripts/start_llm_voice_car_demo.sh \
+  --restart --wakeup-port auto --audio-input-index 0 --no-attach
+```
+
+禁止同时启动两套语音节点，因为它们会竞争同一个讯飞唤醒串口和麦克风。
+
 ## 1. 文档目的
 
 本文档用于把 Project LINK 当前语音、底盘导航和视觉抓取链路交接给负责

@@ -1,0 +1,30 @@
+volc_s2s_voice_node:
+  ros__parameters:
+    native_bridge_executable: /home/wte/wheeltec_robot/experiments/volc_s2s_smoke/build/volc_ws_bridge
+    bridge_connect_timeout_sec: 30.0
+    response_timeout_sec: 45.0
+    keyboard_wakeup: false
+    wakeup_serial_port: auto
+    wakeup_serial_baud: 115200
+    wakeup_match_text: aiui_event
+    wakeup_serial_max_buffer_bytes: 16384
+    wakeup_log_raw: false
+    wakeup_ack_cache_file: ~/.cache/project_link_voice/wakeup_ack.mp3
+    wakeup_ack_playback_timeout_sec: 5.0
+    funvad_device: cuda
+    audio_sample_rate: 16000
+    audio_chunk_ms: 200
+    audio_pre_roll_ms: 400
+    audio_no_speech_timeout_sec: 8.0
+    audio_max_utterance_sec: 12.0
+    audio_min_speech_sec: 0.30
+    audio_input_device_index: 0
+    audio_output_device_index: -1
+    pulse_sink: alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo
+    post_response_quiet_sec: 0.25
+    debug_logging_enabled: true
+    timing_debug_enabled: true
+    timing_console_enabled: true
+    debug_log_file: ~/.ros/project_link_voice/voice_debug.jsonl
+    timing_log_file: ~/.ros/project_link_voice/voice_timing.jsonl
+

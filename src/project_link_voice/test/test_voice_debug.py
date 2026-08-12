@@ -99,3 +99,23 @@ def test_complete_long_text_uses_one_full_text_command():
     command = tts._cmd_queue.get_nowait()
     assert command["type"] == "full_text"
     assert tts._cmd_queue.empty()
+
+
+def test_trace_marks_record_intervals(tmp_path):
+    timing_path = tmp_path / "timing.jsonl"
+    sink = VoiceDebugSink(
+        FakeLogger(),
+        debug_enabled=False,
+        timing_enabled=True,
+        timing_log_file=str(timing_path),
+        timing_console_enabled=False,
+    )
+    trace = sink.start_trace("audio")
+    trace.mark_at("input_end", 10.0)
+    trace.mark_at("first_audio", 10.25)
+    elapsed = trace.record_between("input_to_audio", "input_end", "first_audio")
+
+    assert elapsed == 250.0
+    timing_rows = [json.loads(line) for line in timing_path.read_text(encoding="utf-8").splitlines()]
+    assert timing_rows[0]["phase"] == "input_to_audio"
+    assert timing_rows[0]["elapsed_ms"] == 250.0

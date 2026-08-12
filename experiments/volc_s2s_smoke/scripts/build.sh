@@ -28,12 +28,13 @@ cmake -S "${EXPERIMENT_DIR}" -B "${BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build "${BUILD_DIR}" --parallel "$(nproc)"
 
-BINARY="${BUILD_DIR}/volc_ws_smoke"
-file "${BINARY}"
-if ! readelf -h "${BINARY}" | grep -q 'Machine:.*AArch64'; then
-  echo "ERROR: built binary is not native AArch64." >&2
-  exit 3
-fi
+for binary_name in volc_ws_smoke volc_ws_bridge; do
+  BINARY="${BUILD_DIR}/${binary_name}"
+  file "${BINARY}"
+  if ! readelf -h "${BINARY}" | grep -q 'Machine:.*AArch64'; then
+    echo "ERROR: built binary is not native AArch64: ${BINARY}" >&2
+    exit 3
+  fi
+done
 
-echo "PASS: native ARM64 binary built at ${BINARY}"
-
+echo "PASS: native ARM64 smoke and bridge binaries built in ${BUILD_DIR}"

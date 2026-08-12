@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, Iterable
 
 
@@ -141,7 +142,10 @@ class FunVadRecorder:
         )
         return extract_vad_events(result)
 
-    def record(self) -> tuple[bytes, str]:
+    def record(
+        self,
+        chunk_callback: Callable[[bytes], None] | None = None,
+    ) -> tuple[bytes, str]:
         try:
             import pyaudio
         except ImportError as exc:
@@ -164,6 +168,8 @@ class FunVadRecorder:
         try:
             while True:
                 chunk = stream.read(self.settings.chunk_bytes // 2, exception_on_overflow=False)
+                if chunk_callback is not None:
+                    chunk_callback(chunk)
                 next_elapsed_ms = state.elapsed_ms + self.settings.chunk_ms
                 active_limit_ms = int(
                     (self.settings.max_utterance_sec if state.started else self.settings.no_speech_timeout_sec)
