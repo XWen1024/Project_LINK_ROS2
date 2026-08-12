@@ -585,7 +585,7 @@ int main(int argc, char **argv) {
             sizeof(message),
             "{\"event\":\"device_registration\",\"result\":%d,\"elapsed_ms\":%" PRIu64 ",\"sdk_version\":\"%s\",\"sdk_commit\":\"%s\"}",
             create_result,
-            (auth_done_ns - auth_start_ns) / 1000000ull,
+            (uint64_t)((auth_done_ns - auth_start_ns) / 1000000ull),
             volc_get_version(),
             VOLC_SDK_COMMIT);
         enqueue_event_at(&context, BRIDGE_EVT_CONTROL, 0, auth_done_ns, message, strlen(message));
