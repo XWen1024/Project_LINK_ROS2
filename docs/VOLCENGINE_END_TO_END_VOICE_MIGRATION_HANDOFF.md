@@ -56,8 +56,38 @@ cd experiments/volc_s2s_smoke
 
 cd /home/wte/wheeltec_robot-volc-voice
 source /opt/ros/humble/setup.bash
-colcon build --packages-select project_link_voice
+colcon build --packages-up-to project_link_voice
 ```
+
+### 2026-08-12 Orin 首次集成实测
+
+专用 Orin worktree 已切到跟踪分支
+`codex/volc-s2s-voice-integration`。本轮没有修改或启动原始业务链路。
+
+已验证：
+
+- native `volc_ws_bridge` 在 Orin 原生 ARM64 重编译通过，`file` 确认
+  `ELF 64-bit ... ARM aarch64`；RTC 仍关闭且未链接；
+- `project_link_voice_interfaces`、`wheeltec_robot_msg`、
+  `project_link_voice` 按依赖顺序构建通过；
+- bridge、timing logger、FunVAD、唤醒解析定向测试为 `15 passed`；
+- Embedded Kit 动态设备注册成功，耗时 `857 ms`；
+- low-load WSS 原生连接成功，耗时 `465 ms`；
+- 从启动 trace 到 connected 共 `1329.106 ms`；
+- 服务端返回实际模型 `doubao-seed-2-1-turbo-260628`、PCM16 输入输出和
+  `server_vad`；
+- FunVAD 已在长连接建立后完成预热；
+- PyAudio 已成功打开 16 kHz 单声道 Pulse 播放流；
+- ROS graph 中持续存在 `/volc_s2s_voice_node` 和 `/voice_s2s/status`。
+
+本轮尚不能完成真实唤醒/麦克风/扬声器闭环，因为检查时 Orin USB 总线上没有
+枚举讯飞唤醒串口、XFM USB 麦克风或 C-Media USB 扬声器。`/dev/serial/by-id`
+为空，ALSA/Pulse 只看到 Jetson 板载音频。接回三项设备后必须重新运行
+`--scan-only`，以实际扫描结果选择 PyAudio index，不能沿用断开设备时的编号。
+
+本轮发现并修复了两个部署问题：ROS/colcon `setup.bash` 与 `set -u` 的兼容性，
+以及 `.env.local` 变量只成为 shell 变量、未 export 给 Python/native 子进程的
+问题。凭证检查只输出 `set/missing`，不会打印值。
 
 ### 凭证
 

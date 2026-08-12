@@ -20,6 +20,18 @@
   and playback drain.
 * The legacy Whisper/DeepSeek/TTS nodes and their launch scripts remain intact as
   the rollback path. Live Orin microphone/speaker validation is still required.
+* Orin native and ROS integration bring-up passed on the isolated worktree:
+  `volc_ws_bridge` rebuilt as AArch64, all package dependencies built, and 15
+  focused bridge/timing/VAD/wakeup tests passed. The persistent low-load WSS
+  session connected to `doubao-seed-2-1-turbo-260628`; device registration was
+  857 ms, WSS connect was 465 ms, and startup-to-connected was 1329.106 ms.
+* The same bring-up found that the iFlytek serial wake board, XFM USB microphone,
+  and C-Media USB speaker were not enumerated on the Orin USB bus. Real acoustic
+  end-to-end timing remains pending a hardware reconnect; no result is claimed
+  for wake-to-speaker latency yet.
+* Fixed the launcher to tolerate Humble setup scripts under `set -u`, auto-export
+  ignored credential files to Python/native children without printing secrets,
+  and read keyboard test wake events from the tmux controlling terminal.
 
 ## UWB summon/follow ROS 2 and Nav2 migration - 2026-08-04
 

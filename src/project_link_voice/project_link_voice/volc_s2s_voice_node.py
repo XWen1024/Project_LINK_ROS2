@@ -634,7 +634,13 @@ class VolcS2SVoiceNode(Node):
 
     def _wait_for_wake_event(self) -> str:
         if bool(self.get_parameter("keyboard_wakeup").value):
-            input("Press Enter to start one Volcengine S2S turn: ")
+            prompt = "Press Enter to start one Volcengine S2S turn: "
+            try:
+                with open("/dev/tty", "r", encoding="utf-8", errors="replace") as terminal:
+                    print(prompt, end="", flush=True)
+                    terminal.readline()
+            except OSError:
+                input(prompt)
             return "keyboard"
         try:
             import serial
