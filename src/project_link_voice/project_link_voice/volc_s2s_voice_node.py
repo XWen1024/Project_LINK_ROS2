@@ -542,7 +542,7 @@ class VolcS2SVoiceNode(Node):
                 turn = TurnState(trace=trace, wake_ns=wake_ns)
                 self._set_active_turn(turn)
                 self._status("wakeup")
-                self._play_wakeup_ack(trace)
+                wakeup_ack_done_ns = self._play_wakeup_ack(trace)
 
                 self._bridge.clear()
                 first_chunk = True
@@ -559,6 +559,12 @@ class VolcS2SVoiceNode(Node):
                                 turn,
                                 "volc_wakeup_to_first_input_audio",
                                 turn.wake_ns,
+                                sent_ns,
+                            )
+                            self._record_turn_interval(
+                                turn,
+                                "wakeup_ack_to_first_input_audio",
+                                wakeup_ack_done_ns,
                                 sent_ns,
                             )
                         turn.last_input_ns = sent_ns
@@ -669,7 +675,7 @@ class VolcS2SVoiceNode(Node):
                     return matched
         return ""
 
-    def _play_wakeup_ack(self, trace: VoiceTrace) -> None:
+    def _play_wakeup_ack(self, trace: VoiceTrace) -> int:
         path = Path(str(self.get_parameter("wakeup_ack_cache_file").value)).expanduser()
         started_at = time.perf_counter()
         success = False
@@ -693,6 +699,7 @@ class VolcS2SVoiceNode(Node):
         except Exception as exc:
             error_type = type(exc).__name__
             self.get_logger().warning(f"Cached wake acknowledgement playback failed: {exc}")
+        completed_ns = time.monotonic_ns()
         trace.record(
             "wakeup_ack_playback",
             (time.perf_counter() - started_at) * 1000.0,
@@ -700,6 +707,7 @@ class VolcS2SVoiceNode(Node):
             success=success,
             error_type=error_type or None,
         )
+        return completed_ns
 
     def _status(self, text: str) -> None:
         self._status_pub.publish(String(data=text))

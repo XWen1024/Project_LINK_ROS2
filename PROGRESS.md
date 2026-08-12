@@ -32,6 +32,12 @@
 * Fixed the launcher to tolerate Humble setup scripts under `set -u`, auto-export
   ignored credential files to Python/native children without printing secrets,
   and read keyboard test wake events from the tmux controlling terminal.
+* A safe keyboard/no-speech turn then exercised the live state machine: cached
+  wake acknowledgement playback completed in 1909.611 ms, first input audio was
+  sent 2225.869 ms after wake, and the 8-second local no-speech timeout returned
+  the node to ready without committing an empty turn. Added a direct
+  `wakeup_ack_to_first_input_audio` edge so future hardware traces do not need to
+  infer that gap by subtraction.
 
 ## UWB summon/follow ROS 2 and Nav2 migration - 2026-08-04
 

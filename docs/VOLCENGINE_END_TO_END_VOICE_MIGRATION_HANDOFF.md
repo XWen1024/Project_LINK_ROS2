@@ -139,6 +139,7 @@ tmux attach -t project_link_volc_s2s_voice
 volc_device_registration
 volc_ws_connect
 wakeup_ack_playback
+wakeup_ack_to_first_input_audio
 local_vad_record
 volc_wakeup_to_first_input_audio
 volc_first_input_to_speech_started
