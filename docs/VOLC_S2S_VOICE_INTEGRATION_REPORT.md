@@ -1,0 +1,125 @@
+# Volcengine S2S local voice integration report
+
+Date: 2026-08-12
+
+## Isolation
+
+- Branch: `codex/volc-s2s-voice-integration`
+- Windows worktree: `C:\Users\XWen1024\Documents\ROS2小车-volc-voice`
+- Orin worktree: `/home/wte/wheeltec_robot-volc-voice`
+- Validated integration commit: `6c776f465395f47b16a38473d8163fe36dc5091b`
+- Official Embedded Kit commit:
+  `2c94f96f3aad4094e0e818cbb031149fd4384ead`
+
+The original voice chain was not edited, stopped, migrated, or used as a hidden
+fallback. The new launch starts no chassis process and does not publish
+`/cmd_vel`.
+
+## Result summary
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Native ARM64 bridge build | PASS | `volc_ws_bridge` is ELF64 AArch64; RTC disabled/not linked |
+| ROS package build | PASS | `project_link_voice_interfaces`, `wheeltec_robot_msg`, and `project_link_voice` built |
+| Focused tests | PASS | 15 bridge/timing/FunVAD/wakeup tests |
+| Embedded Kit registration | PASS | Three observed runs: 857, 918, and 1203 ms |
+| Persistent low-load WSS | PASS | Three observed runs: 465, 421, and 867 ms |
+| Session configuration | PASS | `doubao-seed-2-1-turbo-260628`, PCM16 input/output, `server_vad` |
+| FunVAD warm-up | PASS | Ready without loading faster-whisper or DeepSeek |
+| Wake acknowledgement | PASS (board-audio test) | Cached file played successfully in 1909.611 and 1898.789 ms |
+| Audio streaming entry | PASS (board-input test) | First 16 kHz frame sent; ack end to first input was 315.021 ms |
+| Empty-turn safety | PASS | 8-second local no-speech timeout cleared input without commit |
+| iFlytek hardware wake | NOT TESTED | Wake board absent from USB and `/dev/serial/by-id` empty |
+| XFM microphone capture | NOT TESTED | XFM USB audio device absent from USB/ALSA/PyAudio |
+| C-Media speaker playback | NOT TESTED | C-Media USB device and Pulse sink absent |
+| Real speech to AI speaker response | NOT TESTED | Blocked by the three absent USB devices |
+
+## Observed startup latency
+
+The three persistent-session starts produced:
+
+| Run | Registration ms | WSS connect ms | Startup trace total ms |
+| --- | ---: | ---: | ---: |
+| 1 | 857 | 465 | 1329.106 |
+| 2 | 918 | 421 | 1376.518 |
+| 3 | 1203 | 867 | 2099.580 |
+
+These are startup-only measurements. They are not paid once per spoken turn
+because the native bridge keeps the engine and WSS session alive.
+
+## Safe state-machine probe
+
+The keyboard test reads the tmux controlling terminal rather than the ROS launch
+stdin pipe. A no-speech probe exercised the same Python/native path without
+sending robot commands:
+
+```text
+keyboard wake
+-> cached acknowledgement
+-> open 16 kHz Pulse input
+-> stream realtime audio over the existing WSS
+-> local FunVAD no-speech timeout
+-> clear input and return to ready
+```
+
+Latest trace:
+
+```text
+wakeup_ack_playback             1898.789 ms
+volc_wakeup_to_first_input_audio 2215.047 ms
+wakeup_ack_to_first_input_audio   315.021 ms
+local_vad_record                8140.431 ms
+outcome                         no_speech_timeout
+```
+
+No user speech was present, so no commit, cloud response, AI PCM, or speaker
+first-write measurement is claimed for this run.
+
+## Deployment fixes found during bring-up
+
+1. Humble/colcon setup scripts may read unset variables. The launcher now
+   temporarily disables `nounset` while sourcing them, then restores it.
+2. Values sourced from ignored `.env.local` were shell variables only. The
+   launcher now auto-exports the file while sourcing it so Python and the native
+   bridge receive the five `VOLC_*` variables. Values remain unprinted.
+3. ROS launch gives the node a pipe for stdin. Keyboard test wake now reads
+   `/dev/tty`; the real serial wake path is unchanged.
+4. Timing now includes the direct `wakeup_ack_to_first_input_audio` edge in
+   addition to wake-relative measurements.
+
+## Hardware blocker and next command
+
+At the last scan the Orin USB bus contained only the onboard hubs and Bluetooth.
+There was no stable wake serial path and no external USB audio card. Connect and
+power the iFlytek wake board, XFM microphone, and C-Media speaker, then run:
+
+```bash
+cd /home/wte/wheeltec_robot-volc-voice
+PROJECT_LINK_WORKSPACE=/home/wte/wheeltec_robot-volc-voice \
+  ./scripts/start_volc_s2s_voice.sh --scan-only
+```
+
+Only after the scan shows the stable iFlytek serial path, XFM capture device,
+and C-Media Pulse sink should the real session be started. Use the PyAudio input
+index printed by that scan; USB indices may change after reconnection.
+
+```bash
+PROJECT_LINK_WORKSPACE=/home/wte/wheeltec_robot-volc-voice \
+  ./scripts/start_volc_s2s_voice.sh \
+    --restart \
+    --wakeup-port auto \
+    --audio-input-index <XFM_INDEX> \
+    --audio-output-index -1 \
+    --pulse-sink alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo \
+    --no-attach
+
+tmux attach -t project_link_volc_s2s_voice
+```
+
+Expected real-trace edges include local VAD, last input to cloud speech stop,
+last input to first AI audio, callback to speaker write, last input to speaker
+write, response completion, and playback drain. The timing file remains:
+
+```text
+~/.ros/project_link_voice/voice_timing.jsonl
+```

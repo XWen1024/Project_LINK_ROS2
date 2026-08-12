@@ -31,12 +31,13 @@ no `/cmd_vel`.
 cd /home/wte/wheeltec_robot-volc-voice
 ./experiments/volc_s2s_smoke/scripts/build.sh
 source /opt/ros/humble/setup.bash
-colcon build --packages-select project_link_voice
+colcon build --packages-up-to project_link_voice
 ./scripts/start_volc_s2s_voice.sh --restart --no-attach
 ```
 
 Detailed setup, timing phases, and rollback instructions are in
-`docs/VOLCENGINE_END_TO_END_VOICE_MIGRATION_HANDOFF.md`.
+`docs/VOLCENGINE_END_TO_END_VOICE_MIGRATION_HANDOFF.md`. The first Orin field
+bring-up report is `docs/VOLC_S2S_VOICE_INTEGRATION_REPORT.md`.
 
 ## Current Status
 

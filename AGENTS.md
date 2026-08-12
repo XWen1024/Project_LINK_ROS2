@@ -16,6 +16,11 @@ file together with `PROGRESS.md` and `README.md`.
   `start_llm_voice_car_demo.sh` and production voice launch untouched as rollback
   paths. Do not run both voice stacks against the same wake serial/microphone at
   the same time.
+- Orin native build, ROS dependencies, 15 focused tests, persistent WSS, FunVAD
+  warm-up, and a safe keyboard/no-speech state-machine turn pass. Real acoustic
+  wake-to-speaker validation is still gated on the iFlytek wake board, XFM USB
+  microphone, and C-Media USB speaker actually enumerating on the Orin USB bus.
+  See `docs/VOLC_S2S_VOICE_INTEGRATION_REPORT.md`.
 
 - Current phase: Point-LIO Phase B, live slam_toolbox mapping, C63A velocity
   feedback, and Nav2 are running as a known-good supervised navigation stack.
