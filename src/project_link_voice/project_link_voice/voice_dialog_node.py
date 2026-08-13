@@ -100,6 +100,7 @@ class VoiceDialogNode(Node):
         self._command_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voice-command")
         self._stop_event = threading.Event()
         self._conversation_active = threading.Event()
+        self._conversation_exit_requested = threading.Event()
         self._speech_output_event = threading.Event()
         self._goal_handle = None
         self._navigation_started_at = 0.0
@@ -491,6 +492,7 @@ class VoiceDialogNode(Node):
         normalized = text.strip()
         trace.debug("command_processing_started", text_preview=normalized[:120])
         if is_conversation_exit(normalized, self._conversation_exit_keywords):
+            self._conversation_exit_requested.set()
             with trace.phase("python_tool", tool="cancel_current_task"):
                 self._cancel_everything("voice cancellation")
                 self._stop_demo_motion()
@@ -1199,6 +1201,7 @@ class VoiceDialogNode(Node):
         completed_turns = 0
         first_turn = True
         self._llm.reset_history()
+        self._conversation_exit_requested.clear()
         self._conversation_active.set()
         self.get_logger().info(
             f"Continuous conversation started: enabled={continuous}; "
@@ -1206,6 +1209,8 @@ class VoiceDialogNode(Node):
         )
         try:
             while not self._stop_event.is_set():
+                if self._conversation_exit_requested.is_set():
+                    return
                 limit_reason = conversation_limit_reason(
                     completed_turns,
                     time.monotonic() - session_started_at,
@@ -1241,7 +1246,10 @@ class VoiceDialogNode(Node):
                     pcm, reason = recorder.record(
                         asr_turn.feed_audio,
                         no_speech_timeout_sec=listen_timeout,
-                        interrupt_callback=self._speech_output_event.is_set,
+                        interrupt_callback=lambda: (
+                            self._speech_output_event.is_set()
+                            or self._conversation_exit_requested.is_set()
+                        ),
                     )
                 vad_terminal_at = time.perf_counter()
                 trace.mark_reference("vad_terminal", vad_terminal_at)
@@ -1271,6 +1279,8 @@ class VoiceDialogNode(Node):
                     asr_turn.abort()
                     trace.complete("listen_interrupted_by_tts")
                     self._wait_for_tts_reply(trace)
+                    if self._conversation_exit_requested.is_set():
+                        return
                     first_turn = False
                     continue
                 if not pcm:
@@ -1301,6 +1311,7 @@ class VoiceDialogNode(Node):
                 first_turn = False
         finally:
             self._conversation_active.clear()
+            self._conversation_exit_requested.clear()
             self.get_logger().info(
                 f"Continuous conversation ended after {completed_turns} completed turn(s)."
             )
