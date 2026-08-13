@@ -9,7 +9,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +35,11 @@ except ImportError:
 from project_link_voice_interfaces.action import DriveToPoint
 
 from .asr import VolcanoAsrSettings, create_asr_provider
+from .conversation import (
+    DEFAULT_EXIT_KEYWORDS,
+    conversation_limit_reason,
+    is_conversation_exit,
+)
 from .funvad import FunVadRecorder, VadSettings
 from .llm import (
     DEFAULT_LLM_API_KEY_ENV,
@@ -46,7 +51,7 @@ from .llm import (
 from .task_parser import parse_aliases
 from .volcano_tts import VolcanoTts
 from .voice_debug import VoiceDebugSink, VoiceTrace
-from .waypoints import CANCEL_WORDS, CONFIRM_WORDS, Waypoint, WaypointStore, contains_any
+from .waypoints import CONFIRM_WORDS, Waypoint, WaypointStore, contains_any
 from .wakeup import SerialWakeDetector, resolve_wakeup_serial_port
 
 
@@ -94,6 +99,8 @@ class VoiceDialogNode(Node):
         )
         self._command_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voice-command")
         self._stop_event = threading.Event()
+        self._conversation_active = threading.Event()
+        self._speech_output_event = threading.Event()
         self._goal_handle = None
         self._navigation_started_at = 0.0
         self._grasp_goal_handle = None
@@ -108,6 +115,11 @@ class VoiceDialogNode(Node):
         self._startup_time = time.monotonic()
         self._pure_test_announced = False
         self._pure_test_mode = self._initial_pure_test_mode()
+        self._conversation_exit_keywords = tuple(
+            str(keyword).strip()
+            for keyword in self.get_parameter("conversation_exit_keywords").value
+            if str(keyword).strip()
+        )
 
         share_dir = Path(get_package_share_directory("project_link_voice"))
         default_waypoints = share_dir / "data" / "default_waypoints.json"
@@ -216,6 +228,13 @@ class VoiceDialogNode(Node):
         self.declare_parameter("wakeup_ack_cache_file", "~/.cache/project_link_voice/wakeup_ack.mp3")
         self.declare_parameter("wakeup_ack_cache_timeout_sec", 20.0)
         self.declare_parameter("wakeup_ack_playback_timeout_sec", 5.0)
+        self.declare_parameter("continuous_conversation_enabled", True)
+        self.declare_parameter("continuous_silence_timeout_sec", 8.0)
+        self.declare_parameter("continuous_max_turns", 20)
+        self.declare_parameter("continuous_max_session_sec", 300.0)
+        self.declare_parameter("conversation_reply_playback_timeout_sec", 45.0)
+        self.declare_parameter("conversation_exit_reply", "好的，我退下了")
+        self.declare_parameter("conversation_exit_keywords", list(DEFAULT_EXIT_KEYWORDS))
         self.declare_parameter("waiting_prompt_text", "好的。")
         self.declare_parameter("waiting_prompt_cache_file", "~/.cache/project_link_voice/waiting_okay.mp3")
         self.declare_parameter("waiting_prompt_delay_ms", 500)
@@ -226,6 +245,7 @@ class VoiceDialogNode(Node):
             [
                 "好的。",
                 "已停止。",
+                "好的，我退下了",
                 "没有听到有效语音，我先休息了。",
                 "没有识别到有效指令。",
             ],
@@ -390,6 +410,8 @@ class VoiceDialogNode(Node):
             status = f"executing_{self._active_task.kind}"
         elif self._pending_task:
             status = f"awaiting_confirmation_{self._pending_task.kind}"
+        elif self._conversation_active.is_set():
+            status = "conversation_active"
         else:
             status = "idle"
         mode = "pure_test" if self._pure_test_mode else "production"
@@ -434,6 +456,7 @@ class VoiceDialogNode(Node):
         if not text:
             return
         self.get_logger().info(f"TTS: {text}")
+        self._speech_output_event.set()
         started_at = time.perf_counter()
         self._tts.speak(text, trace.timing_callback if trace is not None else None)
         if trace is not None:
@@ -445,14 +468,15 @@ class VoiceDialogNode(Node):
             trace.debug("tts_requested", text_preview=text[:120], text_chars=len(text))
         self._tts_pub.publish(String(data=text))
 
-    def _submit_text(self, text: str, trace: VoiceTrace) -> None:
+    def _submit_text(self, text: str, trace: VoiceTrace) -> Future[str]:
         submitted_at = time.perf_counter()
-        self._command_executor.submit(self._handle_text, text, trace)
+        future = self._command_executor.submit(self._handle_text, text, trace)
         trace.record(
             "command_submit",
             (time.perf_counter() - submitted_at) * 1000.0,
             text_chars=len(text),
         )
+        return future
 
     def _expire_pending_task(self) -> None:
         if not self._pending_task:
@@ -463,22 +487,22 @@ class VoiceDialogNode(Node):
             self._pending_task = None
             self._say(f"{task.waypoint.name}的任务确认超时，已作废。请重新下达指令。")
 
-    def _handle_text(self, text: str, trace: VoiceTrace) -> None:
+    def _handle_text(self, text: str, trace: VoiceTrace) -> str:
         normalized = text.strip()
         trace.debug("command_processing_started", text_preview=normalized[:120])
-        if contains_any(normalized, CANCEL_WORDS):
+        if is_conversation_exit(normalized, self._conversation_exit_keywords):
             with trace.phase("python_tool", tool="cancel_current_task"):
                 self._cancel_everything("voice cancellation")
                 self._stop_demo_motion()
-            self._say("已取消当前任务，并请求底盘和机械臂停止。", trace)
-            trace.complete("local_cancel")
-            return
+            self._say(str(self.get_parameter("conversation_exit_reply").value), trace)
+            trace.complete("conversation_exit_keyword")
+            return "exit_conversation"
         demo_command = self._parse_demo_motion(normalized)
         if demo_command:
             with trace.phase("python_tool", tool="local_demo_motion"):
                 self._start_demo_motion(demo_command, trace)
             trace.complete("local_demo_motion")
-            return
+            return "continue_conversation"
         if self._pending_task:
             if contains_any(normalized, CONFIRM_WORDS):
                 task = self._pending_task
@@ -489,8 +513,9 @@ class VoiceDialogNode(Node):
             else:
                 self._say("当前有待确认任务。请说确认开始，或说取消。", trace)
                 trace.complete("confirmation_required")
-            return
+            return "continue_conversation"
         self._run_llm_turn(normalized, trace)
+        return "continue_conversation"
 
     def _run_llm_turn(self, text: str, trace: VoiceTrace) -> None:
         stream_open = False
@@ -506,6 +531,7 @@ class VoiceDialogNode(Node):
             if chunk.strip():
                 if not stream_open:
                     started_at = time.perf_counter()
+                    self._speech_output_event.set()
                     self._tts.speak_stream_start(trace.timing_callback)
                     trace.record(
                         "tts_dispatch",
@@ -1146,28 +1172,85 @@ class VoiceDialogNode(Node):
         self._prepare_waiting_prompt()
         self._prepare_persistent_phrases()
         while not self._stop_event.is_set():
-            trace = None
             try:
                 wake_event = self._wait_for_wake_event()
                 if self._stop_event.is_set():
                     return
                 if wake_event:
                     self.get_logger().info(f"Wakeup event: {wake_event}")
-                trace = self._debug_sink.start_trace("audio", wake_event=str(wake_event)[:120])
                 if bool(self.get_parameter("wakeup_only").value):
+                    trace = self._debug_sink.start_trace("audio", wake_event=str(wake_event)[:120])
                     self._say("纯测试模式收到唤醒信号。", trace)
                     trace.complete("wakeup_only")
                     continue
+                self._run_audio_conversation(wake_event, recorder, asr_provider)
+            except Exception as exc:
+                self.get_logger().error(f"Audio loop failed: {exc}")
+                self._say("语音输入不可用，请检查麦克风、串口和模型依赖。")
+                self._stop_event.wait(2.0)
+
+    def _run_audio_conversation(self, wake_event: str, recorder, asr_provider) -> None:
+        continuous = bool(self.get_parameter("continuous_conversation_enabled").value)
+        follow_up_timeout = float(self.get_parameter("continuous_silence_timeout_sec").value)
+        max_turns = int(self.get_parameter("continuous_max_turns").value)
+        max_session_sec = float(self.get_parameter("continuous_max_session_sec").value)
+        exit_reply = str(self.get_parameter("conversation_exit_reply").value).strip()
+        session_started_at = time.monotonic()
+        completed_turns = 0
+        first_turn = True
+        self._llm.reset_history()
+        self._conversation_active.set()
+        self.get_logger().info(
+            f"Continuous conversation started: enabled={continuous}; "
+            f"silence_timeout={follow_up_timeout:.1f}s"
+        )
+        try:
+            while not self._stop_event.is_set():
+                limit_reason = conversation_limit_reason(
+                    completed_turns,
+                    time.monotonic() - session_started_at,
+                    max_turns,
+                    max_session_sec,
+                )
+                if limit_reason is not None:
+                    trace = self._debug_sink.start_trace(
+                        "audio",
+                        conversation_turn=completed_turns + 1,
+                        continuation=not first_turn,
+                    )
+                    self._say(exit_reply, trace)
+                    trace.complete("conversation_limit", reason=limit_reason)
+                    self._wait_for_tts_reply(trace)
+                    return
+
+                trace = self._debug_sink.start_trace(
+                    "audio",
+                    wake_event=str(wake_event)[:120] if first_turn else "",
+                    conversation_turn=completed_turns + 1,
+                    continuation=not first_turn,
+                )
                 asr_turn = asr_provider.begin_turn(
                     trace.timing_callback,
-                    lambda partial: self._on_asr_partial(partial, trace),
+                    lambda partial, active_trace=trace: self._on_asr_partial(partial, active_trace),
                 )
-                self._play_wakeup_ack(trace)
+                if first_turn:
+                    self._play_wakeup_ack(trace)
+                self._wait_for_output_idle_before_listening()
+                listen_timeout = None if first_turn else follow_up_timeout
                 with trace.phase("vad_record"):
-                    pcm, reason = recorder.record(asr_turn.feed_audio)
+                    pcm, reason = recorder.record(
+                        asr_turn.feed_audio,
+                        no_speech_timeout_sec=listen_timeout,
+                        interrupt_callback=self._speech_output_event.is_set,
+                    )
                 vad_terminal_at = time.perf_counter()
                 trace.mark_reference("vad_terminal", vad_terminal_at)
-                trace.debug("vad_finished", reason=reason, pcm_bytes=len(pcm))
+                trace.debug(
+                    "vad_finished",
+                    reason=reason,
+                    pcm_bytes=len(pcm),
+                    continuation=not first_turn,
+                )
                 if recorder.last_speech_end_delay_ms is not None:
                     trace.mark_reference(
                         "speech_end_estimated",
@@ -1176,32 +1259,91 @@ class VoiceDialogNode(Node):
                     trace.record("speech_end_to_vad", recorder.last_speech_end_delay_ms, reason=reason)
                 if reason == "no_speech_timeout":
                     asr_turn.abort()
-                    self._say("没有听到有效语音，我先休息了。", trace)
-                    trace.complete("no_speech_timeout")
+                    if first_turn:
+                        self._say("没有听到有效语音，我先休息了。", trace)
+                        trace.complete("no_speech_timeout")
+                    else:
+                        self._say(exit_reply, trace)
+                        trace.complete("continuous_silence_timeout")
+                    self._wait_for_tts_reply(trace)
+                    return
+                if reason == "external_playback":
+                    asr_turn.abort()
+                    trace.complete("listen_interrupted_by_tts")
+                    self._wait_for_tts_reply(trace)
+                    first_turn = False
                     continue
                 if not pcm:
                     asr_turn.abort()
                     self._say("录音结束，但没有有效语音。", trace)
                     trace.complete("empty_audio")
-                    continue
+                    self._wait_for_tts_reply(trace)
+                    return
+
                 self._schedule_waiting_prompt(trace)
                 text = asr_turn.finish(pcm)
-                if text:
-                    self.get_logger().info(f"ASR: {text}")
-                    trace.debug("asr_result", text_preview=text[:120], text_chars=len(text))
-                    self._submit_text(text, trace)
-                else:
+                if not text:
                     self._say("没有识别到有效指令。", trace)
                     trace.complete("empty_asr")
-            except Exception as exc:
-                self.get_logger().error(f"Audio loop failed: {exc}")
-                if trace is not None:
-                    trace.debug("audio_pipeline_failed", error_type=type(exc).__name__, message=str(exc))
-                    self._say("语音输入不可用，请检查麦克风、串口和模型依赖。", trace)
-                    trace.complete("audio_pipeline_error")
-                else:
-                    self._say("语音输入不可用，请检查麦克风、串口和模型依赖。")
-                self._stop_event.wait(2.0)
+                    self._wait_for_tts_reply(trace)
+                    if not continuous:
+                        return
+                    first_turn = False
+                    continue
+
+                self.get_logger().info(f"ASR: {text}")
+                trace.debug("asr_result", text_preview=text[:120], text_chars=len(text))
+                action = self._wait_for_command_result(self._submit_text(text, trace), trace)
+                self._wait_for_tts_reply(trace)
+                completed_turns += 1
+                if action == "exit_conversation" or not continuous:
+                    return
+                first_turn = False
+        finally:
+            self._conversation_active.clear()
+            self.get_logger().info(
+                f"Continuous conversation ended after {completed_turns} completed turn(s)."
+            )
+
+    def _wait_for_command_result(self, future: Future[str], trace: VoiceTrace) -> str:
+        try:
+            return future.result()
+        except Exception as exc:
+            trace.debug("command_failed", error_type=type(exc).__name__, message=str(exc))
+            self._say("处理指令时出错，我先退下了。", trace)
+            if not trace.completed:
+                trace.complete("command_error")
+            return "exit_conversation"
+
+    def _wait_for_tts_reply(self, trace: VoiceTrace) -> bool:
+        timeout_sec = max(
+            0.1,
+            float(self.get_parameter("conversation_reply_playback_timeout_sec").value),
+        )
+        started_at = time.perf_counter()
+        completed = self._tts.wait_until_idle(timeout_sec)
+        trace.record(
+            "tts_playback_complete",
+            (time.perf_counter() - started_at) * 1000.0,
+            success=completed,
+        )
+        if not completed:
+            self.get_logger().warn("TTS playback timeout; stopping audio before the next microphone turn.")
+            self._tts.stop()
+        return completed
+
+    def _wait_for_output_idle_before_listening(self) -> None:
+        if self._speech_output_event.is_set():
+            completed = self._tts.wait_until_idle(
+                max(
+                    0.1,
+                    float(self.get_parameter("conversation_reply_playback_timeout_sec").value),
+                )
+            )
+            if not completed:
+                self.get_logger().warn("Stopping overdue TTS before opening the microphone.")
+                self._tts.stop()
+        self._speech_output_event.clear()
 
     def _on_asr_partial(self, text: str, trace: VoiceTrace) -> None:
         trace.debug("asr_partial", text_preview=text[:120], text_chars=len(text))

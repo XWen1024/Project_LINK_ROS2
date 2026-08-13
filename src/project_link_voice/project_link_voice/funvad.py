@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import time
 from typing import Any, Callable, Iterable
 
 
 DEFAULT_IFLYTEK_INPUT_NAME = "XFM-DP-V0.0.18"
+
+
+def vad_settings_for_turn(
+    settings: "VadSettings",
+    no_speech_timeout_sec: float | None,
+) -> "VadSettings":
+    if no_speech_timeout_sec is None:
+        return settings
+    return replace(
+        settings,
+        no_speech_timeout_sec=max(0.1, float(no_speech_timeout_sec)),
+    )
 
 
 def resolve_pyaudio_input_device(
@@ -215,14 +227,20 @@ class FunVadRecorder:
         )
         return extract_vad_events(result)
 
-    def record(self, audio_callback: Callable[[bytes], None] | None = None) -> tuple[bytes, str]:
+    def record(
+        self,
+        audio_callback: Callable[[bytes], None] | None = None,
+        no_speech_timeout_sec: float | None = None,
+        interrupt_callback: Callable[[], bool] | None = None,
+    ) -> tuple[bytes, str]:
         try:
             import pyaudio
         except ImportError as exc:
             raise RuntimeError("PyAudio is required for microphone recording") from exc
 
         model = self._model_instance()
-        state = VadEndpointState(self.settings)
+        settings = vad_settings_for_turn(self.settings, no_speech_timeout_sec)
+        state = VadEndpointState(settings)
         cache: dict[str, Any] = {}
         vad_buffer = bytearray()
         self.last_speech_end_delay_ms = None
@@ -237,9 +255,9 @@ class FunVadRecorder:
         open_kwargs = {
             "format": pyaudio.paInt16,
             "channels": 1,
-            "rate": self.settings.sample_rate,
+            "rate": settings.sample_rate,
             "input": True,
-            "frames_per_buffer": self.settings.capture_frame_bytes // 2,
+            "frames_per_buffer": settings.capture_frame_bytes // 2,
         }
         if selected_index is not None:
             open_kwargs["input_device_index"] = selected_index
@@ -247,20 +265,24 @@ class FunVadRecorder:
         capture_started_at = time.perf_counter()
         try:
             while True:
+                if interrupt_callback is not None and interrupt_callback():
+                    return state.audio, "external_playback"
                 capture_frame = stream.read(
-                    self.settings.capture_frame_bytes // 2,
+                    settings.capture_frame_bytes // 2,
                     exception_on_overflow=False,
                 )
+                if interrupt_callback is not None and interrupt_callback():
+                    return state.audio, "external_playback"
                 if audio_callback is not None:
                     audio_callback(capture_frame)
                 vad_buffer.extend(capture_frame)
-                if len(vad_buffer) < self.settings.chunk_bytes:
+                if len(vad_buffer) < settings.chunk_bytes:
                     continue
-                chunk = bytes(vad_buffer[: self.settings.chunk_bytes])
-                del vad_buffer[: self.settings.chunk_bytes]
-                next_elapsed_ms = state.elapsed_ms + self.settings.chunk_ms
+                chunk = bytes(vad_buffer[: settings.chunk_bytes])
+                del vad_buffer[: settings.chunk_bytes]
+                next_elapsed_ms = state.elapsed_ms + settings.chunk_ms
                 active_limit_ms = int(
-                    (self.settings.max_utterance_sec if state.started else self.settings.no_speech_timeout_sec)
+                    (settings.max_utterance_sec if state.started else settings.no_speech_timeout_sec)
                     * 1000
                 )
                 events = self._generate_events(

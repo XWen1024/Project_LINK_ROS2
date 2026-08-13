@@ -25,6 +25,15 @@ def test_llm_api_key_environment_can_be_overridden(monkeypatch):
     assert client.available() == (True, "ready")
 
 
+def test_audio_conversation_can_reset_llm_history():
+    client = ToolCallingClient(False, "https://example.invalid/v1", "test-model")
+    client.append_system_event("old session")
+    assert client._history
+
+    client.reset_history()
+    assert client._history == []
+
+
 def test_tool_result_can_stop_before_ros_execution():
     handled = ToolResult(
         {"success": True, "pending": "navigation", "target_name": "客厅"},

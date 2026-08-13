@@ -586,6 +586,13 @@ priority, update:
   `~/.cache/project_link_voice/wakeup_ack.mp3`. It must finish playback before
   FunVAD recording begins. Serial wake matching uses a rolling binary buffer so
   split AIUI frames do not lose the `aiui_event` marker.
+- `voice_dialog_node` now defaults to bounded continuous conversation: one wake
+  opens multiple ASR/LLM/TTS turns, each next recording starts only after the
+  current TTS generation finishes, and 8 seconds of follow-up silence returns to
+  wake wait with the cached reply `好的，我退下了`. Explicit local exit words
+  such as `停止`, `取消`, `退出`, `退下`, and `休息` bypass the LLM, cancel active
+  motion/grasp/demo work, speak the same fixed reply, and end the session. A
+  silence-only session timeout must not cancel an already running robot task.
 - Voice interactions use one `trace_id` across VAD, ASR, DeepSeek Tool Calling,
   Python tool execution, and Volcano TTS. Keep ordinary debug events in
   `~/.ros/project_link_voice/voice_debug.jsonl` and timing-only events in

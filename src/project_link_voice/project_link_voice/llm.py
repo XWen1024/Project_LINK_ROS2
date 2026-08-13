@@ -295,6 +295,9 @@ class ToolCallingClient:
         self._history.append({"role": "system", "content": text})
         self._trim_history()
 
+    def reset_history(self) -> None:
+        self._history.clear()
+
     def chat(
         self,
         user_text: str,

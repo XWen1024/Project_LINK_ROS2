@@ -742,6 +742,13 @@ The voice node never publishes production `/cmd_vel` in Nav2 mode. A named
 waypoint task requires `确认开始`; `停止` or `取消` bypasses the LLM and cancels the
 active Nav2 and grasp goals. The wake response is cached locally at
 `~/.cache/project_link_voice/wakeup_ack.mp3` and finishes before recording.
+One wake event now starts a bounded continuous conversation. After every reply
+finishes playing, the microphone automatically opens for the next turn; 8
+seconds of follow-up silence returns to wake wait. `停止`, `取消`, `退出`, `退下`,
+`休息`, `不用了`, `算了`, `再见`, and `拜拜` are handled locally, cancel active
+robot work, speak the cached fixed reply `好的，我退下了`, and close the session.
+Silence-only timeout closes the conversation but does not cancel a robot task
+that is already running.
 
 ### Standalone LLM Voice Car Demo
 

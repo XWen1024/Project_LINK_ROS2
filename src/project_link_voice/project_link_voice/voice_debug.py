@@ -180,6 +180,7 @@ class VoiceTrace:
             emit_late_summary = self._completed and phase in (
                 "tts_playback_started",
                 "tts_synthesis_complete",
+                "tts_playback_complete",
             )
             phases = dict(self._phases) if emit_late_summary else {}
             completion_fields = dict(self._completion_fields) if emit_late_summary else {}

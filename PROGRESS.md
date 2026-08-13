@@ -360,6 +360,13 @@ CPU/memory/temperature observations for each test.
   binary frames, and `我在，请说。` is cached at
   `~/.cache/project_link_voice/wakeup_ack.mp3`, played locally to completion,
   then FunVAD recording starts.
+* Added bounded continuous conversation to `voice_dialog_node`. One wake event
+  now opens multiple ASR/DeepSeek/TTS turns, follow-up recording waits until the
+  current TTS generation has really finished, and 8 seconds of silence returns
+  to wake wait with the cached phrase `好的，我退下了`. Local stop/cancel/exit
+  keywords bypass the LLM, cancel active robot work, speak that fixed phrase,
+  and close the session; silence-only timeout closes speech without canceling a
+  task that is already running.
 
 ### Second-camera fall response module
 

@@ -16,6 +16,8 @@
 -> Nav2 或受限演示动作
 ```
 
+默认交互是有界连续对话：一次串口唤醒后只在首轮播放“我在，请说”，每次回答播放完成后自动重新打开麦克风；连续静音 `8` 秒、达到 `20` 轮或会话持续 `300` 秒会固定播报“好的，我退下了”并回到等待唤醒。说“停止、取消、退出、退下、休息、不用了、算了、再见、拜拜”等本地关键词会绕过 LLM，立即取消当前底盘/机械臂/演示动作，播放同一句固定回复并结束会话。
+
 ## 运行环境
 
 - 目标设备：Jetson Orin Nano，Ubuntu 22.04，ROS 2 Humble。
@@ -122,6 +124,8 @@ python3 scripts/scan_voice_demo_io.py --require-asr
 - 找不到 `rclpy`：重建带 `--system-site-packages` 的 `.venv-voice`，并先 source ROS 2。
 - 找不到 ROS 包或行为没更新：重新 `colcon build`，再 source `scripts/project_link_env.sh`。
 - 没有 `[VOICE_TIMING]`：确认 YAML 中 `timing_debug_enabled: true` 和 `timing_console_enabled: true`。
+- 回答后没有继续监听：确认 `continuous_conversation_enabled: true`，并检查控制台是否出现 `Continuous conversation started`。
+- 连续会话过早或过晚退出：调整 `continuous_silence_timeout_sec`；首轮唤醒后的无人说话仍使用独立的 `audio_no_speech_timeout_sec`。
 
 ## 控制台启动命令
 

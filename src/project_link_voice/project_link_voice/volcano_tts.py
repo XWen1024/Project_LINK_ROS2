@@ -740,6 +740,7 @@ class VolcanoTts:
             channel = pygame.mixer.Channel(0)
             if channel.get_busy() or channel.get_queue() is not None:
                 return False
+            playback_generation = self._playback_generation
             try:
                 self._waiting_prompt_active.set()
                 sound = pygame.mixer.Sound(str(target))
@@ -757,7 +758,7 @@ class VolcanoTts:
                 return False
             finally:
                 self._waiting_prompt_active.clear()
-                self._is_playing = False
+                self._mark_idle_if_current(playback_generation)
 
     def wait_until_idle(self, timeout_sec: float = 5.0) -> bool:
         deadline = time.monotonic() + max(0.1, timeout_sec)
@@ -777,6 +778,10 @@ class VolcanoTts:
     def _is_current_generation(self, generation: int) -> bool:
         with self._generation_lock:
             return int(generation) == self._playback_generation
+
+    def _mark_idle_if_current(self, generation: int) -> None:
+        if self._is_current_generation(generation):
+            self._is_playing = False
 
     def _cache_get(self, text: str) -> bytes | None:
         key = self._normalize_cache_text(text)

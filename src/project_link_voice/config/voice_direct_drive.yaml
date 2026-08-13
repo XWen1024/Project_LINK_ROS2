@@ -20,6 +20,36 @@ voice_dialog_node:
     wakeup_ack_cache_file: ~/.cache/project_link_voice/wakeup_ack.mp3
     wakeup_ack_cache_timeout_sec: 20.0
     wakeup_ack_playback_timeout_sec: 5.0
+    # One wake event opens a bounded multi-turn conversation. After every TTS reply,
+    # recording restarts automatically until silence or an explicit exit keyword.
+    continuous_conversation_enabled: true
+    continuous_silence_timeout_sec: 8.0
+    continuous_max_turns: 20
+    continuous_max_session_sec: 300.0
+    conversation_reply_playback_timeout_sec: 45.0
+    conversation_exit_reply: 好的，我退下了
+    conversation_exit_keywords:
+      - 停止
+      - 停下
+      - 停一下
+      - 停一停
+      - 急停
+      - 别动
+      - 取消
+      - 退出
+      - 退出对话
+      - 关闭对话
+      - 结束对话
+      - 结束聊天
+      - 退下
+      - 休息
+      - 休息吧
+      - 不用了
+      - 不要了
+      - 算了
+      - 别说了
+      - 再见
+      - 拜拜
     waiting_prompt_text: 好的。
     waiting_prompt_cache_file: ~/.cache/project_link_voice/waiting_okay.mp3
     waiting_prompt_delay_ms: 500
@@ -83,6 +113,7 @@ voice_dialog_node:
     tts_persistent_phrases:
       - 好的。
       - 已停止。
+      - 好的，我退下了
       - 没有听到有效语音，我先休息了。
       - 没有识别到有效指令。
     # Credentials come only from /home/wte/.config/project_link/voice_api.env.

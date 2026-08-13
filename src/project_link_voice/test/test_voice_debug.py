@@ -170,3 +170,16 @@ def test_dynamic_tts_cache_reuses_first_synthesis_on_second_request():
     tts._cache_admit(" 好的。 ", b"one")
     assert tts._cache_get("好的。") == b"one"
     assert tts._cache_get("好的。") == b"one"
+
+
+def test_old_waiting_prompt_cannot_mark_a_new_tts_generation_idle():
+    tts = VolcanoTts.__new__(VolcanoTts)
+    tts._generation_lock = threading.Lock()
+    tts._playback_generation = 2
+    tts._is_playing = True
+
+    tts._mark_idle_if_current(1)
+    assert tts._is_playing
+
+    tts._mark_idle_if_current(2)
+    assert not tts._is_playing

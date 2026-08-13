@@ -6,6 +6,7 @@ from project_link_voice.funvad import (
     VadSettings,
     extract_vad_events,
     resolve_pyaudio_input_device,
+    vad_settings_for_turn,
 )
 
 
@@ -22,6 +23,18 @@ def test_no_speech_timeout_is_bounded():
     assert state.feed(b"a", []) is None
     assert state.feed(b"b", []) is None
     assert state.feed(b"c", []) == "no_speech_timeout"
+
+
+def test_follow_up_turn_can_use_a_shorter_silence_timeout():
+    original = VadSettings(no_speech_timeout_sec=8.0)
+    follow_up = vad_settings_for_turn(original, 3.5)
+    assert original.no_speech_timeout_sec == 8.0
+    assert follow_up.no_speech_timeout_sec == 3.5
+
+
+def test_follow_up_silence_timeout_has_a_positive_floor():
+    follow_up = vad_settings_for_turn(VadSettings(), 0.0)
+    assert follow_up.no_speech_timeout_sec == 0.1
 
 
 def test_max_utterance_forces_end_when_noise_never_ends():
