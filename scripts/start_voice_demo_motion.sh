@@ -8,7 +8,7 @@ RESTART=0
 ATTACH=1
 ENABLE_AUDIO=true
 KEYBOARD_WAKEUP=true
-WAKEUP_PORT="${WAKEUP_PORT:-/dev/ttyUSB0}"
+WAKEUP_PORT="${WAKEUP_PORT:-}"
 WAKEUP_MATCH="${WAKEUP_MATCH:-aiui_event}"
 LINEAR="${DEMO_LINEAR_MPS:-0.06}"
 ANGULAR="${DEMO_ANGULAR_RPS:-0.30}"
@@ -67,6 +67,8 @@ done
 
 cd "$WORKSPACE"
 source scripts/project_link_env.sh
+source scripts/project_link_voice_io.sh
+WAKEUP_PORT="${WAKEUP_PORT:-$PROJECT_LINK_WAKEUP_SERIAL}"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
   if [[ "$RESTART" -eq 1 ]]; then
@@ -79,7 +81,7 @@ fi
 
 tmux new-session -d -s "$SESSION" -n voice
 
-voice_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && ros2 launch project_link_voice voice_demo_motion.launch.py"
+voice_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh && source scripts/project_link_voice_io.sh && ros2 launch project_link_voice voice_demo_motion.launch.py"
 voice_cmd+=" enable_audio:=$ENABLE_AUDIO"
 voice_cmd+=" keyboard_wakeup:=$KEYBOARD_WAKEUP"
 voice_cmd+=" wakeup_serial_port:='$WAKEUP_PORT'"

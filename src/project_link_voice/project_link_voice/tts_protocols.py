@@ -201,6 +201,13 @@ async def start_session(websocket, payload: bytes, session_id: str) -> None:
     await websocket.send(message.marshal())
 
 
+async def cancel_session(websocket, session_id: str) -> None:
+    message = Message(type=MsgType.FullClientRequest, flag=MsgTypeFlagBits.WithEvent, event=EventType.CancelSession)
+    message.session_id = session_id
+    message.payload = b"{}"
+    await websocket.send(message.marshal())
+
+
 async def finish_session(websocket, session_id: str) -> None:
     message = Message(type=MsgType.FullClientRequest, flag=MsgTypeFlagBits.WithEvent, event=EventType.FinishSession)
     message.session_id = session_id

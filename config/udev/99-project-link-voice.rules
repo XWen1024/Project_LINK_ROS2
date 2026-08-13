@@ -1,0 +1,2 @@
+# iFlytek/WCH wake serial. USB Serial 0004 uniquely identifies this board.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4", ATTRS{serial}=="0004", SYMLINK+="project_link_wakeup", GROUP="dialout", MODE="0660"

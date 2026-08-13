@@ -13,8 +13,8 @@ ENABLE_VISUAL_GRASP=false
 ENABLE_AUDIO=true
 RESTART=0
 ATTACH=0
-WAKEUP_PORT=auto
-AUDIO_INPUT_INDEX=0
+WAKEUP_PORT="${WAKEUP_PORT:-}"
+AUDIO_INPUT_INDEX=-1
 
 usage() {
   cat <<EOF
@@ -60,7 +60,11 @@ cd "$WORKSPACE"
 set +u
 source scripts/project_link_env.sh
 if [[ -f "$VOICE_ENV" ]]; then source "$VOICE_ENV"; fi
+source scripts/project_link_voice_io.sh
+WAKEUP_PORT="${WAKEUP_PORT:-$PROJECT_LINK_WAKEUP_SERIAL}"
 set -u
+
+python3 scripts/scan_voice_demo_io.py --env-only --require-asr
 
 mkdir -p "$(dirname "$WAYPOINTS")"
 [[ -f "$WAYPOINTS" ]] || printf '{}\n' > "$WAYPOINTS"
@@ -94,11 +98,13 @@ fi
 
 voice_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh"
 if [[ -f "$VOICE_ENV" ]]; then voice_cmd+=" && source '$VOICE_ENV'"; fi
+voice_cmd+=" && source scripts/project_link_voice_io.sh"
 voice_cmd+=" && ros2 launch project_link_voice voice_nav2.launch.py"
 voice_cmd+=" enable_motion:=$ENABLE_MOTION enable_audio:=$ENABLE_AUDIO"
 voice_cmd+=" enable_visual_grasp:=$ENABLE_VISUAL_GRASP"
 voice_cmd+=" waypoints_override_file:='$WAYPOINTS'"
 voice_cmd+=" wakeup_serial_port:='$WAKEUP_PORT' audio_input_device_index:=$AUDIO_INPUT_INDEX"
+voice_cmd+=" audio_input_device_name:='$PROJECT_LINK_AUDIO_INPUT_NAME'"
 voice_cmd+=" params_file:='$WORKSPACE/src/project_link_voice/config/voice_direct_drive.yaml'"
 
 tmux new-session -d -s "$VOICE_SESSION" -n voice "$voice_cmd"

@@ -1,6 +1,12 @@
 import numpy as np
 
-from project_link_voice.funvad import FunVadRecorder, VadEndpointState, VadSettings, extract_vad_events
+from project_link_voice.funvad import (
+    FunVadRecorder,
+    VadEndpointState,
+    VadSettings,
+    extract_vad_events,
+    resolve_pyaudio_input_device,
+)
 
 
 def test_vad_end_keeps_preroll_and_finishes():
@@ -47,5 +53,36 @@ def test_recorder_passes_normalized_waveform_and_streaming_chunk_size():
     assert waveform.dtype == np.float32
     assert np.allclose(waveform, [-1.0, 0.0, 0.5, 32767 / 32768.0])
     assert calls[0]["chunk_size"] == 200
+    assert calls[0]["max_end_silence_time"] == 500
     assert calls[0]["is_final"] is False
     assert events == [(0, -1)]
+
+
+def test_capture_frame_is_smaller_than_vad_chunk():
+    settings = VadSettings(sample_rate=16000, capture_frame_ms=20, chunk_ms=200)
+    assert settings.capture_frame_bytes == 640
+    assert settings.chunk_bytes == 6400
+    assert settings.end_silence_ms == 500
+
+
+def test_input_device_name_survives_usb_index_change():
+    class FakeAudio:
+        devices = [
+            {"name": "C-Media USB Audio", "maxInputChannels": 0, "defaultSampleRate": 48000},
+            {"name": "pulse", "maxInputChannels": 32, "defaultSampleRate": 44100},
+            {
+                "name": "XFM-DP-V0.0.18: USB Audio (hw:2,0)",
+                "maxInputChannels": 1,
+                "defaultSampleRate": 16000,
+            },
+        ]
+
+        def get_device_count(self):
+            return len(self.devices)
+
+        def get_device_info_by_index(self, index):
+            return self.devices[index]
+
+    index, name = resolve_pyaudio_input_device(FakeAudio(), None, "XFM-DP-V0.0.18", 16000)
+    assert index == 2
+    assert "XFM-DP-V0.0.18" in name

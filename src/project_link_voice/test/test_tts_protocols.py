@@ -44,6 +44,21 @@ def test_client_event_frame_keeps_json_serialization_header():
     assert frame[:4] == bytes([0x11, 0x14, 0x10, 0x00])
 
 
+def test_cancel_session_frame_preserves_session_id():
+    message = Message(
+        type=MsgType.FullClientRequest,
+        flag=MsgTypeFlagBits.WithEvent,
+        event=EventType.CancelSession,
+        session_id="session-1",
+        payload=b"{}",
+    )
+
+    decoded = Message.from_bytes(message.marshal())
+
+    assert decoded.event == EventType.CancelSession
+    assert decoded.session_id == "session-1"
+
+
 def test_tts_sentence_events_and_future_events_do_not_break_parsing():
     sentence_start = bytes([0x11, 0x94, 0x10, 0x00]) + struct.pack(">i", 350)
     sentence_start += struct.pack(">I", 0) + struct.pack(">I", 2) + b"{}"

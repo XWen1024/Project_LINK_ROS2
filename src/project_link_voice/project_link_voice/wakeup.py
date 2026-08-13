@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import glob
+import os
 from collections.abc import Callable
+
+
+IFLYTEK_WAKE_BY_ID = "/dev/serial/by-id/usb-WCH.CN_USB_Single_Serial_0004-if00"
+DEFAULT_WAKEUP_ALIAS = "/dev/project_link_wakeup"
 
 
 class SerialWakeDetector:
@@ -35,7 +40,24 @@ def resolve_wakeup_serial_port(
 ) -> str:
     value = configured.strip()
     if value and value.lower() != "auto":
+        if os.path.exists(value):
+            return value
+        if value == DEFAULT_WAKEUP_ALIAS and os.path.exists(IFLYTEK_WAKE_BY_ID):
+            if log_warning:
+                log_warning(
+                    f"Wake alias {DEFAULT_WAKEUP_ALIAS} is missing; using stable by-id path: "
+                    f"{IFLYTEK_WAKE_BY_ID}"
+                )
+            return IFLYTEK_WAKE_BY_ID
         return value
+    if os.path.exists(DEFAULT_WAKEUP_ALIAS):
+        if log_warning:
+            log_warning(f"Auto-selected Project LINK wake alias: {DEFAULT_WAKEUP_ALIAS}")
+        return DEFAULT_WAKEUP_ALIAS
+    if os.path.exists(IFLYTEK_WAKE_BY_ID):
+        if log_warning:
+            log_warning(f"Auto-selected iFlytek wake serial: {IFLYTEK_WAKE_BY_ID}")
+        return IFLYTEK_WAKE_BY_ID
     by_id_matches = sorted(glob.glob("/dev/serial/by-id/*WCH.CN_USB_Single_Serial_0004*"))
     if by_id_matches:
         selected = by_id_matches[0]

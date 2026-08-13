@@ -69,6 +69,7 @@ else
   echo "Warning: voice API env file not found: $VOICE_ENV" >&2
   echo "LLM and Volcano TTS will run only if their env vars are already exported." >&2
 fi
+source scripts/project_link_voice_io.sh
 
 mkdir -p "$(dirname "$WAYPOINTS")"
 if [[ ! -f "$WAYPOINTS" ]]; then
@@ -111,6 +112,7 @@ voice_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh"
 if [[ -f "$VOICE_ENV" ]]; then
   voice_cmd+=" && source '$VOICE_ENV'"
 fi
+voice_cmd+=" && source scripts/project_link_voice_io.sh"
 voice_cmd+=" && ros2 launch project_link_voice voice_direct_drive.launch.py"
 voice_cmd+=" enable_motion:=$ENABLE_MOTION"
 voice_cmd+=" enable_audio:=$ENABLE_AUDIO"
@@ -118,6 +120,8 @@ voice_cmd+=" enable_visual_grasp:=$ENABLE_VISUAL_GRASP"
 voice_cmd+=" pure_test_mode:=$PURE_TEST_MODE"
 voice_cmd+=" waypoints_override_file:='$WAYPOINTS'"
 voice_cmd+=" params_file:='$WORKSPACE/src/project_link_voice/config/voice_direct_drive.yaml'"
+voice_cmd+=" wakeup_serial_port:='$PROJECT_LINK_WAKEUP_SERIAL' audio_input_device_index:=-1"
+voice_cmd+=" audio_input_device_name:='$PROJECT_LINK_AUDIO_INPUT_NAME'"
 
 echo "[3/4] Starting voice stack in tmux session '$VOICE_SESSION'..."
 tmux new-session -d -s "$VOICE_SESSION" -n voice "$voice_cmd"

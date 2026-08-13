@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -16,9 +18,17 @@ class VoiceTtsNode(Node):
         self.declare_parameter("tts_sample_rate", 24000)
         self.declare_parameter("volcano_resource_id", "")
         self.declare_parameter("volcano_speaker", "")
+        self.declare_parameter(
+            "tts_output_device",
+            os.environ.get(
+                "PROJECT_LINK_AUDIO_OUTPUT_DEVICE",
+                "alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo",
+            ),
+        )
         self._tts = VolcanoTts(
             resource_id=str(self.get_parameter("volcano_resource_id").value).strip() or None,
             speaker=str(self.get_parameter("volcano_speaker").value).strip() or None,
+            output_device=str(self.get_parameter("tts_output_device").value).strip() or None,
             sample_rate=int(self.get_parameter("tts_sample_rate").value),
             enabled=bool(self.get_parameter("tts_enabled").value),
         )

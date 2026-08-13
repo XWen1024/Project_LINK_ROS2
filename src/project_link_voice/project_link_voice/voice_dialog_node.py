@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import math
 import os
-import queue
 import threading
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,7 @@ except ImportError:
 
 from project_link_voice_interfaces.action import DriveToPoint
 
+from .asr import VolcanoAsrSettings, create_asr_provider
 from .funvad import FunVadRecorder, VadSettings
 from .llm import (
     DEFAULT_LLM_API_KEY_ENV,
@@ -47,37 +48,6 @@ from .volcano_tts import VolcanoTts
 from .voice_debug import VoiceDebugSink, VoiceTrace
 from .waypoints import CANCEL_WORDS, CONFIRM_WORDS, Waypoint, WaypointStore, contains_any
 from .wakeup import SerialWakeDetector, resolve_wakeup_serial_port
-
-
-class WhisperTranscriber:
-    """Lazy faster-whisper wrapper so missing audio dependencies never prevent ROS startup."""
-
-    def __init__(self, model_path: str, device: str, compute_type: str) -> None:
-        self._model_path = model_path
-        self._device = device
-        self._compute_type = compute_type
-        self._model = None
-
-    def _model_instance(self):
-        from faster_whisper import WhisperModel
-
-        if self._model is None:
-            try:
-                self._model = WhisperModel(self._model_path, device=self._device, compute_type=self._compute_type)
-            except Exception:
-                self._model = WhisperModel(self._model_path, device="cpu", compute_type="int8")
-        return self._model
-
-    def warm_up(self) -> None:
-        self._model_instance()
-
-    def transcribe_pcm(self, pcm: bytes) -> str:
-        import numpy as np
-
-        model = self._model_instance()
-        audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        segments, _ = model.transcribe(audio, language="zh")
-        return "".join(segment.text for segment in segments).strip()
 
 
 @dataclass
@@ -122,8 +92,7 @@ class VoiceDialogNode(Node):
             timing_log_file=str(self.get_parameter("timing_log_file").value),
             timing_console_enabled=bool(self.get_parameter("timing_console_enabled").value),
         )
-        self._text_queue: queue.Queue[tuple[str, VoiceTrace]] = queue.Queue()
-        self._tts_queue: queue.Queue[tuple[str, VoiceTrace]] = queue.Queue()
+        self._command_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voice-command")
         self._stop_event = threading.Event()
         self._goal_handle = None
         self._navigation_started_at = 0.0
@@ -155,8 +124,14 @@ class VoiceDialogNode(Node):
         self._tts = VolcanoTts(
             resource_id=str(self.get_parameter("volcano_resource_id").value).strip() or None,
             speaker=str(self.get_parameter("volcano_speaker").value).strip() or None,
+            output_device=str(self.get_parameter("tts_output_device").value).strip() or None,
             sample_rate=int(self.get_parameter("tts_sample_rate").value),
             enabled=bool(self.get_parameter("tts_enabled").value),
+            mixer_buffer_samples=int(self.get_parameter("tts_mixer_buffer_samples").value),
+            stream_audio_chunk_ms=int(self.get_parameter("tts_stream_audio_chunk_ms").value),
+            dynamic_cache_ttl_sec=float(self.get_parameter("tts_dynamic_cache_ttl_sec").value),
+            dynamic_cache_max_entries=int(self.get_parameter("tts_dynamic_cache_max_entries").value),
+            dynamic_cache_max_bytes=int(self.get_parameter("tts_dynamic_cache_max_bytes").value),
         )
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
@@ -198,7 +173,6 @@ class VoiceDialogNode(Node):
         self.create_subscription(OccupancyGrid, "/map", self._on_map, 10)
         self.create_subscription(LaserScan, "/scan", self._on_scan, 10)
         self.create_subscription(Odometry, "/odom", self._on_odom, 10)
-        self.create_timer(0.1, self._process_queues)
         self.create_timer(1.0, self._publish_status)
         self.create_timer(1.0, self._update_pure_test_mode)
         self.create_timer(1.0, self._expire_pending_task)
@@ -217,7 +191,9 @@ class VoiceDialogNode(Node):
             f"LLM={llm_ready}: {llm_reason}."
         )
         if bool(self.get_parameter("enable_demo_motion").value):
-            self.get_logger().warn("VOICE DEMO MOTION ENABLED: bounded local /cmd_vel commands are accepted without SLAM.")
+            self.get_logger().warn(
+                "VOICE DEMO MOTION ENABLED: bounded local /cmd_vel commands are accepted without SLAM."
+            )
         self.get_logger().warn("Physical E-stop remains mandatory; LLM never directly controls ROS actions.")
         self.get_logger().info(
             "Voice timing JSONL: " + str(Path(str(self.get_parameter("timing_log_file").value)).expanduser())
@@ -240,6 +216,20 @@ class VoiceDialogNode(Node):
         self.declare_parameter("wakeup_ack_cache_file", "~/.cache/project_link_voice/wakeup_ack.mp3")
         self.declare_parameter("wakeup_ack_cache_timeout_sec", 20.0)
         self.declare_parameter("wakeup_ack_playback_timeout_sec", 5.0)
+        self.declare_parameter("waiting_prompt_text", "好的。")
+        self.declare_parameter("waiting_prompt_cache_file", "~/.cache/project_link_voice/waiting_okay.mp3")
+        self.declare_parameter("waiting_prompt_delay_ms", 500)
+        self.declare_parameter("waiting_prompt_playback_timeout_sec", 2.0)
+        self.declare_parameter("tts_persistent_cache_dir", "~/.cache/project_link_voice/fixed_phrases")
+        self.declare_parameter(
+            "tts_persistent_phrases",
+            [
+                "好的。",
+                "已停止。",
+                "没有听到有效语音，我先休息了。",
+                "没有识别到有效指令。",
+            ],
+        )
         self.declare_parameter("target_frame", "map")
         self.declare_parameter("base_frame", "base_footprint")
         self.declare_parameter("navigation_backend", "direct_drive")
@@ -252,15 +242,36 @@ class VoiceDialogNode(Node):
         self.declare_parameter("funvad_model", os.environ.get("PROJECT_LINK_FUNVAD_MODEL", "fsmn-vad"))
         self.declare_parameter("funvad_device", "cuda")
         self.declare_parameter("audio_sample_rate", 16000)
+        self.declare_parameter("audio_capture_frame_ms", 20)
         self.declare_parameter("audio_chunk_ms", 200)
         self.declare_parameter("audio_pre_roll_ms", 400)
+        self.declare_parameter("audio_end_silence_ms", 500)
         self.declare_parameter("audio_no_speech_timeout_sec", 8.0)
         self.declare_parameter("audio_max_utterance_sec", 12.0)
         self.declare_parameter("audio_min_speech_sec", 0.30)
         self.declare_parameter("audio_input_device_index", -1)
+        self.declare_parameter(
+            "audio_input_device_name",
+            os.environ.get("PROJECT_LINK_AUDIO_INPUT_NAME", "XFM-DP-V0.0.18"),
+        )
         self.declare_parameter("whisper_model", os.environ.get("PROJECT_LINK_WHISPER_MODEL", "small"))
         self.declare_parameter("whisper_device", "cuda")
         self.declare_parameter("whisper_compute_type", "float16")
+        self.declare_parameter("asr_provider", os.environ.get("PROJECT_LINK_ASR_PROVIDER", "volcano"))
+        self.declare_parameter(
+            "volcano_asr_endpoint",
+            os.environ.get("VOLCANO_ASR_ENDPOINT", "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"),
+        )
+        self.declare_parameter(
+            "volcano_asr_resource_id",
+            os.environ.get("VOLCANO_ASR_RESOURCE_ID", "volc.seedasr.sauc.duration"),
+        )
+        self.declare_parameter("volcano_asr_packet_ms", 100)
+        self.declare_parameter("volcano_asr_final_timeout_sec", 2.0)
+        self.declare_parameter("volcano_asr_connect_timeout_sec", 5.0)
+        self.declare_parameter("volcano_asr_max_buffer_sec", 4.0)
+        self.declare_parameter("volcano_asr_enable_nonstream", False)
+        self.declare_parameter("volcano_asr_publish_partials", False)
         self.declare_parameter("enable_llm_tools", True)
         self.declare_parameter("llm_api_key_env", DEFAULT_LLM_API_KEY_ENV)
         self.declare_parameter("llm_base_url", DEFAULT_LLM_BASE_URL)
@@ -275,8 +286,20 @@ class VoiceDialogNode(Node):
         self.declare_parameter("demo_spin_sec", 5.5)
         self.declare_parameter("tts_enabled", True)
         self.declare_parameter("tts_sample_rate", 24000)
+        self.declare_parameter("tts_mixer_buffer_samples", 512)
+        self.declare_parameter("tts_stream_audio_chunk_ms", 60)
+        self.declare_parameter("tts_dynamic_cache_ttl_sec", 900.0)
+        self.declare_parameter("tts_dynamic_cache_max_entries", 64)
+        self.declare_parameter("tts_dynamic_cache_max_bytes", 16777216)
         self.declare_parameter("volcano_resource_id", "")
         self.declare_parameter("volcano_speaker", "")
+        self.declare_parameter(
+            "tts_output_device",
+            os.environ.get(
+                "PROJECT_LINK_AUDIO_OUTPUT_DEVICE",
+                "alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo",
+            ),
+        )
         self.declare_parameter("debug_logging_enabled", True)
         self.declare_parameter("timing_debug_enabled", True)
         self.declare_parameter("timing_console_enabled", True)
@@ -338,7 +361,11 @@ class VoiceDialogNode(Node):
             print("Demo motion is enabled: short local /cmd_vel commands can move the base.", flush=True)
         else:
             print("This mode tests wakeup/audio/ASR/LLM/TTS; it never sends motion or grasp actions.", flush=True)
-        print("Publish text with: ros2 topic pub --once /voice/text_input std_msgs/msg/String \"data: '去客厅'\"", flush=True)
+        print(
+            "Publish text with: ros2 topic pub --once /voice/text_input "
+            "std_msgs/msg/String \"data: '去客厅'\"",
+            flush=True,
+        )
         print("================================================\n", flush=True)
 
     def _on_map(self, _message: OccupancyGrid) -> None:
@@ -355,7 +382,7 @@ class VoiceDialogNode(Node):
         if text:
             trace = self._debug_sink.start_trace("text_topic", text_chars=len(text))
             trace.debug("text_received", text_preview=text[:120])
-            self._text_queue.put((text, trace))
+            self._submit_text(text, trace)
 
     def _publish_status(self) -> None:
         ready, reason = self._slam_ready()
@@ -418,14 +445,14 @@ class VoiceDialogNode(Node):
             trace.debug("tts_requested", text_preview=text[:120], text_chars=len(text))
         self._tts_pub.publish(String(data=text))
 
-    def _process_queues(self) -> None:
-        while not self._tts_queue.empty():
-            text, trace = self._tts_queue.get_nowait()
-            self._say(text, trace)
-            trace.complete("llm_reply_dispatched")
-        while not self._text_queue.empty():
-            text, trace = self._text_queue.get_nowait()
-            self._handle_text(text, trace)
+    def _submit_text(self, text: str, trace: VoiceTrace) -> None:
+        submitted_at = time.perf_counter()
+        self._command_executor.submit(self._handle_text, text, trace)
+        trace.record(
+            "command_submit",
+            (time.perf_counter() - submitted_at) * 1000.0,
+            text_chars=len(text),
+        )
 
     def _expire_pending_task(self) -> None:
         if not self._pending_task:
@@ -463,7 +490,7 @@ class VoiceDialogNode(Node):
                 self._say("当前有待确认任务。请说确认开始，或说取消。", trace)
                 trace.complete("confirmation_required")
             return
-        threading.Thread(target=self._run_llm_turn, args=(normalized, trace), daemon=True).start()
+        self._run_llm_turn(normalized, trace)
 
     def _run_llm_turn(self, text: str, trace: VoiceTrace) -> None:
         stream_open = False
@@ -472,7 +499,8 @@ class VoiceDialogNode(Node):
         def on_text_chunk(chunk: str | None) -> None:
             nonlocal stream_open, streamed_any
             if chunk is None:
-                self._tts.speak_stream_end()
+                if stream_open:
+                    self._tts.speak_stream_end()
                 stream_open = False
                 return
             if chunk.strip():
@@ -488,16 +516,24 @@ class VoiceDialogNode(Node):
                 streamed_any = True
                 self._tts.speak_stream_feed(chunk)
 
+        def on_text_cancel() -> None:
+            nonlocal stream_open
+            if stream_open:
+                self._tts.stop()
+                stream_open = False
+
         trace.debug("llm_started", text_chars=len(text))
         result = self._llm.chat(
             text,
             self._handle_tool_call,
             on_text_chunk,
             trace.timing_callback,
+            on_text_cancel,
         )
         trace.debug("llm_finished", result_kind=result.kind, tool_name=result.tool_name)
         if result.kind != "text" or not streamed_any:
-            self._tts_queue.put((result.reply, trace))
+            self._say(result.reply, trace)
+            trace.complete("llm_reply_dispatched")
         else:
             trace.complete("llm_stream_reply")
 
@@ -1058,8 +1094,10 @@ class VoiceDialogNode(Node):
     def _audio_loop(self) -> None:
         settings = VadSettings(
             sample_rate=int(self.get_parameter("audio_sample_rate").value),
+            capture_frame_ms=int(self.get_parameter("audio_capture_frame_ms").value),
             chunk_ms=int(self.get_parameter("audio_chunk_ms").value),
             pre_roll_ms=int(self.get_parameter("audio_pre_roll_ms").value),
+            end_silence_ms=int(self.get_parameter("audio_end_silence_ms").value),
             no_speech_timeout_sec=float(self.get_parameter("audio_no_speech_timeout_sec").value),
             max_utterance_sec=float(self.get_parameter("audio_max_utterance_sec").value),
             min_speech_sec=float(self.get_parameter("audio_min_speech_sec").value),
@@ -1070,11 +1108,23 @@ class VoiceDialogNode(Node):
             str(self.get_parameter("funvad_model").value),
             str(self.get_parameter("funvad_device").value),
             input_device_index=input_index if input_index >= 0 else None,
+            input_device_name=str(self.get_parameter("audio_input_device_name").value).strip() or None,
         )
-        transcriber = WhisperTranscriber(
+        asr_provider = create_asr_provider(
+            str(self.get_parameter("asr_provider").value),
             str(self.get_parameter("whisper_model").value),
             str(self.get_parameter("whisper_device").value),
             str(self.get_parameter("whisper_compute_type").value),
+            VolcanoAsrSettings(
+                endpoint=str(self.get_parameter("volcano_asr_endpoint").value),
+                resource_id=str(self.get_parameter("volcano_asr_resource_id").value),
+                sample_rate=settings.sample_rate,
+                packet_ms=int(self.get_parameter("volcano_asr_packet_ms").value),
+                final_timeout_sec=float(self.get_parameter("volcano_asr_final_timeout_sec").value),
+                connect_timeout_sec=float(self.get_parameter("volcano_asr_connect_timeout_sec").value),
+                max_buffer_sec=float(self.get_parameter("volcano_asr_max_buffer_sec").value),
+                enable_nonstream=bool(self.get_parameter("volcano_asr_enable_nonstream").value),
+            ),
         )
         try:
             self.get_logger().info("Loading FunVAD model before accepting wake events.")
@@ -1085,14 +1135,16 @@ class VoiceDialogNode(Node):
             self._say("语音端点模型加载失败，请检查 FunASR 模型和运行环境。")
             return
         try:
-            self.get_logger().info("Loading faster-whisper model before accepting wake events.")
-            transcriber.warm_up()
-            self.get_logger().info("faster-whisper model is ready.")
+            self.get_logger().info(f"Preparing ASR provider: {asr_provider.name}")
+            asr_provider.warm_up()
+            self.get_logger().info(f"ASR provider is ready: {asr_provider.name}")
         except Exception as exc:
-            self.get_logger().error(f"faster-whisper warm-up failed: {exc}")
-            self._say("语音识别模型加载失败，请检查本地 Whisper 模型。")
+            self.get_logger().error(f"ASR provider warm-up failed: {exc}")
+            self._say("语音识别服务初始化失败，请检查 ASR 配置。")
             return
         self._prepare_wakeup_ack()
+        self._prepare_waiting_prompt()
+        self._prepare_persistent_phrases()
         while not self._stop_event.is_set():
             trace = None
             try:
@@ -1106,24 +1158,38 @@ class VoiceDialogNode(Node):
                     self._say("纯测试模式收到唤醒信号。", trace)
                     trace.complete("wakeup_only")
                     continue
+                asr_turn = asr_provider.begin_turn(
+                    trace.timing_callback,
+                    lambda partial: self._on_asr_partial(partial, trace),
+                )
                 self._play_wakeup_ack(trace)
                 with trace.phase("vad_record"):
-                    pcm, reason = recorder.record()
+                    pcm, reason = recorder.record(asr_turn.feed_audio)
+                vad_terminal_at = time.perf_counter()
+                trace.mark_reference("vad_terminal", vad_terminal_at)
                 trace.debug("vad_finished", reason=reason, pcm_bytes=len(pcm))
+                if recorder.last_speech_end_delay_ms is not None:
+                    trace.mark_reference(
+                        "speech_end_estimated",
+                        vad_terminal_at - recorder.last_speech_end_delay_ms / 1000.0,
+                    )
+                    trace.record("speech_end_to_vad", recorder.last_speech_end_delay_ms, reason=reason)
                 if reason == "no_speech_timeout":
+                    asr_turn.abort()
                     self._say("没有听到有效语音，我先休息了。", trace)
                     trace.complete("no_speech_timeout")
                     continue
                 if not pcm:
+                    asr_turn.abort()
                     self._say("录音结束，但没有有效语音。", trace)
                     trace.complete("empty_audio")
                     continue
-                with trace.phase("asr"):
-                    text = transcriber.transcribe_pcm(pcm)
+                self._schedule_waiting_prompt(trace)
+                text = asr_turn.finish(pcm)
                 if text:
                     self.get_logger().info(f"ASR: {text}")
                     trace.debug("asr_result", text_preview=text[:120], text_chars=len(text))
-                    self._text_queue.put((text, trace))
+                    self._submit_text(text, trace)
                 else:
                     self._say("没有识别到有效指令。", trace)
                     trace.complete("empty_asr")
@@ -1136,6 +1202,11 @@ class VoiceDialogNode(Node):
                 else:
                     self._say("语音输入不可用，请检查麦克风、串口和模型依赖。")
                 self._stop_event.wait(2.0)
+
+    def _on_asr_partial(self, text: str, trace: VoiceTrace) -> None:
+        trace.debug("asr_partial", text_preview=text[:120], text_chars=len(text))
+        if bool(self.get_parameter("volcano_asr_publish_partials").value):
+            self.get_logger().info(f"ASR partial: {text}")
 
     def _prepare_wakeup_ack(self) -> None:
         text = str(self.get_parameter("wakeup_ack_text").value).strip()
@@ -1151,6 +1222,40 @@ class VoiceDialogNode(Node):
             self.get_logger().info(f"Wake acknowledgement MP3 is ready: {path}")
         else:
             self.get_logger().warn("Wake acknowledgement MP3 is unavailable; falling back to live TTS.")
+
+    def _prepare_waiting_prompt(self) -> None:
+        text = str(self.get_parameter("waiting_prompt_text").value).strip()
+        path = Path(str(self.get_parameter("waiting_prompt_cache_file").value)).expanduser()
+        if text and not self._tts.ensure_phrase_file(text, path, timeout_sec=20.0, audio_format="mp3"):
+            self.get_logger().warn("Waiting prompt cache is unavailable; continuing without it.")
+
+    def _prepare_persistent_phrases(self) -> None:
+        phrases = [str(item) for item in self.get_parameter("tts_persistent_phrases").value]
+        ready = self._tts.prepare_persistent_phrases(
+            phrases,
+            str(self.get_parameter("tts_persistent_cache_dir").value),
+        )
+        self.get_logger().info(f"Persistent TTS phrases ready: {ready}/{len(phrases)}")
+
+    def _schedule_waiting_prompt(self, trace: VoiceTrace) -> None:
+        delay_sec = max(0.0, float(self.get_parameter("waiting_prompt_delay_ms").value) / 1000.0)
+        path = Path(str(self.get_parameter("waiting_prompt_cache_file").value)).expanduser()
+
+        def worker() -> None:
+            if trace.wait_for_phase("tts_first_audio", delay_sec):
+                return
+            started_at = time.perf_counter()
+            played = self._tts.play_file_if_idle_blocking(
+                path,
+                timeout_sec=float(self.get_parameter("waiting_prompt_playback_timeout_sec").value),
+            )
+            trace.record(
+                "waiting_prompt",
+                (time.perf_counter() - started_at) * 1000.0,
+                played=played,
+            )
+
+        threading.Thread(target=worker, name="voice-waiting-prompt", daemon=True).start()
 
     def _play_wakeup_ack(self, trace: VoiceTrace) -> None:
         text = str(self.get_parameter("wakeup_ack_text").value).strip()
@@ -1179,6 +1284,7 @@ class VoiceDialogNode(Node):
     def destroy_node(self):
         self._stop_event.set()
         self._stop_demo_motion()
+        self._command_executor.shutdown(wait=False, cancel_futures=True)
         self._tts.shutdown()
         self._cancel_everything("node shutdown")
         return super().destroy_node()

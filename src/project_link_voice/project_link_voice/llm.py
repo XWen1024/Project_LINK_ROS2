@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -85,7 +86,10 @@ TOOL_SCHEMAS = [
                     },
                     "timeout_sec": {"type": "number", "description": "Visual grasp timeout in seconds."},
                     "immediate_reply": {"type": "string", "description": "Short reply after confirmed motion starts."},
-                    "arrival_reply": {"type": "string", "description": "Short reply after arriving at the grasp pose."},
+                    "arrival_reply": {
+                        "type": "string",
+                        "description": "Short reply after arriving at the grasp pose.",
+                    },
                     "success_reply": {"type": "string", "description": "Short reply after grasp success."},
                     "failure_reply": {"type": "string", "description": "Short reply after grasp failure."},
                 },
@@ -129,6 +133,7 @@ SYSTEM_PROMPT = """你是 Project LINK 机器人的语音中枢。
 安全规则：
 - 目标地点必须来自已保存命名航点；不要编造坐标。
 - 你只负责选择工具和填写参数，不能声称已经运动、已经发布速度或已经抓取。
+- 需要调用工具时，第一轮只输出工具调用，不要先输出任何自然语言。
 - 运动和抓取都需要 Python 安全层二次确认。工具调用后不要再要求用户确认，Python 会播报固定确认语。
 - 回复要短，适合 TTS 播报。"""
 
@@ -180,6 +185,72 @@ class ThinkFilter:
         return output
 
 
+class StreamingTextEmitter:
+    """Emit short text batches at punctuation, size, or a strict time bound."""
+
+    def __init__(
+        self,
+        callback: Callable[[str], None],
+        max_delay_sec: float = 0.08,
+        max_chars: int = 12,
+        punctuation: str = "，。！？；\n",
+    ) -> None:
+        self._callback = callback
+        self._max_delay_sec = max(0.0, float(max_delay_sec))
+        self._max_chars = max(1, int(max_chars))
+        self._punctuation = punctuation
+        self._lock = threading.Lock()
+        self._pending = ""
+        self._timer: threading.Timer | None = None
+        self._closed = False
+
+    def feed(self, text: str) -> None:
+        if not text:
+            return
+        with self._lock:
+            if self._closed:
+                return
+            self._pending += text
+            if len(self._pending) >= self._max_chars or any(
+                mark in self._pending for mark in self._punctuation
+            ):
+                self._emit_locked()
+            elif self._timer is None:
+                self._timer = threading.Timer(self._max_delay_sec, self._on_timer)
+                self._timer.daemon = True
+                self._timer.start()
+
+    def finish(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._emit_locked()
+            self._closed = True
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._closed = True
+            self._pending = ""
+            self._cancel_timer_locked()
+
+    def _on_timer(self) -> None:
+        with self._lock:
+            self._timer = None
+            if not self._closed:
+                self._emit_locked()
+
+    def _emit_locked(self) -> None:
+        text = self._pending
+        self._pending = ""
+        self._cancel_timer_locked()
+        if text:
+            self._callback(text)
+
+    def _cancel_timer_locked(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+
 @dataclass(frozen=True)
 class ToolResult:
     content: dict
@@ -230,6 +301,7 @@ class ToolCallingClient:
         tool_handler: Callable[[str, dict], ToolResult],
         text_callback: Callable[[str | None], None] | None = None,
         timing_callback: Callable[[str, float, dict], None] | None = None,
+        text_cancel_callback: Callable[[], None] | None = None,
     ) -> LlmResult:
         ready, reason = self.available()
         if not ready:
@@ -251,6 +323,7 @@ class ToolCallingClient:
                     messages,
                     text_callback,
                     timing_callback,
+                    text_cancel_callback,
                     iteration,
                 )
                 if not tool_calls:
@@ -312,37 +385,59 @@ class ToolCallingClient:
         messages: list[dict],
         text_callback: Callable[[str | None], None] | None,
         timing_callback: Callable[[str, float, dict], None] | None,
+        text_cancel_callback: Callable[[], None] | None,
         iteration: int,
     ) -> tuple[str, list[dict[str, str]]]:
         request_started_at = time.perf_counter()
         success = False
         tool_calls: dict[int, dict[str, str]] = {}
+        text_emitter: StreamingTextEmitter | None = None
         try:
+            self._notify_timing(
+                timing_callback,
+                "llm_request_sent",
+                request_started_at,
+                {"iteration": iteration},
+            )
             stream = self._client.chat.completions.create(
                 model=self._model,
                 messages=messages,
                 tools=TOOL_SCHEMAS,
                 tool_choice="auto",
                 temperature=0.4,
-                max_tokens=1024,
+                max_tokens=384,
                 stream=True,
+                extra_body={"thinking": {"type": "disabled"}},
             )
 
             content_parts: list[str] = []
             think_filter = ThinkFilter()
             saw_tool_call = False
+            first_delta_reported = False
+            first_text_reported = False
+            text_emitter = StreamingTextEmitter(text_callback) if text_callback else None
 
             for chunk in stream:
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta is None:
                     continue
+                if not first_delta_reported and (delta.content or delta.tool_calls):
+                    first_delta_reported = True
+                    self._notify_timing(
+                        timing_callback,
+                        "llm_first_delta",
+                        request_started_at,
+                        {"iteration": iteration},
+                    )
                 if delta.tool_calls:
                     if not saw_tool_call:
                         saw_tool_call = True
-                        if text_callback:
-                            flushed = think_filter.flush()
-                            if flushed:
-                                text_callback(flushed)
+                        if text_emitter is not None:
+                            text_emitter.cancel()
+                        if text_cancel_callback is not None:
+                            text_cancel_callback()
+                        elif text_callback:
+                            think_filter.flush()
                             text_callback(None)
                     for call_delta in delta.tool_calls:
                         index = call_delta.index
@@ -355,21 +450,43 @@ class ToolCallingClient:
                             if call_delta.function.arguments:
                                 entry["arguments"] += call_delta.function.arguments
                 if delta.content:
+                    if not first_text_reported and delta.content.strip():
+                        first_text_reported = True
+                        self._notify_timing(
+                            timing_callback,
+                            "llm_first_text",
+                            request_started_at,
+                            {"iteration": iteration},
+                        )
                     content_parts.append(delta.content)
                     if text_callback and not saw_tool_call:
                         filtered = think_filter.process(delta.content)
-                        if filtered:
-                            text_callback(filtered)
+                        if filtered and text_emitter is not None:
+                            text_emitter.feed(filtered)
 
             if text_callback and not saw_tool_call:
                 flushed = think_filter.flush()
-                if flushed:
-                    text_callback(flushed)
+                if flushed and text_emitter is not None:
+                    text_emitter.feed(flushed)
+                if text_emitter is not None:
+                    text_emitter.finish()
                 text_callback(None)
+
+            if tool_calls:
+                self._notify_timing(
+                    timing_callback,
+                    "llm_tool_call_complete",
+                    request_started_at,
+                    {"iteration": iteration, "tool_call_count": len(tool_calls)},
+                )
 
             success = True
             return "".join(content_parts), [tool_calls[index] for index in sorted(tool_calls)]
         finally:
+            if not success and text_emitter is not None:
+                text_emitter.cancel()
+                if text_cancel_callback is not None:
+                    text_cancel_callback()
             self._notify_timing(
                 timing_callback,
                 "llm_api_roundtrip",

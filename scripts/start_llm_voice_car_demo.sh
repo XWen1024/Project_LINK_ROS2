@@ -10,7 +10,7 @@ ATTACH=1
 SCAN_ONLY=0
 ENABLE_AUDIO=true
 KEYBOARD_WAKEUP=false
-WAKEUP_PORT="${WAKEUP_PORT:-auto}"
+WAKEUP_PORT="${WAKEUP_PORT:-}"
 WAKEUP_MATCH="${WAKEUP_MATCH:-aiui_event}"
 AUDIO_INPUT_INDEX="${AUDIO_INPUT_INDEX:--1}"
 LINEAR="${DEMO_LINEAR_MPS:-0.06}"
@@ -21,7 +21,7 @@ usage() {
 Usage: ./scripts/start_llm_voice_car_demo.sh [options]
 
 Standalone demo:
-  iFlytek wake / keyboard -> mic -> FunVAD -> Whisper -> LLM tool call -> Volcano TTS -> bounded /cmd_vel
+  iFlytek wake / keyboard -> mic -> FunVAD + selected ASR -> LLM tool call -> Volcano TTS -> bounded /cmd_vel
 
 Options:
   --restart                 Replace existing tmux session.
@@ -77,9 +77,16 @@ if [[ -f "$VOICE_ENV" ]]; then
 else
   echo "Warning: voice env file not found: $VOICE_ENV" >&2
 fi
+source scripts/project_link_voice_io.sh
+WAKEUP_PORT="${WAKEUP_PORT:-$PROJECT_LINK_WAKEUP_SERIAL}"
 
 echo "[scan] Voice demo IO devices:"
-python3 scripts/scan_voice_demo_io.py || true
+if [[ "$SCAN_ONLY" -eq 1 ]]; then
+  python3 scripts/scan_voice_demo_io.py || true
+else
+  python3 scripts/scan_voice_demo_io.py --require-asr
+fi
+echo "[voice] ASR provider: ${PROJECT_LINK_ASR_PROVIDER:-volcano}"
 
 if [[ "$SCAN_ONLY" -eq 1 ]]; then
   exit 0
@@ -100,12 +107,14 @@ voice_cmd="cd '$WORKSPACE' && source scripts/project_link_env.sh"
 if [[ -f "$VOICE_ENV" ]]; then
   voice_cmd+=" && source '$VOICE_ENV'"
 fi
+voice_cmd+=" && source scripts/project_link_voice_io.sh"
 voice_cmd+=" && ros2 launch project_link_voice llm_motion_demo.launch.py"
 voice_cmd+=" enable_audio:=$ENABLE_AUDIO"
 voice_cmd+=" keyboard_wakeup:=$KEYBOARD_WAKEUP"
 voice_cmd+=" wakeup_serial_port:='$WAKEUP_PORT'"
 voice_cmd+=" wakeup_match_text:='$WAKEUP_MATCH'"
 voice_cmd+=" audio_input_device_index:=$AUDIO_INPUT_INDEX"
+voice_cmd+=" audio_input_device_name:='$PROJECT_LINK_AUDIO_INPUT_NAME'"
 voice_cmd+=" demo_linear_mps:=$LINEAR"
 voice_cmd+=" demo_angular_rps:=$ANGULAR"
 tmux send-keys -t "$SESSION:voice" "$voice_cmd" C-m

@@ -23,6 +23,7 @@ def generate_launch_description() -> LaunchDescription:
     waypoints_override_file = LaunchConfiguration("waypoints_override_file")
     wakeup_serial_port = LaunchConfiguration("wakeup_serial_port")
     audio_input_device_index = LaunchConfiguration("audio_input_device_index")
+    audio_input_device_name = LaunchConfiguration("audio_input_device_name")
     return LaunchDescription([
         DeclareLaunchArgument("params_file", default_value=default_params),
         DeclareLaunchArgument(
@@ -34,8 +35,12 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument("enable_llm_tools", default_value="true"),
         DeclareLaunchArgument("pure_test_mode", default_value="auto"),
         DeclareLaunchArgument("waypoints_override_file", default_value=""),
-        DeclareLaunchArgument("wakeup_serial_port", default_value="auto"),
-        DeclareLaunchArgument("audio_input_device_index", default_value="0"),
+        DeclareLaunchArgument(
+            "wakeup_serial_port",
+            default_value="/dev/serial/by-id/usb-WCH.CN_USB_Single_Serial_0004-if00",
+        ),
+        DeclareLaunchArgument("audio_input_device_index", default_value="-1"),
+        DeclareLaunchArgument("audio_input_device_name", default_value="XFM-DP-V0.0.18"),
         DeclareLaunchArgument(
             "enable_visual_grasp",
             default_value="false",
@@ -65,6 +70,7 @@ def generate_launch_description() -> LaunchDescription:
                     "navigation_backend": "direct_drive",
                     "wakeup_serial_port": wakeup_serial_port,
                     "audio_input_device_index": audio_input_device_index,
+                    "audio_input_device_name": audio_input_device_name,
                 },
             ],
         ),
