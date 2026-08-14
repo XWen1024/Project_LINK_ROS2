@@ -1034,3 +1034,5 @@ bash scripts/start_qwen_realtime_voice.sh pure-test
 
 启动脚本会先加载 ROS、虚拟环境和工作区 setup，再开启 Bash `nounset`；不要把
 `set -u` 提前到 `/opt/ros/humble/setup.bash` 之前。
+脚本还会把 `.venv-qwen-realtime` 的 site-packages 显式加入 `PYTHONPATH`，以兼容
+Humble `ament_python` 入口保留 `/usr/bin/python3` shebang 的情况。

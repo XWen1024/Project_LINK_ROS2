@@ -678,3 +678,7 @@ priority, update:
   environment before invoking ROS 2.
 - Keep Bash `nounset` disabled while sourcing ROS, the virtual environment, and
   workspace setup files; enable `set -u` only after those setup scripts finish.
+- The Humble `ament_python` console script may retain a `/usr/bin/python3`
+  shebang even when the Qwen virtual environment is active. The launcher must
+  prepend `.venv-qwen-realtime` site-packages to `PYTHONPATH` so DashScope and
+  its pinned dependencies remain importable from the ROS-installed entrypoint.

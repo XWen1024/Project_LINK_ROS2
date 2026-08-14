@@ -11,6 +11,8 @@ if [[ ! -f "$ROOT/.venv-qwen-realtime/bin/activate" ]]; then
   exit 2
 fi
 source "$ROOT/.venv-qwen-realtime/bin/activate"
+VENV_SITE_PACKAGES="$(python3 -c 'import site; print(site.getsitepackages()[0])')"
+export PYTHONPATH="${VENV_SITE_PACKAGES}${PYTHONPATH:+:${PYTHONPATH}}"
 source scripts/project_link_env.sh
 if [[ -f /home/wte/.config/project_link/qwen_realtime.env ]]; then
   source /home/wte/.config/project_link/qwen_realtime.env
