@@ -1008,3 +1008,26 @@ ros2 run project_link_visual_grasp_gui visual_grasp_gui
 `~/.config/project_link/visual_grasp/`，不会改写仓库配置。接口、调度 action 与部署
 检查见 `docs/VISUAL_GRASP_INTERFACE.md` 和 `docs/VISUAL_GRASP_ORIN_SETUP.md`。先确认
 机械臂空间安全并保留物理急停，再连接、启用扭矩或开始抓取。
+
+## Qwen3.5 Omni Realtime 独立语音链路
+
+`project_link_qwen_realtime_voice` 是与现有 `project_link_voice` 完全独立启动的
+实时语音方案。它在同一条 DashScope WebSocket 中完成语义 VAD、实时 ASR、
+Function Calling 和 24 kHz PCM 语音输出；原有火山 ASR、DeepSeek、火山 TTS
+链路保持不变。两套语音节点禁止同时启动。
+
+```bash
+cd /home/wte/wheeltec_robot
+source /opt/ros/humble/setup.bash
+source scripts/project_link_env.sh
+source /home/wte/.config/project_link/qwen_realtime.env
+colcon build --packages-select project_link_qwen_realtime_voice
+source install/setup.bash
+bash scripts/start_qwen_realtime_voice.sh pure-test
+```
+
+可用模式为 `pure-test`、`demo`、`nav2-dry`、`nav2` 和 `fetch`。生产运动仍只
+允许命名航点并要求本地明确“确认开始”；Qwen 不直接持有 ROS Action 或
+`/cmd_vel`。完整参数和 AEC 要求见
+`src/project_link_qwen_realtime_voice/README.md`，协议调研见
+`docs/qwen35_omni_flash_realtime_orin_guide.md`。

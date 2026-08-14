@@ -1942,3 +1942,17 @@ SO-101 与 2D 视觉伺服；GUI 负责远端标注画面、参数、姿态、�
 - [x] 提供 Orin tmux 启动脚本、部署说明和导航调度接口文档
 - [ ] 在 Orin 验证 Jetson PyTorch、YOLO-World、`/dev/RgbCam`、`/dev/so101` 和模型路径
 - [ ] 在安全条件下验证人工跟踪→逼近→抓取，再验证导航后 `TrackAndGrasp` action
+
+---
+
+## 18. Qwen3.5 Omni Realtime 独立语音分支
+
+- [x] 创建独立分支 `codex/qwen35-omni-realtime`，不合并 Volc S2S 分支。
+- [x] 新建 `project_link_qwen_realtime_voice` ament_python 包和独立启动入口。
+- [x] 接入 DashScope Realtime transport、显式 semantic VAD 和有界全双工 PCM 队列。
+- [x] 迁移天气、位姿、航点、Nav2/直驱、视觉抓取、取消和 Demo 运动工具。
+- [x] 保留 Python 明确确认、命名航点、TF、cmd_vel 发布者和纯测试安全门。
+- [x] 增加打断、首音频、工具调用和播放完成时延日志。
+- [x] 按官方 wheel 源码锁定 DashScope SDK `1.26.5`，待 Orin 实机网络验证。
+- [ ] 验证讯飞板载 AEC 参考接线和 20 轮外放无自打断。
+- [ ] 依次完成 pure-test、Demo 悬空、Nav2 dry-run、命名航点和抓取验收。

@@ -654,3 +654,21 @@ priority, update:
 - Before torque, manual approach, or `TrackAndGrasp` action tests, verify a clear
   workspace and physical E-stop/power-cut procedure. The scheduler action is
   only valid after navigation reaches a safe manipulation pose.
+
+## Qwen Realtime Voice Branch
+
+- `project_link_qwen_realtime_voice` is an independently launched alternative
+  to `project_link_voice`; never run both nodes because they share serial wake,
+  microphone, speaker, and robot tool ownership.
+- It uses DashScope `qwen3.5-omni-flash-realtime` for semantic VAD, ASR,
+  Function Calling, and PCM audio on one WebSocket. Custom tools require
+  `enable_search=false`.
+- Full-duplex barge-in defaults on only because the iFlytek board is expected to
+  receive the physical speaker AEC reference. Disable `barge_in_enabled` if
+  speaker leakage triggers false `speech_started` events.
+- The model never owns ROS Actions or `/cmd_vel`. Python validates exact local
+  confirmation, named waypoints, SLAM/TF readiness, expected Nav2 publishers,
+  visual-grasp enablement, and cancellation priority.
+- Secrets live in `/home/wte/.config/project_link/qwen_realtime.env`; never
+  commit `DASHSCOPE_API_KEY`, workspace URLs containing private identifiers, or
+  QWeather credentials.

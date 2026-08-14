@@ -1,0 +1,62 @@
+qwen_realtime_voice_node:
+  ros__parameters:
+    enable_audio: true
+    enable_motion: false
+    enable_visual_grasp: false
+    enable_demo_motion: false
+    pure_test_mode: auto
+    navigation_backend: nav2
+    target_frame: map
+    base_frame: base_footprint
+    waypoints_override_file: ~/.ros/project_link_voice/waypoints.json
+    nav2_action_name: /navigate_to_pose
+    nav2_behavior_tree: ""
+    nav2_cmd_vel_topic: /cmd_vel
+    nav2_allowed_cmd_vel_publishers:
+      - velocity_smoother
+      - behavior_server
+    navigation_timeout_sec: 180.0
+    confirmation_timeout_sec: 30.0
+    visual_grasp_timeout_sec: 45.0
+    visual_grasp_prepare_arm: true
+    visual_grasp_action_name: /visual_grasp/track_and_grasp
+    visual_grasp_connect_service: /visual_grasp/connect_arm
+    visual_grasp_torque_service: /visual_grasp/set_torque
+    visual_grasp_stop_service: /visual_grasp/stop
+    grasp_target_aliases:
+      - 药瓶=medicine bottle
+      - 药=medicine bottle
+      - 水杯=red cup
+      - 杯子=cup
+    demo_cmd_vel_topic: /cmd_vel
+    demo_linear_mps: 0.08
+    demo_angular_rps: 0.35
+    demo_step_sec: 1.0
+    demo_turn_sec: 1.2
+    demo_spin_sec: 5.5
+    turn_detection_type: semantic_vad
+    turn_detection_threshold: 0.5
+    turn_detection_silence_duration_ms: 1200
+    prefix_padding_ms: 300
+    barge_in_enabled: true
+    audio_input_sample_rate: 16000
+    audio_output_sample_rate: 24000
+    audio_input_chunk_ms: 100
+    audio_output_chunk_ms: 50
+    audio_output_queue_sec: 2.0
+    audio_input_device_name: XFM-DP-V0.0.18
+    audio_output_sink: alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo
+    wakeup_serial_port: /dev/project_link_wakeup
+    wakeup_serial_baud: 115200
+    wakeup_match_text: aiui_event
+    wakeup_serial_max_buffer_bytes: 16384
+    keyboard_wakeup: false
+    wakeup_ack_text: 我在，请说。
+    wakeup_ack_pcm_file: ~/.cache/project_link_qwen_realtime/wakeup_ack.pcm
+    continuous_conversation_enabled: true
+    continuous_silence_timeout_sec: 8.0
+    first_turn_no_speech_timeout_sec: 8.0
+    continuous_max_turns: 20
+    continuous_max_session_sec: 300.0
+    conversation_exit_reply: 好的，我退下了
+    timing_log_file: ~/.ros/project_link_qwen_realtime/voice_timing.jsonl
