@@ -745,13 +745,21 @@ class QwenRealtimeVoiceNode(Node):
     def destroy_node(self):
         self._stop.set()
         self._input_requested = False
-        if self._audio is not None:
-            self._audio.close()
-        self._transport.close()
         self._robot.shutdown()
-        self._tool_executor.shutdown(wait=False, cancel_futures=True)
+        cleanup_steps = []
+        if self._audio is not None:
+            cleanup_steps.append(self._audio.close)
+        cleanup_steps.extend([
+            self._transport.close,
+            lambda: self._tool_executor.shutdown(wait=False, cancel_futures=True),
+        ])
         if self._event_thread.is_alive():
-            self._event_thread.join(timeout=1.0)
+            cleanup_steps.append(lambda: self._event_thread.join(timeout=1.0))
+        for cleanup in cleanup_steps:
+            try:
+                cleanup()
+            except KeyboardInterrupt:
+                continue
         return super().destroy_node()
 
 
@@ -763,6 +771,12 @@ def main() -> None:
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except (KeyboardInterrupt, ExternalShutdownException):
+            pass
