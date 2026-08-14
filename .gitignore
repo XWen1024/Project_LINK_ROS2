@@ -4,6 +4,7 @@ log/
 .ros/
 .vscode/
 .idea/
+.venv-qwen-realtime/
 
 # Independent upstream reference checkouts (keep their own Git history).
 /external/
