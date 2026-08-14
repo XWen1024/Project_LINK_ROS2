@@ -1959,7 +1959,7 @@ SO-101 与 2D 视觉伺服；GUI 负责远端标注画面、参数、姿态、�
 - [x] 修复 Humble setup 在 Bash `nounset` 下读取未定义变量导致的一键启动失败。
 - [x] 修复 ROS 安装入口保留 `/usr/bin/python3` shebang 时无法导入虚拟环境 DashScope 的问题。
 - [x] 修复 Realtime 协议错误触发重连后麦克风输入门未恢复，以及 Ctrl+C 异常退出问题。
-- [x] 修复文本 item 重复发送 `response.create` 导致的 active response 冲突和监听状态扰动。
+- [x] 实机确认文本 item 必须显式发送 `response.create`；协议级 active response 错误保持非致命处理。
 - [ ] 验证讯飞板载 AEC 参考接线和 20 轮外放无自打断。
 - [ ] 配置 `/home/wte/.config/project_link/qwen_realtime.env` 中的真实 DashScope 密钥和业务空间端点。
 - [ ] 依次完成 pure-test、Demo 悬空、Nav2 dry-run、命名航点和抓取验收。

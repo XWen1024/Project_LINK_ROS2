@@ -157,6 +157,7 @@ class DashScopeRealtimeTransport:
                 "content": [{"type": "input_text", "text": text}],
             }
         )
+        self.create_response()
 
     def create_response(self) -> None:
         with self._lock:
