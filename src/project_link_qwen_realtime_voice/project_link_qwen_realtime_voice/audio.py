@@ -31,7 +31,7 @@ class DuplexPcmAudio:
         output_sample_rate: int = 24000,
         input_chunk_ms: int = 100,
         output_chunk_ms: int = 50,
-        queue_seconds: float = 2.0,
+        queue_seconds: float = 30.0,
     ) -> None:
         self._input_callback = input_callback
         self._input_device_name = input_device_name
@@ -49,6 +49,8 @@ class DuplexPcmAudio:
         self._audio = None
         self._input_stream = None
         self._output_stream = None
+        self._input_device_index: int | None = None
+        self._resolved_input_device_name = ""
         self._threads: list[threading.Thread] = []
 
     def start(self) -> None:
@@ -60,6 +62,11 @@ class DuplexPcmAudio:
         input_index = resolve_device(self._audio, self._input_device_name, True)
         if self._input_device_name.strip() and input_index is None:
             raise RuntimeError(f"Audio input device not found: {self._input_device_name}")
+        self._input_device_index = input_index
+        if input_index is not None:
+            self._resolved_input_device_name = str(
+                self._audio.get_device_info_by_index(input_index).get("name", "")
+            )
         self._input_stream = self._audio.open(
             format=pyaudio.paInt16,
             channels=1,
@@ -81,6 +88,14 @@ class DuplexPcmAudio:
         ]
         for thread in self._threads:
             thread.start()
+
+    @property
+    def input_device_index(self) -> int | None:
+        return self._input_device_index
+
+    @property
+    def resolved_input_device_name(self) -> str:
+        return self._resolved_input_device_name
 
     def set_input_enabled(self, enabled: bool) -> None:
         if enabled:

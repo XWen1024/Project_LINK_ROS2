@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import queue
+import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +16,7 @@ from typing import Any
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from nav_msgs.msg import OccupancyGrid, Odometry
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
@@ -42,12 +44,15 @@ class QwenRealtimeVoiceNode(Node):
         self._stop = threading.Event()
         self._session_ready = threading.Event()
         self._conversation_active = threading.Event()
+        self._input_requested = False
+        self._microphone_stream_seen = False
         self._event_queue: queue.Queue[RealtimeEvent] = queue.Queue(maxsize=2048)
         self._tool_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qwen-tools")
         self._trace: TimingTrace | None = None
         self._response_generation = 0
         self._current_response_id = ""
         self._ignored_response_ids: set[str] = set()
+        self._playback_failed_response_ids: set[str] = set()
         self._blocked_auto_response = False
         self._blocked_reply: tuple[str, bool] | None = None
         self._response_audio_seen = False
@@ -100,6 +105,12 @@ class QwenRealtimeVoiceNode(Node):
                 queue_seconds=float(self.get_parameter("audio_output_queue_sec").value),
             )
             self._audio.start()
+            self.get_logger().info(
+                "Audio input ready: "
+                f"index={self._audio.input_device_index}, "
+                f"name={self._audio.resolved_input_device_name}, "
+                f"rate={int(self.get_parameter('audio_input_sample_rate').value)}"
+            )
 
         share_dir = Path(get_package_share_directory("project_link_qwen_realtime_voice"))
         self._robot = RobotToolController(self, share_dir, self._speak_system)
@@ -173,7 +184,7 @@ class QwenRealtimeVoiceNode(Node):
         self.declare_parameter("audio_output_sample_rate", 24000)
         self.declare_parameter("audio_input_chunk_ms", 100)
         self.declare_parameter("audio_output_chunk_ms", 50)
-        self.declare_parameter("audio_output_queue_sec", 2.0)
+        self.declare_parameter("audio_output_queue_sec", 30.0)
         self.declare_parameter(
             "audio_input_device_name",
             os.environ.get("PROJECT_LINK_AUDIO_INPUT_NAME", "XFM-DP-V0.0.18"),
@@ -264,12 +275,17 @@ class QwenRealtimeVoiceNode(Node):
         if event_type == "session.updated":
             self._intentional_session_rotation = False
             self._session_ready.set()
+            if self._audio is not None:
+                self._audio.set_input_enabled(self._input_requested)
             self.get_logger().info(
                 "Qwen realtime session ready: "
                 + json.dumps(payload.get("session", {}).get("turn_detection", {}), ensure_ascii=False)
             )
             return
-        if event_type in ("transport.close", "transport.error", "error"):
+        if event_type == "error":
+            self.get_logger().warn(f"Qwen realtime protocol event: {payload}")
+            return
+        if event_type in ("transport.close", "transport.error"):
             self._session_ready.clear()
             if self._audio is not None:
                 self._audio.set_input_enabled(False)
@@ -420,9 +436,11 @@ class QwenRealtimeVoiceNode(Node):
             self._response_audio_seen = True
             self._timing("first_audio_delta", response_id=response_id)
         if self._audio is not None and not self._audio.enqueue(pcm, self._response_generation):
-            self.get_logger().error("Realtime playback queue overflow or stale audio; canceling response")
-            self._transport.cancel_response()
-            self._audio.interrupt()
+            if response_id not in self._playback_failed_response_ids:
+                self._playback_failed_response_ids.add(response_id)
+                self.get_logger().error("Realtime playback queue overflow or stale audio; canceling response")
+                self._transport.cancel_response()
+                self._audio.interrupt()
 
     def _on_assistant_text_done(self, payload: dict[str, Any]) -> None:
         text = self._extract_text(payload) or "".join(self._assistant_text_parts)
@@ -436,6 +454,15 @@ class QwenRealtimeVoiceNode(Node):
     def _on_response_done(self, payload: dict[str, Any]) -> None:
         response_id = self._response_id(payload) or self._current_response_id
         self._timing("response_done", response_id=response_id)
+        if response_id in self._playback_failed_response_ids:
+            self._playback_failed_response_ids.discard(response_id)
+            if self._wake_ack_response:
+                self._wake_ack_response = False
+                self._wake_ack_capture.clear()
+                self._enable_listening(first_turn=True)
+            elif self._conversation_active.is_set():
+                self._enable_listening(first_turn=False)
+            return
         if response_id in self._ignored_response_ids:
             self._ignored_response_ids.discard(response_id)
             blocked = self._blocked_reply
@@ -549,6 +576,7 @@ class QwenRealtimeVoiceNode(Node):
             self.get_logger(),
         )
         self._timing("wakeup", wake_preview=str(wake_event)[:80])
+        self._input_requested = False
         if self._audio is not None:
             self._audio.set_input_enabled(False)
         cache_file = Path(str(self.get_parameter("wakeup_ack_pcm_file").value)).expanduser()
@@ -575,11 +603,14 @@ class QwenRealtimeVoiceNode(Node):
         self._awaiting_first_speech = first_turn
         self._last_activity = time.monotonic()
         self._response_audio_seen = False
+        self._microphone_stream_seen = False
+        self._input_requested = True
         if self._audio is not None:
-            self._audio.set_input_enabled(True)
+            self._audio.set_input_enabled(self._session_ready.is_set())
         self._timing("listening_started", first_turn=first_turn)
 
     def _finish_conversation(self) -> None:
+        self._input_requested = False
         if self._audio is not None:
             self._audio.set_input_enabled(False)
         self._conversation_active.clear()
@@ -630,6 +661,16 @@ class QwenRealtimeVoiceNode(Node):
     def _on_microphone_audio(self, pcm: bytes) -> None:
         if self._session_ready.is_set() and self._conversation_active.is_set():
             try:
+                if not self._microphone_stream_seen:
+                    self._microphone_stream_seen = True
+                    peak = max(
+                        (abs(sample) for sample, in struct.iter_unpack("<h", pcm)),
+                        default=0,
+                    )
+                    self.get_logger().info(
+                        f"Microphone PCM upload started: bytes={len(pcm)}, peak={peak}"
+                    )
+                    self._timing("microphone_first_chunk", bytes=len(pcm), peak=peak)
                 self._transport.append_audio(pcm)
             except Exception as exc:
                 self.get_logger().error(f"Microphone upload failed: {exc}")
@@ -703,6 +744,7 @@ class QwenRealtimeVoiceNode(Node):
 
     def destroy_node(self):
         self._stop.set()
+        self._input_requested = False
         if self._audio is not None:
             self._audio.close()
         self._transport.close()
@@ -718,6 +760,9 @@ def main() -> None:
     node = QwenRealtimeVoiceNode()
     try:
         rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()

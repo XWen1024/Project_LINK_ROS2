@@ -43,7 +43,7 @@ qwen_realtime_voice_node:
     audio_output_sample_rate: 24000
     audio_input_chunk_ms: 100
     audio_output_chunk_ms: 50
-    audio_output_queue_sec: 2.0
+    audio_output_queue_sec: 30.0
     audio_input_device_name: XFM-DP-V0.0.18
     audio_output_sink: alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo
     wakeup_serial_port: /dev/project_link_wakeup

@@ -1036,3 +1036,6 @@ bash scripts/start_qwen_realtime_voice.sh pure-test
 `set -u` 提前到 `/opt/ros/humble/setup.bash` 之前。
 脚本还会把 `.venv-qwen-realtime` 的 site-packages 显式加入 `PYTHONPATH`，以兼容
 Humble `ament_python` 入口保留 `/usr/bin/python3` shebang 的情况。
+
+启动后日志必须显示 `Audio input ready`，唤醒并开始监听后必须显示
+`Microphone PCM upload started`。设备按 `XFM-DP-V0.0.18` 名称匹配，不依赖重新插拔后变化的卡号或 PyAudio 索引。

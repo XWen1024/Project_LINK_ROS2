@@ -682,3 +682,7 @@ priority, update:
   shebang even when the Qwen virtual environment is active. The launcher must
   prepend `.venv-qwen-realtime` site-packages to `PYTHONPATH` so DashScope and
   its pinned dependencies remain importable from the ROS-installed entrypoint.
+- Qwen audio input remains name-bound to `XFM-DP-V0.0.18`; card numbers and
+  PyAudio indices may change after reconnect. Protocol-level Realtime errors
+  must not close an otherwise healthy WebSocket or leave the microphone input
+  gate disabled after session recovery.
