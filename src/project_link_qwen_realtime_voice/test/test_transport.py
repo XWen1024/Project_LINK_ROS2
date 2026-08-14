@@ -83,5 +83,8 @@ def test_transport_configures_semantic_vad_and_tools(monkeypatch):
 
     transport.append_audio(b"pcm")
     assert base64.b64decode(conversation.audio[0]) == b"pcm"
+    transport.send_text("hello")
+    assert conversation.items[-1]["content"][0]["text"] == "hello"
+    assert conversation.responses == 0
     transport.send_tool_result("call-1", {"success": True})
     assert conversation.items[-1]["call_id"] == "call-1"

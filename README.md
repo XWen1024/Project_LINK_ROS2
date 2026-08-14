@@ -1039,3 +1039,4 @@ Humble `ament_python` 入口保留 `/usr/bin/python3` shebang 的情况。
 
 启动后日志必须显示 `Audio input ready`，唤醒并开始监听后必须显示
 `Microphone PCM upload started`。设备按 `XFM-DP-V0.0.18` 名称匹配，不依赖重新插拔后变化的卡号或 PyAudio 索引。
+文本输入依赖 Realtime 服务端自动创建响应；只有 Function Calling 结果回传后才显式发送 `response.create`。

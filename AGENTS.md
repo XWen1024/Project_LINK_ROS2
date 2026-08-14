@@ -686,3 +686,6 @@ priority, update:
   PyAudio indices may change after reconnect. Protocol-level Realtime errors
   must not close an otherwise healthy WebSocket or leave the microphone input
   gate disabled after session recovery.
+- With server turn detection `create_response=true`, text conversation items
+  already trigger a response; do not send an additional `response.create`.
+  Function-call output remains the exception and still requires it explicitly.

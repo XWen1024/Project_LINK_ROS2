@@ -684,6 +684,8 @@ class QwenRealtimeVoiceNode(Node):
             self._conversation_active.set()
             self._session_started_at = time.monotonic()
             self._trace = TimingTrace(str(self.get_parameter("timing_log_file").value), self.get_logger())
+        self._last_activity = time.monotonic()
+        self._awaiting_first_speech = False
         if is_explicit_exit(text):
             self._robot.cancel_everything("text input exit")
             self._dispatch_local_reply(str(self.get_parameter("conversation_exit_reply").value), True)
