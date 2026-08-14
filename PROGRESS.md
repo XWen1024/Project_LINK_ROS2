@@ -1954,5 +1954,8 @@ SO-101 与 2D 视觉伺服；GUI 负责远端标注画面、参数、姿态、�
 - [x] 保留 Python 明确确认、命名航点、TF、cmd_vel 发布者和纯测试安全门。
 - [x] 增加打断、首音频、工具调用和播放完成时延日志。
 - [x] 按官方 wheel 源码锁定 DashScope SDK `1.26.5`，待 Orin 实机网络验证。
+- [x] Orin 创建 `.venv-qwen-realtime`、安装依赖并完成单包构建。
+- [x] Orin 包发现、launch 展开、9 项单测和禁用音频/运动的节点冒烟通过。
 - [ ] 验证讯飞板载 AEC 参考接线和 20 轮外放无自打断。
+- [ ] 配置 `/home/wte/.config/project_link/qwen_realtime.env` 中的真实 DashScope 密钥和业务空间端点。
 - [ ] 依次完成 pure-test、Demo 悬空、Nav2 dry-run、命名航点和抓取验收。

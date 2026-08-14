@@ -11,9 +11,11 @@ and robot tools.
 ```bash
 cd /home/wte/wheeltec_robot
 source /opt/ros/humble/setup.bash
+python3 -m venv --system-site-packages .venv-qwen-realtime
+source .venv-qwen-realtime/bin/activate
 source scripts/project_link_env.sh
 source /home/wte/.config/project_link/qwen_realtime.env
-python3 -m pip install -r src/project_link_qwen_realtime_voice/requirements-orin.txt
+python -m pip install -r src/project_link_qwen_realtime_voice/requirements-orin.txt
 colcon build --packages-select project_link_qwen_realtime_voice
 source install/setup.bash
 ```

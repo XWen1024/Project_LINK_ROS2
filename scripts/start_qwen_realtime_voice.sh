@@ -6,6 +6,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$ROOT"
 source /opt/ros/humble/setup.bash
+if [[ ! -f "$ROOT/.venv-qwen-realtime/bin/activate" ]]; then
+  echo "[qwen-realtime] Missing $ROOT/.venv-qwen-realtime; install package requirements first." >&2
+  exit 2
+fi
+source "$ROOT/.venv-qwen-realtime/bin/activate"
 source scripts/project_link_env.sh
 if [[ -f /home/wte/.config/project_link/qwen_realtime.env ]]; then
   source /home/wte/.config/project_link/qwen_realtime.env

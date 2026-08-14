@@ -672,3 +672,7 @@ priority, update:
 - Secrets live in `/home/wte/.config/project_link/qwen_realtime.env`; never
   commit `DASHSCOPE_API_KEY`, workspace URLs containing private identifiers, or
   QWeather credentials.
+- The verified Orin Python environment is
+  `/home/wte/wheeltec_robot/.venv-qwen-realtime` with system site packages and
+  DashScope `1.26.5`. `scripts/start_qwen_realtime_voice.sh` must activate this
+  environment before invoking ROS 2.
