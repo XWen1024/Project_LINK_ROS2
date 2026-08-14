@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import urllib.error
 import urllib.parse
@@ -77,7 +78,11 @@ def _request_json(
     request = urllib.request.Request(url, headers=headers)
     try:
         with opener(request, timeout=timeout_sec) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            body = response.read()
+            content_encoding = str(getattr(response, "headers", {}).get("Content-Encoding", ""))
+            if "gzip" in content_encoding.lower() or body.startswith(b"\x1f\x8b"):
+                body = gzip.decompress(body)
+            payload = json.loads(body.decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")[:300]
         raise RuntimeError(f"和风天气 HTTP {exc.code}: {body or exc.reason}") from exc

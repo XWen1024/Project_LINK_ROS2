@@ -697,4 +697,5 @@ priority, update:
   bounded polite prefixes/suffixes, but must not match embedded negative phrases.
 - QWeather requires both `QWEATHER_API_KEY` and the project-specific
   `QWEATHER_API_HOST`. Use `/geo/v2/city/lookup` and `/v7/weather/now` on that
-  host with `X-QW-Api-Key`; do not restore retired public QWeather domains.
+  host with `X-QW-Api-Key`; transparently decode Gzip responses and do not
+  restore retired public QWeather domains.

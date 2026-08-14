@@ -1,3 +1,4 @@
+import gzip
 import json
 
 import pytest
@@ -6,8 +7,10 @@ from project_link_qwen_realtime_voice.weather import normalize_api_host, query_c
 
 
 class FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, compressed=False):
         self.payload = payload
+        self.compressed = compressed
+        self.headers = {"Content-Encoding": "gzip"} if compressed else {}
 
     def __enter__(self):
         return self
@@ -16,7 +19,8 @@ class FakeResponse:
         return False
 
     def read(self):
-        return json.dumps(self.payload).encode("utf-8")
+        body = json.dumps(self.payload).encode("utf-8")
+        return gzip.compress(body) if self.compressed else body
 
 
 def test_normalize_api_host_requires_project_domain_only():
@@ -36,7 +40,7 @@ def test_weather_uses_project_host_header_and_new_paths():
 
     def opener(request, timeout):
         requests.append((request, timeout))
-        return FakeResponse(next(responses))
+        return FakeResponse(next(responses), compressed=len(requests) == 1)
 
     result = query_current_weather(
         "深圳",
