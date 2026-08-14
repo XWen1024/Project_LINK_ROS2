@@ -18,6 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 from nav_msgs.msg import OccupancyGrid, Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 
@@ -764,7 +765,7 @@ class QwenRealtimeVoiceNode(Node):
 
 
 def main() -> None:
-    rclpy.init()
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = QwenRealtimeVoiceNode()
     try:
         rclpy.spin(node)
