@@ -692,3 +692,6 @@ priority, update:
 - Conversation silence timers must run only while microphone input is actually
   requested. Never count cached wake acknowledgement playback or a pending local
   exit reply as user silence.
+- The production realtime default is one wake for an unbounded multi-turn
+  conversation. Follow-up silence, turn count, and local session age do not end
+  it; only explicit exit words, shutdown, or transport failure close/rotate it.
