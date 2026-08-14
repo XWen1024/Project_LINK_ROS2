@@ -689,3 +689,6 @@ priority, update:
 - Server VAD automatically creates responses only for committed audio turns.
   Text conversation items and Function Calling results both require an explicit
   `response.create`; Orin live testing confirmed text items otherwise remain idle.
+- Conversation silence timers must run only while microphone input is actually
+  requested. Never count cached wake acknowledgement playback or a pending local
+  exit reply as user silence.

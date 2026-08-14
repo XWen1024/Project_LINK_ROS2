@@ -571,6 +571,8 @@ class QwenRealtimeVoiceNode(Node):
             return
         self._conversation_active.set()
         self._session_started_at = time.monotonic()
+        self._last_activity = self._session_started_at
+        self._awaiting_first_speech = True
         self._turns = 0
         self._trace = TimingTrace(
             str(self.get_parameter("timing_log_file").value),
@@ -626,7 +628,13 @@ class QwenRealtimeVoiceNode(Node):
             self._schedule_reconnect()
 
     def _check_conversation_timeout(self) -> None:
-        if not self._conversation_active.is_set() or self._response_audio_seen:
+        if (
+            not self._conversation_active.is_set()
+            or not self._input_requested
+            or self._response_audio_seen
+            or self._end_after_response
+            or self._blocked_auto_response
+        ):
             return
         now = time.monotonic()
         if self._session_started_at > 0:
