@@ -205,7 +205,7 @@ class QwenRealtimeVoiceNode(Node):
         self.declare_parameter("wakeup_ack_text", "我在，请说。")
         self.declare_parameter("wakeup_ack_pcm_file", "~/.cache/project_link_qwen_realtime/wakeup_ack.pcm")
         self.declare_parameter("continuous_conversation_enabled", True)
-        self.declare_parameter("continuous_silence_timeout_sec", 0.0)
+        self.declare_parameter("continuous_silence_timeout_sec", 30.0)
         self.declare_parameter("first_turn_no_speech_timeout_sec", 8.0)
         self.declare_parameter("continuous_max_turns", 0)
         self.declare_parameter("continuous_max_session_sec", 0.0)

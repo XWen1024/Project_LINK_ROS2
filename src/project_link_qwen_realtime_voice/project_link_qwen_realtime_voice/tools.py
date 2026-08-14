@@ -161,6 +161,9 @@ EXIT_PHRASES = {
     "拜拜",
 }
 
+EXIT_PREFIXES = ("麻烦你", "麻烦", "好的", "好了", "那就", "可以", "请", "你")
+EXIT_SUFFIXES = ("语音服务", "语音对话", "对话", "聊天", "一下吧", "一下", "吧", "了")
+
 
 def tool_schemas(enable_demo_motion: bool) -> list[dict[str, Any]]:
     schemas = list(BASE_TOOL_SCHEMAS)
@@ -178,7 +181,24 @@ def is_explicit_confirmation(text: str) -> bool:
 
 
 def is_explicit_exit(text: str) -> bool:
-    return normalize_spoken_text(text) in EXIT_PHRASES
+    normalized = normalize_spoken_text(text)
+    if normalized in EXIT_PHRASES:
+        return True
+    candidate = normalized
+    changed = True
+    while changed and candidate:
+        changed = False
+        for prefix in EXIT_PREFIXES:
+            if candidate.startswith(prefix):
+                candidate = candidate[len(prefix):]
+                changed = True
+                break
+        for suffix in EXIT_SUFFIXES:
+            if candidate.endswith(suffix):
+                candidate = candidate[:-len(suffix)]
+                changed = True
+                break
+    return candidate in EXIT_PHRASES
 
 
 @dataclass

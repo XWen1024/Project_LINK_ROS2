@@ -7,8 +7,6 @@ import math
 import os
 import threading
 import time
-import urllib.parse
-import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -27,6 +25,7 @@ from project_link_voice_interfaces.action import DriveToPoint
 from wheeltec_robot_msg.action import TrackAndGrasp
 
 from .tools import PendingTask, ToolExecutionResult
+from .weather import query_current_weather
 
 
 class RobotToolController:
@@ -209,33 +208,9 @@ class RobotToolController:
     def _get_weather(self, args: dict[str, Any]) -> dict[str, Any]:
         city = str(args.get("city_name", "")).strip()
         api_key = os.environ.get("QWEATHER_API_KEY", "").strip()
-        if not city:
-            return {"success": False, "message": "缺少城市名称。"}
-        if not api_key:
-            return {"success": False, "message": "天气 API 未配置。"}
+        api_host = os.environ.get("QWEATHER_API_HOST", "").strip()
         try:
-            encoded = urllib.parse.quote(city)
-            lookup_url = f"https://geoapi.qweather.com/v2/city/lookup?location={encoded}&key={api_key}"
-            with urllib.request.urlopen(lookup_url, timeout=5.0) as response:
-                locations = json.loads(response.read().decode("utf-8")).get("location") or []
-            if not locations:
-                return {"success": False, "message": f"没有找到城市：{city}。"}
-            weather_url = (
-                "https://devapi.qweather.com/v7/weather/now?location="
-                + str(locations[0]["id"])
-                + "&key="
-                + api_key
-            )
-            with urllib.request.urlopen(weather_url, timeout=5.0) as response:
-                now = json.loads(response.read().decode("utf-8")).get("now") or {}
-            return {
-                "success": True,
-                "city": locations[0].get("name", city),
-                "text": now.get("text", ""),
-                "temp_c": now.get("temp", ""),
-                "feels_like_c": now.get("feelsLike", ""),
-                "humidity": now.get("humidity", ""),
-            }
+            return query_current_weather(city, api_key, api_host)
         except Exception as exc:
             return {"success": False, "message": f"天气查询失败：{exc}"}
 

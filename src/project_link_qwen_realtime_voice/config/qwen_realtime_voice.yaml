@@ -54,7 +54,7 @@ qwen_realtime_voice_node:
     wakeup_ack_text: 我在，请说。
     wakeup_ack_pcm_file: ~/.cache/project_link_qwen_realtime/wakeup_ack.pcm
     continuous_conversation_enabled: true
-    continuous_silence_timeout_sec: 0.0
+    continuous_silence_timeout_sec: 30.0
     first_turn_no_speech_timeout_sec: 8.0
     continuous_max_turns: 0
     continuous_max_session_sec: 0.0

@@ -1961,7 +1961,8 @@ SO-101 与 2D 视觉伺服；GUI 负责远端标注画面、参数、姿态、�
 - [x] 修复 Realtime 协议错误触发重连后麦克风输入门未恢复，以及 Ctrl+C 异常退出问题。
 - [x] 实机确认文本 item 必须显式发送 `response.create`；协议级 active response 错误保持非致命处理。
 - [x] 修复缓存“我在”播放期间静音计时器提前触发“好的，我退下了”的竞态。
-- [x] 将实时链路改为一次唤醒后的无限多轮连续对话；仅明确退出词结束会话。
+- [x] 连续对话跟随静音改为 30 秒，并扩展安全的本地退出口语匹配。
+- [x] 和风天气迁移到项目专属 API Host、新 GeoAPI 路径和 Header Key 鉴权。
 - [ ] 验证讯飞板载 AEC 参考接线和 20 轮外放无自打断。
 - [ ] 配置 `/home/wte/.config/project_link/qwen_realtime.env` 中的真实 DashScope 密钥和业务空间端点。
 - [ ] 依次完成 pure-test、Demo 悬空、Nav2 dry-run、命名航点和抓取验收。

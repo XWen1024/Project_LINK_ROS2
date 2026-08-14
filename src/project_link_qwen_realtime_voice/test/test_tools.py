@@ -12,10 +12,13 @@ def test_confirmation_requires_whole_explicit_phrase():
     assert not is_explicit_confirmation("先别开始")
 
 
-def test_exit_keywords_are_local_and_exact():
+def test_exit_keywords_accept_explicit_natural_commands():
     assert is_explicit_exit("停止！")
     assert is_explicit_exit("退出对话")
+    assert is_explicit_exit("好了，你退下吧")
+    assert is_explicit_exit("请停止一下")
     assert not is_explicit_exit("不要停止播放音乐")
+    assert not is_explicit_exit("取消导航到客厅")
 
 
 def test_normalize_spoken_text_removes_spacing_and_punctuation():

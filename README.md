@@ -1041,4 +1041,11 @@ Humble `ament_python` 入口保留 `/usr/bin/python3` shebang 的情况。
 `Microphone PCM upload started`。设备按 `XFM-DP-V0.0.18` 名称匹配，不依赖重新插拔后变化的卡号或 PyAudio 索引。
 服务端只为 VAD 提交的音频自动创建响应；文本输入和 Function Calling 结果都必须显式发送 `response.create`。
 首轮无语音超时从缓存唤醒播报播放完成、麦克风真正开始上传后计时，不包含“我在，请说”的播放时间。
-首轮成功识别后默认保持无限多轮连续对话，不因跟随静音、轮数或本地会话时长自动退出；说“停止”“取消”“退出”“退下”或“休息”才结束并回到唤醒等待。
+首轮成功识别后默认保持多轮连续对话，跟随静音 30 秒才自动退下；说“停止”“取消”“退出”“退下”或“休息”等明确口语命令会立即结束并回到唤醒等待。
+
+天气工具需要同时配置和风控制台中的 Key 与项目专属 API Host：
+
+```bash
+export QWEATHER_API_KEY=...
+export QWEATHER_API_HOST=YOUR_PROJECT_HOST.re.qweatherapi.com
+```
