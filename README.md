@@ -1031,3 +1031,6 @@ bash scripts/start_qwen_realtime_voice.sh pure-test
 `/cmd_vel`。完整参数和 AEC 要求见
 `src/project_link_qwen_realtime_voice/README.md`，协议调研见
 `docs/qwen35_omni_flash_realtime_orin_guide.md`。
+
+启动脚本会先加载 ROS、虚拟环境和工作区 setup，再开启 Bash `nounset`；不要把
+`set -u` 提前到 `/opt/ros/humble/setup.bash` 之前。

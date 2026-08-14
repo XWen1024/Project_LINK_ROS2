@@ -676,3 +676,5 @@ priority, update:
   `/home/wte/wheeltec_robot/.venv-qwen-realtime` with system site packages and
   DashScope `1.26.5`. `scripts/start_qwen_realtime_voice.sh` must activate this
   environment before invoking ROS 2.
+- Keep Bash `nounset` disabled while sourcing ROS, the virtual environment, and
+  workspace setup files; enable `set -u` only after those setup scripts finish.

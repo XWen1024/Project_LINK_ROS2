@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 MODE="${1:-pure-test}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,6 +18,7 @@ fi
 if [[ -f install/setup.bash ]]; then
   source install/setup.bash
 fi
+set -u
 
 if ros2 node list 2>/dev/null | grep -Eq '^/(voice_dialog_node|qwen_realtime_voice_node)$'; then
   echo "[qwen-realtime] Refusing to start: another voice node is already running." >&2
