@@ -60,6 +60,28 @@ PARAMETERS = [
     ("qwen", "confirmation_timeout_sec", "动作确认超时", "s", 5.0, 120.0, 1.0, False),
 ]
 
+PARAMETER_DEFAULTS = {
+    ("classic", "audio_end_silence_ms"): 500,
+    ("classic", "audio_no_speech_timeout_sec"): 8.0,
+    ("classic", "audio_max_utterance_sec"): 12.0,
+    ("classic", "continuous_silence_timeout_sec"): 8.0,
+    ("classic", "audio_pre_roll_ms"): 400,
+    ("classic", "audio_min_speech_sec"): 0.30,
+    ("classic", "volcano_asr_packet_ms"): 100,
+    ("classic", "volcano_asr_final_timeout_sec"): 2.0,
+    ("classic", "waiting_prompt_delay_ms"): 500,
+    ("classic", "confirmation_timeout_sec"): 30.0,
+    ("qwen", "turn_detection_threshold"): 0.5,
+    ("qwen", "turn_detection_silence_duration_ms"): 1200,
+    ("qwen", "prefix_padding_ms"): 300,
+    ("qwen", "continuous_silence_timeout_sec"): 30.0,
+    ("qwen", "barge_in_enabled"): True,
+    ("qwen", "audio_input_chunk_ms"): 100,
+    ("qwen", "audio_output_chunk_ms"): 50,
+    ("qwen", "first_turn_no_speech_timeout_sec"): 8.0,
+    ("qwen", "confirmation_timeout_sec"): 30.0,
+}
+
 
 class VoiceConfigPage(QWidget):
     def __init__(self, config_client, parent=None) -> None:
@@ -112,6 +134,13 @@ class VoiceConfigPage(QWidget):
                 if item_backend != backend:
                     continue
                 widget = self._parameter_widget(minimum, maximum, step, unit)
+                default = PARAMETER_DEFAULTS[(backend, key)]
+                if isinstance(widget, QCheckBox):
+                    widget.setChecked(bool(default))
+                elif isinstance(widget, QSpinBox):
+                    widget.setValue(int(default))
+                else:
+                    widget.setValue(float(default))
                 widget.setToolTip(f"原始参数：{key}")
                 self._widgets[(backend, key)] = widget
                 row_label = QLabel(label + (f"（{unit}）" if unit else ""))
