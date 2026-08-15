@@ -40,4 +40,10 @@ def test_console_handles_service_stop_signals_without_systemd_timeout():
     assert "signal.SIGTERM" in source
     assert "signal.SIGINT" in source
     assert "window.close()" in source
+    assert "shutdown_requested" in source
     assert "signal_pump.start(250)" in source
+
+    bridge_source = (
+        PACKAGE_ROOT / "project_link_console_gui" / "ros_bridge.py"
+    ).read_text(encoding="utf-8")
+    assert "SignalHandlerOptions.NO" in bridge_source

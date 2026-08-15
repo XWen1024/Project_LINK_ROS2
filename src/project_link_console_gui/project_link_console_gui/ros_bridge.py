@@ -55,6 +55,7 @@ class RosBridge(QObject):
         from rclpy.action import ActionClient
         from rclpy.executors import MultiThreadedExecutor
         from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+        from rclpy.signals import SignalHandlerOptions
         from rclpy.time import Time
         from sensor_msgs.msg import LaserScan, PointCloud2
         from sensor_msgs_py import point_cloud2
@@ -69,7 +70,7 @@ class RosBridge(QObject):
         self._time_type = Time
         self._point_cloud2 = point_cloud2
         if not rclpy.ok():
-            rclpy.init(args=None)
+            rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
         self._node = rclpy.create_node("project_link_console_gui")
         self._teleop_pub = self._node.create_publisher(
             TeleopCommand, "/project_link/console/teleop", 20

@@ -209,6 +209,14 @@ def main() -> None:
     parser.add_argument("--demo", action="store_true", help="Run with generated offline data")
     arguments, qt_arguments = parser.parse_known_args()
     app = QApplication([sys.argv[0], *qt_arguments])
+    shutdown_requested = [False]
+
+    def request_shutdown(*_args) -> None:
+        shutdown_requested[0] = True
+        app.quit()
+
+    signal.signal(signal.SIGINT, request_shutdown)
+    signal.signal(signal.SIGTERM, request_shutdown)
     signal_pump = QTimer()
     signal_pump.timeout.connect(lambda: None)
     signal_pump.start(250)
@@ -232,6 +240,8 @@ def main() -> None:
     window.show()
     signal.signal(signal.SIGINT, lambda *_args: window.close())
     signal.signal(signal.SIGTERM, lambda *_args: window.close())
+    if shutdown_requested[0]:
+        QTimer.singleShot(0, window.close)
     if arguments.demo:
         bridge.start()
     elif bridge_error is not None:
