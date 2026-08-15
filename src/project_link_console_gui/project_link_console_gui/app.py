@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from .navigation_page import NavigationPage
+from .manipulation_page import ManipulationPage
 
 
 STYLE = """
@@ -117,7 +118,10 @@ class ConsoleWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.navigation_page = NavigationPage(bridge)
         self.pages.addWidget(self.navigation_page)
-        for title, description in page_specs[1:]:
+        self.manipulation_page = ManipulationPage(demo=demo)
+        self.manipulation_page.message.connect(self._append_log)
+        self.pages.addWidget(self.manipulation_page)
+        for title, description in page_specs[2:]:
             self.pages.addWidget(PlaceholderPage(title, description))
         content_splitter.addWidget(self.pages)
         self.log = QPlainTextEdit()
@@ -186,6 +190,7 @@ class ConsoleWindow(QMainWindow):
             QMessageBox.warning(self, "RViz2", "无法启动 rviz2，请检查 Ubuntu ROS 2 环境。")
 
     def closeEvent(self, event) -> None:
+        self.manipulation_page.shutdown()
         self._bridge.stop()
         event.accept()
 
@@ -205,13 +210,19 @@ def main() -> None:
         from .ros_bridge import RosBridge
 
         bridge = RosBridge()
+    bridge_error = None
+    if not arguments.demo:
+        try:
+            bridge.start()
+        except Exception as exc:
+            bridge_error = exc
     window = ConsoleWindow(bridge, demo=arguments.demo)
     window.show()
-    try:
+    if arguments.demo:
         bridge.start()
-    except Exception as exc:
+    elif bridge_error is not None:
         window._connection_changed(False, "ROS 初始化失败")
-        window._append_log(f"ROS 初始化失败：{exc}")
+        window._append_log(f"ROS 初始化失败：{bridge_error}")
     raise SystemExit(app.exec())
 
 

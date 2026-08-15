@@ -14,7 +14,7 @@ from std_srvs.srv import SetBool, Trigger
 from wheeltec_robot_msg.msg import VisualGraspStatus
 from wheeltec_robot_msg.srv import SetGripper, SetTarget
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -183,14 +183,15 @@ class RemoteClient(Node):
         self.devices[message.robot_namespace] = message
 
 
-class VisualGraspWindow(QMainWindow):
-    def __init__(self, client: RemoteClient):
+class VisualGraspPanel(QWidget):
+    message = Signal(str)
+
+    def __init__(self, client: RemoteClient, show_advanced_parameters: bool = True):
         super().__init__()
         self.client = client
         self.parameter_widgets: dict[str, QWidget] = {}
         self._last_image_stamp = None
-        self.setWindowTitle("Project LINK YOLO World 远程抓取")
-        self.resize(1380, 860)
+        self._show_advanced_parameters = bool(show_advanced_parameters)
         self._build_ui()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._spin_and_refresh)
@@ -198,8 +199,7 @@ class VisualGraspWindow(QMainWindow):
         QTimer.singleShot(500, self._load_parameters)
 
     def _build_ui(self) -> None:
-        root = QWidget()
-        layout = QVBoxLayout(root)
+        layout = QVBoxLayout(self)
         layout.addWidget(self._device_box())
 
         body = QHBoxLayout()
@@ -225,12 +225,12 @@ class VisualGraspWindow(QMainWindow):
         body.addWidget(control_scroll, 2)
         layout.addLayout(body)
 
-        parameter_scroll = QScrollArea()
-        parameter_scroll.setWidgetResizable(True)
-        parameter_scroll.setWidget(self._parameter_box())
-        parameter_scroll.setMaximumHeight(250)
-        layout.addWidget(parameter_scroll)
-        self.setCentralWidget(root)
+        self.parameter_scroll = QScrollArea()
+        self.parameter_scroll.setWidgetResizable(True)
+        self.parameter_scroll.setWidget(self._parameter_box())
+        self.parameter_scroll.setMaximumHeight(250)
+        self.parameter_scroll.setVisible(self._show_advanced_parameters)
+        layout.addWidget(self.parameter_scroll)
 
     def _device_box(self) -> QGroupBox:
         box = QGroupBox("设备连接")
@@ -531,10 +531,26 @@ class VisualGraspWindow(QMainWindow):
             self._show_message(f"保存 Orin 参数失败: {exc}")
 
     def _show_message(self, message: str) -> None:
-        self.statusBar().showMessage(message, 6000)
+        self.message.emit(message)
+
+    def set_advanced(self, enabled: bool) -> None:
+        self.parameter_scroll.setVisible(bool(enabled))
+
+    def shutdown(self) -> None:
+        self._timer.stop()
+
+
+class VisualGraspWindow(QMainWindow):
+    def __init__(self, client: RemoteClient):
+        super().__init__()
+        self.setWindowTitle("Project LINK YOLO World 远程抓取")
+        self.resize(1380, 860)
+        self.panel = VisualGraspPanel(client, show_advanced_parameters=True)
+        self.panel.message.connect(lambda message: self.statusBar().showMessage(message, 6000))
+        self.setCentralWidget(self.panel)
 
     def closeEvent(self, event) -> None:
-        self._timer.stop()
+        self.panel.shutdown()
         event.accept()
 
 

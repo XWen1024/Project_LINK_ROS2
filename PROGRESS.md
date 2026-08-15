@@ -67,7 +67,8 @@ Archive tags:
 5. [x] Create the PySide6 console shell and offline demo mode.
 6. [x] Implement the first navigation/mapping visualization, goal control and
        safe teleop slice. Ubuntu rendering, ROS integration and field motion remain.
-7. [ ] Integrate the existing Ubuntu manipulation client as a console page.
+7. [x] Refactor and embed the existing Ubuntu manipulation client as a console
+       page. Ubuntu runtime and Orin service/video validation remain required.
 8. [ ] Normalize voice status/events and implement classic/Qwen switching.
 9. [ ] Add prompt/tool profiles and masked global configuration management.
 10. [ ] Add UWB shadow plots and proposed-calibration capture.

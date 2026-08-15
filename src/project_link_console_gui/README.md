@@ -12,6 +12,8 @@ source /opt/ros/humble/setup.bash
 python3 -m pip install --user -r src/project_link_console_gui/requirements-ubuntu.txt
 colcon build --packages-select \
   project_link_console_interfaces \
+  wheeltec_robot_msg \
+  project_link_visual_grasp_gui \
   project_link_console_agent \
   project_link_console_gui
 source install/setup.bash
@@ -41,3 +43,8 @@ buttons call the typed Orin lifecycle Action. Mapping teleop sends a 20 Hz lease
 to the agent only while this page owns keyboard focus and Space plus W/A/S/D is
 held. The agent remains the only component allowed to create the temporary
 `/cmd_vel` publisher.
+
+The manipulation page embeds `VisualGraspPanel` from the existing Ubuntu client.
+Simple mode keeps raw Orin parameters hidden; advanced mode reveals the full
+parameter editor. The embedded page creates only a ROS client and does not start
+the Orin visual-grasp, arm or ToF services.

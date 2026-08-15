@@ -38,6 +38,15 @@ depth-grasp planner.
   removed. Current approach uses bounded taught shoulder/elbow/wrist motion.
 - ESP32-C3 firmware emitted a valid `43 mm`, status-0 frame.
 
+## Console Integration
+
+The former standalone `VisualGraspWindow` now wraps a reusable
+`VisualGraspPanel(QWidget)`. `project_link_console_gui` embeds that panel as its
+mechanical-arm page while retaining the standalone Ubuntu entrypoint. Simple mode
+hides the raw Orin parameter editor; advanced mode reveals it. Constructing the
+page creates only the remote ROS client and does not start the Orin visual-grasp,
+SO-101 or VL53L0X services.
+
 ## Remaining Gates
 
 - Build and validate the new ROS ToF package on Orin.
