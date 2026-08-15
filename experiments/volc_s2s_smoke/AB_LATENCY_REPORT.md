@@ -1,6 +1,6 @@
-# Volc S2S WebSocket Latency A/D Report
+# Volc S2S WebSocket Latency A/B/C/D Report
 
-Date: 2026-08-11
+Date: 2026-08-12
 
 Branch: `spike/volc-s2s-ws-smoke`
 
@@ -8,13 +8,16 @@ Platform: Jetson Orin Nano / Ubuntu ARM64 (`aarch64`)
 
 Embedded Kit commit: `2c94f96f3aad4094e0e818cbb031149fd4384ead`
 
-Model observed in every `session.created`: `doubao-seed-2-0-lite-260428`
+Models observed in `session.created`:
+
+- Tests A/B/D: `doubao-seed-2-0-lite-260428`
+- Test C Turbo candidate: `doubao-seed-2-1-turbo-260628`
 
 ## Scope and outcome
 
-This round measured Test A, Test B, and Test D without modifying the legacy voice
-pipeline. The operator switched the console Prompt/Tool configuration for B1.
-Test C remains pending the operator-provided model list.
+This round measured Tests A, B, D, and the first Test C model candidate without
+modifying the legacy voice pipeline. The operator switched the console Prompt/Tool
+configuration for B1 and switched the model for Test C.
 
 Main results:
 
@@ -28,6 +31,10 @@ Main results:
   `0.4 ms`; last input audio to local feedback start: mean `1827.1 ms`.
 - B1 minimal Prompt/Tool schema did not improve FC latency: VAD-stop-to-call mean
   was `2144.4 ms`, P50 `1424 ms`, and P90 `3370 ms`.
+- Against the same B1 Prompt/Tool and PCM, Seed 2.1 Turbo reduced mean
+  VAD-stop-to-call latency by `212.3 ms` (`9.9%`) and P90 by `924 ms` (`27.4%`),
+  but its P50 was `494 ms` slower. The observed advantage is tail-latency
+  reduction, not a universal per-turn speedup.
 - D3 returned `response.cancel` status `0` in all 10 runs and observed no cloud
   audio after the function output during the three-second duplicate-detection
   window.
@@ -37,8 +44,9 @@ Main results:
 - Every formal group contains 10 successful runs.
 - Runs use real-time PCM cadence and the existing `CLOCK_MONOTONIC` logger.
 - Percentiles use nearest-rank: P50 is sorted sample 5 and P90 is sorted sample 9.
-- Failed attempts are preserved but excluded from statistics. The formal groups
-  below all completed with 10 attempts and 10 successes.
+- Failed attempts are preserved but excluded from latency statistics. B1 and the
+  Turbo group each required 11 attempts to obtain 10 successful runs because one
+  device-registration TLS attempt failed with mbedTLS `-0x7280`.
 - Test D used exactly the same Function Calling input PCM and Bot configuration.
 - ASR completion was not exposed as a separate event. ASR and the first model/tool
   decision therefore remain a combined black-box interval.
@@ -290,6 +298,59 @@ Raw artifacts:
 
 `/home/wte/wheeltec_robot-volc-smoke/experiments/volc_s2s_smoke/artifacts/ab_latency/B1_minimal_prompt_20260812_072256`
 
+## Test C: Seed 2.1 Turbo versus Seed 2.0 Lite
+
+The first model comparison kept the B1 minimal Prompt/Tool schema, fixed PCM,
+`input_tts` feedback strategy, and all client-side settings unchanged. Only the
+console-selected model changed.
+
+Fixed PCM SHA256:
+
+`c8e0c24793b68b0974de7a00beef3c585514c1c48206dc03f21baeb42c5ddee0`
+
+| Metric | 2.0 Lite B1 mean | Lite P50 | Lite P90 | 2.1 Turbo mean | Turbo P50 | Turbo P90 | Mean change |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Last input -> VAD stop | 306.4 | 303 | 323 | 360.6 | 326 | 471 | +54.2 |
+| VAD stop -> Function Call | 2144.4 | 1424 | 3370 | 1932.1 | 1918 | 2446 | -212.3 (`-9.9%`) |
+| Last input -> Function Call | 2450.8 | 1813 | 3599 | 2292.7 | 2244 | 2952 | -158.1 (`-6.5%`) |
+| Function Call -> arguments done | N/A | N/A | N/A | 60.1 | 61 | 89 | N/A |
+| Tool output -> first feedback audio | 531.3 | 439 | 651 | 423.3 | 406 | 499 | -108.0 (`-20.3%`) |
+| Last input -> first feedback audio | 2985.3 | 2219 | 4806 | 2776.6 | 2720 | 3442 | -208.7 (`-7.0%`) |
+
+All values are milliseconds. A negative change is faster.
+
+Observed result:
+
+- Turbo Function Call correctness: `10/10`.
+- Function name correctness: `10/10 get_magic_number`.
+- Argument correctness: `10/10 {}`.
+- Turbo required 11 attempts for 10 successes. Attempt 8 failed during device
+  registration with the same mbedTLS `-0x7280` previously observed in B1.
+- Turbo improved the mean and P90, but its FC-decision P50 was `494 ms` slower
+  and its end-to-feedback P50 was `501 ms` slower.
+- The two batches ran in different time windows. The result supports a Turbo
+  tail-latency advantage in these samples, but not a claim that Turbo is always
+  faster. A time-matched Lite rerun is still needed as a closing control.
+
+Raw Turbo successful runs:
+
+| Attempt | Success run | Input->VAD | VAD->FC | Input->FC | FC->args | Tool/input_tts->audio | Input->audio | Input->done |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 1 | 327 | 2316 | 2643 | 64 | 499 | 3206 | 3374 |
+| 2 | 2 | 283 | 1332 | 1615 | 89 | 394 | 2098 | 2293 |
+| 3 | 3 | 303 | 1106 | 1409 | 62 | 412 | 1884 | 4213 |
+| 4 | 4 | 326 | 1918 | 2244 | 61 | 414 | 2720 | 2949 |
+| 5 | 5 | 325 | 3248 | 3573 | 0 | 580 | 4154 | 7532 |
+| 6 | 6 | 344 | 1981 | 2325 | 61 | 371 | 2758 | 3043 |
+| 7 | 7 | 506 | 2446 | 2952 | 54 | 436 | 3442 | 6804 |
+| 9 | 8 | 310 | 1235 | 1545 | 61 | 395 | 2001 | 2234 |
+| 10 | 9 | 471 | 2264 | 2735 | 56 | 326 | 3118 | 4360 |
+| 11 | 10 | 411 | 1475 | 1886 | 93 | 406 | 2385 | 2464 |
+
+Raw artifacts:
+
+`/home/wte/wheeltec_robot-volc-smoke/experiments/volc_s2s_smoke/artifacts/ab_latency/C_seed_2_1_turbo_260628_20260812_082231`
+
 ## Answers to the requested questions
 
 ### A. How fast is the S2S path itself?
@@ -308,8 +369,11 @@ decision variance dominates.
 
 ### C. Which model is fastest for Function Calling?
 
-Not measured. The session remained on `doubao-seed-2-0-lite-260428` for every run.
-No model or `service_tier` setting was changed or guessed.
+Not decided yet. Seed 2.1 Turbo has now been measured against the Seed 2.0 Lite
+B1 batch. Turbo reduced mean VAD-stop-to-call latency from `2144.4 ms` to
+`1932.1 ms` and P90 from `3370 ms` to `2446 ms`, but P50 increased from
+`1424 ms` to `1918 ms`. More fixed-model candidates and a closing Lite control
+are required before selecting a winner.
 
 ### D. Can the second LLM be bypassed?
 
@@ -332,6 +396,8 @@ Yes.
 - D3 measures process start, not the first sample leaving the physical speaker.
 - D3 duplicate suppression was observed for three seconds per run; it is not a
   proof about arbitrarily delayed server behavior.
-- Test C remains pending the operator-provided model list.
+- Test C currently contains only Lite and Turbo; it is not a complete model
+  benchmark.
 - B0 and B1 were not interleaved in the same time window.
+- Lite and Turbo were not interleaved in the same time window.
 - No production bridge or legacy voice module was changed.
