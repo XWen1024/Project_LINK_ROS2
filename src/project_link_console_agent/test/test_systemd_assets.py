@@ -46,3 +46,10 @@ def test_mutually_exclusive_modes_share_a_neutral_platform_target():
         assert f"PartOf={UNITS['platform_target']}" in source
         assert f"PartOf={UNITS['mapping_target']}" not in source
         assert f"PartOf={UNITS['rf2o_target']}" not in source
+
+
+def test_console_agent_unit_retries_ros_discovery_before_ready():
+    unit = (
+        DEPLOY_ROOT / "user" / UNITS["agent"]
+    ).read_text(encoding="utf-8")
+    assert "project-link-wait topic /project_link/console/system_state 20" in unit

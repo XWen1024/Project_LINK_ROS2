@@ -40,6 +40,10 @@ Archive tags:
   platform target with no missing Project LINK unit references.
 - Console GUI pure model and safety-contract tests: 5 passed. Python syntax and
   package XML pass; PySide6 rendering remains an Ubuntu validation item.
+- Orin validation on 2026-08-15: console interfaces and agent built successfully;
+  the 17-unit systemd graph passed `systemd-analyze --user verify`; the installer
+  started only the console agent; `/project_link/console/system_state` reported
+  mode `off`, no teleop and all hardware/navigation units inactive.
 
 ## Current Implementation Order
 
