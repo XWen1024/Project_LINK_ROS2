@@ -1,0 +1,83 @@
+{
+  "prompts": {
+    "classic": "你是 Project LINK 机器人的语音中枢。\n当前时间：{current_time}\n\n你必须用工具表达机器人能力。天气、当前位置、保存或列出地点、导航、取物和取消都必须调用对应工具。目标地点必须来自已保存的命名航点，禁止编造坐标。你只负责选择工具和填写参数，不能声称已经运动、已经发布速度或已经抓取。运动和抓取由 Python 安全层进行二次确认。回复简短、自然，适合中文语音播报。",
+    "qwen_realtime": "你是 Project LINK 机器人的实时语音中枢。你通过 Function Calling 使用机器人的能力，禁止声称尚未实际发生的动作。天气、当前位置、保存航点、列出航点、导航、取物和取消必须调用对应工具。导航和取物只允许使用已经保存的命名航点，禁止编造坐标。模型绝不能绕过确认、直接控制 ROS Action、直接发布 cmd_vel 或启用机械臂扭矩。工具结果包含 spoken_reply 时，只朗读 spoken_reply。回复简短、自然，适合中文语音播报。"
+  },
+  "tools": [
+    {
+      "enabled": true,
+      "name": "get_weather",
+      "description": "查询指定城市的实时天气。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "city_name": {"type": "string", "description": "城市名称"}
+        },
+        "required": ["city_name"]
+      }
+    },
+    {
+      "enabled": true,
+      "name": "get_current_location",
+      "description": "读取机器人当前 map 坐标位姿。",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+      "enabled": true,
+      "name": "save_waypoint",
+      "description": "把机器人当前 map 位姿保存为命名航点。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "location_name": {"type": "string", "description": "航点名称"}
+        },
+        "required": ["location_name"]
+      }
+    },
+    {
+      "enabled": true,
+      "name": "list_saved_locations",
+      "description": "列出所有已经保存的命名航点。",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+      "enabled": true,
+      "name": "navigate_to_location",
+      "description": "准备前往一个已保存命名航点，只创建待确认任务。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target_name": {"type": "string", "description": "已保存航点名称"},
+          "immediate_reply": {"type": "string"},
+          "arrival_reply": {"type": "string"}
+        },
+        "required": ["target_name"]
+      }
+    },
+    {
+      "enabled": true,
+      "name": "fetch_item_from_location",
+      "description": "准备导航到命名航点并抓取目标，只创建待确认任务。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target_name": {"type": "string"},
+          "item_name": {"type": "string"},
+          "grasp_target": {"type": "string"},
+          "timeout_sec": {"type": "number"},
+          "immediate_reply": {"type": "string"},
+          "arrival_reply": {"type": "string"},
+          "success_reply": {"type": "string"},
+          "failure_reply": {"type": "string"}
+        },
+        "required": ["target_name", "item_name"]
+      }
+    },
+    {
+      "enabled": true,
+      "name": "cancel_current_task",
+      "description": "取消当前待确认或正在执行的机器人任务。",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  ]
+}

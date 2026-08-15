@@ -92,15 +92,22 @@ case "$component" in
   voice-classic)
     source_main
     source_optional_env "${PROJECT_LINK_VOICE_ENV:-$HOME/.config/project_link/voice_api.env}"
+    export PROJECT_LINK_VOICE_PROFILE="${PROJECT_LINK_VOICE_PROFILE:-$HOME/.config/project_link/voice_profile.json}"
     set +u
     source "$workspace/scripts/project_link_voice_io.sh"
     set -u
-    exec ros2 launch project_link_voice voice_nav2.launch.py \
+    voice_params=()
+    if [[ -f "${PROJECT_LINK_VOICE_PARAMS:-$HOME/.config/project_link/voice_classic.yaml}" ]]; then
+      voice_params+=(params_file:="${PROJECT_LINK_VOICE_PARAMS:-$HOME/.config/project_link/voice_classic.yaml}")
+    fi
+    exec ros2 launch project_link_voice voice_nav2.launch.py "${voice_params[@]}" \
       enable_motion:="${PROJECT_LINK_VOICE_ENABLE_MOTION:-false}" \
       enable_visual_grasp:="${PROJECT_LINK_VOICE_ENABLE_VISUAL_GRASP:-false}"
     ;;
   voice-qwen)
     source_main
+    export PROJECT_LINK_VOICE_PROFILE="${PROJECT_LINK_VOICE_PROFILE:-$HOME/.config/project_link/voice_profile.json}"
+    export PROJECT_LINK_QWEN_PARAMS="${PROJECT_LINK_QWEN_PARAMS:-$HOME/.config/project_link/voice_qwen.yaml}"
     set +u
     source "$workspace/scripts/project_link_voice_io.sh"
     set -u
@@ -117,7 +124,12 @@ case "$component" in
       echo "BU04 device does not exist: $PROJECT_LINK_UWB_DEVICE" >&2
       exit 1
     }
-    exec ros2 launch project_link_uwb_navigation uwb_navigation.launch.py enable_motion:=false
+    uwb_params=()
+    if [[ -f "${PROJECT_LINK_UWB_PARAMS:-$HOME/.config/project_link/uwb_navigation.yaml}" ]]; then
+      uwb_params+=(params_file:="${PROJECT_LINK_UWB_PARAMS:-$HOME/.config/project_link/uwb_navigation.yaml}")
+    fi
+    exec ros2 launch project_link_uwb_navigation uwb_navigation.launch.py \
+      "${uwb_params[@]}" enable_motion:=false
     ;;
   *)
     echo "Unknown Project LINK component: $component" >&2

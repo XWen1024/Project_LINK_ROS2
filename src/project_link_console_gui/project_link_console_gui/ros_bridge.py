@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import queue
 import threading
@@ -30,6 +31,10 @@ class RosBridge(QObject):
     robot_updated = Signal(object)
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
+    voice_status = Signal(dict)
+    uwb_observation = Signal(dict)
+    uwb_status = Signal(str)
+    uwb_goal = Signal(dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -48,10 +53,12 @@ class RosBridge(QObject):
 
     def start(self) -> None:
         import rclpy
+        from geometry_msgs.msg import PoseStamped
         from nav2_msgs.action import NavigateToPose
         from nav_msgs.msg import OccupancyGrid, Path
-        from project_link_console_interfaces.action import ManageStack
+        from project_link_console_interfaces.action import ManageStack, SwitchVoice
         from project_link_console_interfaces.msg import ConsoleEvent, SystemState, TeleopCommand
+        from project_link_uwb_interfaces.msg import UwbObservation
         from rclpy.action import ActionClient
         from rclpy.executors import MultiThreadedExecutor
         from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
@@ -59,12 +66,14 @@ class RosBridge(QObject):
         from rclpy.time import Time
         from sensor_msgs.msg import LaserScan, PointCloud2
         from sensor_msgs_py import point_cloud2
+        from std_msgs.msg import String
         from std_srvs.srv import Trigger
         from tf2_ros import Buffer, TransformException, TransformListener
 
         self._rclpy = rclpy
         self._teleop_type = TeleopCommand
         self._manage_type = ManageStack
+        self._switch_voice_type = SwitchVoice
         self._navigate_type = NavigateToPose
         self._trigger_type = Trigger
         self._time_type = Time
@@ -78,9 +87,18 @@ class RosBridge(QObject):
         self._manage_client = ActionClient(
             self._node, ManageStack, "/project_link/console/manage_stack"
         )
+        self._switch_voice_client = ActionClient(
+            self._node, SwitchVoice, "/project_link/console/switch_voice"
+        )
         self._navigate_client = ActionClient(self._node, NavigateToPose, "/navigate_to_pose")
         self._emergency_client = self._node.create_client(
             Trigger, "/project_link/console/emergency_stop"
+        )
+        self._start_uwb_client = self._node.create_client(
+            Trigger, "/project_link/console/start_uwb_shadow"
+        )
+        self._stop_uwb_client = self._node.create_client(
+            Trigger, "/project_link/console/stop_uwb_shadow"
         )
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self._node)
@@ -91,6 +109,17 @@ class RosBridge(QObject):
         )
         self._node.create_subscription(
             ConsoleEvent, "/project_link/console/events", self._on_console_event, 20
+        )
+        self._node.create_subscription(String, "/voice/status", self._on_voice_status, 10)
+        self._node.create_subscription(
+            UwbObservation, "/uwb/person_observation", self._on_uwb_observation, 20
+        )
+        self._node.create_subscription(String, "/uwb/status", self._on_uwb_status, 10)
+        self._node.create_subscription(
+            String, "/uwb_navigation/status", self._on_uwb_status, 10
+        )
+        self._node.create_subscription(
+            PoseStamped, "/uwb_navigation/proposed_goal", self._on_uwb_goal, 10
         )
         map_qos = QoSProfile(depth=1)
         map_qos.reliability = ReliabilityPolicy.RELIABLE
@@ -154,6 +183,15 @@ class RosBridge(QObject):
                 break
         self._put(("emergency",))
 
+    def switch_voice(self, backend: int) -> None:
+        self._put(("switch_voice", int(backend)))
+
+    def start_uwb_shadow(self) -> None:
+        self._put(("uwb_shadow", True))
+
+    def stop_uwb_shadow(self) -> None:
+        self._put(("uwb_shadow", False))
+
     def set_cloud_enabled(self, enabled: bool) -> None:
         self._cloud_enabled = bool(enabled)
 
@@ -172,6 +210,10 @@ class RosBridge(QObject):
                 self._send_navigation_action(command[1])
             elif command[0] == "emergency":
                 self._call_emergency_stop()
+            elif command[0] == "switch_voice":
+                self._switch_voice(command[1])
+            elif command[0] == "uwb_shadow":
+                self._set_uwb_shadow(command[1])
         if latest_teleop is not None:
             self._publish_teleop(*latest_teleop[1:])
 
@@ -194,6 +236,47 @@ class RosBridge(QObject):
         goal.restart = restart
         future = self._manage_client.send_goal_async(goal, feedback_callback=self._manage_feedback)
         future.add_done_callback(self._manage_goal_response)
+
+    def _switch_voice(self, backend: int) -> None:
+        if not self._switch_voice_client.wait_for_server(timeout_sec=0.0):
+            self.operation_event.emit("语音切换服务尚未连接")
+            return
+        goal = self._switch_voice_type.Goal()
+        goal.backend = backend
+        future = self._switch_voice_client.send_goal_async(
+            goal,
+            feedback_callback=lambda message: self.operation_event.emit(
+                f"语音切换：{message.feedback.message}"
+            ),
+        )
+        future.add_done_callback(self._voice_goal_response)
+
+    def _voice_goal_response(self, future) -> None:
+        try:
+            handle = future.result()
+        except Exception as exc:
+            self.operation_event.emit(f"语音切换失败：{exc}")
+            return
+        if not handle.accepted:
+            self.operation_event.emit("语音切换请求被拒绝")
+            return
+        handle.get_result_async().add_done_callback(
+            lambda done: self.operation_event.emit(done.result().result.message)
+        )
+
+    def _set_uwb_shadow(self, enabled: bool) -> None:
+        client = self._start_uwb_client if enabled else self._stop_uwb_client
+        if not client.wait_for_service(timeout_sec=0.0):
+            self.operation_event.emit("UWB shadow 管理服务尚未连接")
+            return
+        client.call_async(self._trigger_type.Request()).add_done_callback(self._trigger_done)
+
+    def _trigger_done(self, future) -> None:
+        try:
+            response = future.result()
+            self.operation_event.emit(response.message)
+        except Exception as exc:
+            self.operation_event.emit(f"远程服务调用失败：{exc}")
 
     def _manage_feedback(self, feedback_message) -> None:
         feedback = feedback_message.feedback
@@ -286,6 +369,63 @@ class RosBridge(QObject):
                 "delta_ms": float(message.delta_ms),
                 "total_ms": float(message.total_ms),
                 "message": message.message,
+            }
+        )
+
+    def _on_voice_status(self, message) -> None:
+        raw = str(message.data)
+        if raw.lstrip().startswith("{"):
+            try:
+                value = json.loads(raw)
+            except json.JSONDecodeError:
+                value = {"backend": "unknown", "state": "invalid"}
+            value["state"] = (
+                "conversation_active"
+                if value.get("conversation_active")
+                else ("idle" if value.get("session_ready", True) else "connecting")
+            )
+            value["wakeup_state"] = (
+                "已唤醒" if value.get("conversation_active") else "等待唤醒"
+            )
+        else:
+            state = raw.split(";", 1)[0].strip() or "unknown"
+            value = {
+                "backend": "classic",
+                "state": state,
+                "conversation_active": state == "conversation_active",
+                "pending_task": state.removeprefix("awaiting_confirmation_")
+                if state.startswith("awaiting_confirmation_") else "",
+                "active_task": state.removeprefix("executing_")
+                if state.startswith("executing_") else "",
+                "wakeup_state": "已唤醒" if state == "conversation_active" else "等待唤醒",
+            }
+        value["raw"] = raw
+        self.voice_status.emit(value)
+
+    def _on_uwb_observation(self, message) -> None:
+        self.uwb_observation.emit(
+            {
+                "source_id": message.source_id,
+                "tag_time_raw": int(message.tag_time_raw),
+                "x_m": float(message.x_m),
+                "y_m": float(message.y_m),
+                "range_m": float(message.range_m),
+                "coordinate_range_m": float(message.coordinate_range_m),
+                "range_residual_m": float(message.range_residual_m),
+                "valid": bool(message.valid),
+                "rejection_reason": message.rejection_reason,
+            }
+        )
+
+    def _on_uwb_status(self, message) -> None:
+        self.uwb_status.emit(str(message.data))
+
+    def _on_uwb_goal(self, message) -> None:
+        self.uwb_goal.emit(
+            {
+                "frame_id": message.header.frame_id,
+                "x": float(message.pose.position.x),
+                "y": float(message.pose.position.y),
             }
         )
 

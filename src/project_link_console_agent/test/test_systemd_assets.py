@@ -53,3 +53,26 @@ def test_console_agent_unit_retries_ros_discovery_before_ready():
         DEPLOY_ROOT / "user" / UNITS["agent"]
     ).read_text(encoding="utf-8")
     assert "project-link-wait topic /project_link/console/system_state 20" in unit
+
+
+def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():
+    component = (DEPLOY_ROOT / "bin" / "project-link-component").read_text(encoding="utf-8")
+    assert "PROJECT_LINK_VOICE_PROFILE" in component
+    assert "voice_classic.yaml" in component
+    assert "voice_qwen.yaml" in component
+    assert "uwb_navigation.yaml" in component
+    assert "enable_motion:=false" in component
+
+
+def test_console_agent_exposes_only_uwb_shadow_lifecycle_services():
+    source = (
+        REPOSITORY_ROOT
+        / "src"
+        / "project_link_console_agent"
+        / "project_link_console_agent"
+        / "node.py"
+    ).read_text(encoding="utf-8")
+    assert '"/project_link/console/start_uwb_shadow"' in source
+    assert '"/project_link/console/stop_uwb_shadow"' in source
+    assert "_systemd.start(UNITS[\"uwb_shadow\"])" in source
+    assert "PersonNavigation" not in source

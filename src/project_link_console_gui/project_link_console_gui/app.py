@@ -28,6 +28,11 @@ from PySide6.QtWidgets import (
 
 from .navigation_page import NavigationPage
 from .manipulation_page import ManipulationPage
+from .config_client import ConfigClient
+from .settings_page import SettingsPage
+from .uwb_page import UwbPage
+from .voice_config_page import VoiceConfigPage
+from .voice_page import VoicePage
 
 
 STYLE = """
@@ -48,7 +53,12 @@ QLabel#modeBadge { background: #26313a; border-radius: 10px; padding: 5px 10px; 
 QTableWidget { background: #191d22; alternate-background-color: #1d2228; border: 1px solid #343b45; }
 QHeaderView::section { background: #252b33; padding: 6px; border: 0; border-right: 1px solid #343b45; }
 QPlainTextEdit { background: #101318; border: 1px solid #303741; color: #b7c0cb; }
-QSpinBox, QDoubleSpinBox { background: #22272e; border: 1px solid #3a424d; border-radius: 4px; padding: 5px; }
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { background: #22272e; border: 1px solid #3a424d; border-radius: 4px; padding: 5px; }
+QTabWidget::pane { border: 1px solid #343b45; border-radius: 6px; }
+QTabBar::tab { background: #20252c; padding: 8px 16px; margin-right: 2px; }
+QTabBar::tab:selected { background: #343c46; }
+QFrame#statusCard { background: #1b2027; border: 1px solid #343b45; border-radius: 7px; }
+QScrollArea { border: 0; }
 """
 
 
@@ -81,6 +91,7 @@ class ConsoleWindow(QMainWindow):
         super().__init__()
         self._bridge = bridge
         self._demo = demo
+        self.config_client = ConfigClient(self)
         self.setWindowTitle("Project LINK 中控台" + (" — 离线演示" if demo else ""))
         self.resize(1500, 960)
 
@@ -122,8 +133,14 @@ class ConsoleWindow(QMainWindow):
         self.manipulation_page = ManipulationPage(demo=demo)
         self.manipulation_page.message.connect(self._append_log)
         self.pages.addWidget(self.manipulation_page)
-        for title, description in page_specs[2:]:
-            self.pages.addWidget(PlaceholderPage(title, description))
+        self.voice_page = VoicePage(bridge)
+        self.voice_config_page = VoiceConfigPage(self.config_client)
+        self.uwb_page = UwbPage(bridge, self.config_client)
+        self.settings_page = SettingsPage(self.config_client)
+        self.pages.addWidget(self.voice_page)
+        self.pages.addWidget(self.voice_config_page)
+        self.pages.addWidget(self.uwb_page)
+        self.pages.addWidget(self.settings_page)
         content_splitter.addWidget(self.pages)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -143,6 +160,8 @@ class ConsoleWindow(QMainWindow):
 
         bridge.connection_changed.connect(self._connection_changed)
         bridge.system_state.connect(self.navigation_page.update_system_state)
+        bridge.system_state.connect(self.voice_page.update_system_state)
+        bridge.system_state.connect(self.uwb_page.update_system_state)
         bridge.grid_updated.connect(self.navigation_page.update_grid)
         bridge.scan_updated.connect(self.navigation_page.update_scan)
         bridge.cloud_updated.connect(self.navigation_page.update_cloud)
@@ -150,6 +169,10 @@ class ConsoleWindow(QMainWindow):
         bridge.robot_updated.connect(self.navigation_page.update_robot)
         bridge.operation_event.connect(self._append_log)
         bridge.console_event.connect(self._console_event)
+        bridge.voice_status.connect(self.voice_page.update_voice_status)
+        bridge.uwb_observation.connect(self.uwb_page.update_observation)
+        bridge.uwb_status.connect(self.uwb_page.update_status)
+        bridge.uwb_goal.connect(self.uwb_page.update_goal)
 
         if self.manipulation_page.initialization_error is not None:
             self._append_log(
@@ -170,8 +193,11 @@ class ConsoleWindow(QMainWindow):
         self.connection_label.setText(("● " if connected else "○ ") + text)
         self.connection_label.setStyleSheet(f"color: {color}; padding: 8px;")
         self.navigation_page.set_connection_available(connected)
+        self.voice_page.set_connection_available(connected)
+        self.uwb_page.set_connection_available(connected)
 
     def _console_event(self, event: dict) -> None:
+        self.voice_page.append_event(event)
         timing = ""
         if event.get("delta_ms") or event.get("total_ms"):
             timing = f" Δ{event.get('delta_ms', 0):.0f} ms / Σ{event.get('total_ms', 0):.0f} ms"
@@ -200,6 +226,7 @@ class ConsoleWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.manipulation_page.shutdown()
+        self.config_client.shutdown()
         self._bridge.stop()
         event.accept()
 

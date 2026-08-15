@@ -22,6 +22,11 @@ if [[ -f install/setup.bash ]]; then
 fi
 set -u
 
+params_args=()
+if [[ -f "${PROJECT_LINK_QWEN_PARAMS:-}" ]]; then
+  params_args+=(params_file:="$PROJECT_LINK_QWEN_PARAMS")
+fi
+
 if ros2 node list 2>/dev/null | grep -Eq '^/(voice_dialog_node|qwen_realtime_voice_node)$'; then
   echo "[qwen-realtime] Refusing to start: another voice node is already running." >&2
   ros2 node list 2>/dev/null | grep -E 'voice_dialog_node|qwen_realtime_voice_node' >&2 || true
@@ -31,21 +36,26 @@ fi
 case "$MODE" in
   pure-test)
     exec ros2 launch project_link_qwen_realtime_voice qwen_realtime_voice.launch.py \
+      "${params_args[@]}" \
       enable_motion:=false enable_visual_grasp:=false enable_demo_motion:=false pure_test_mode:=on
     ;;
   demo)
-    exec ros2 launch project_link_qwen_realtime_voice qwen_realtime_demo.launch.py
+    exec ros2 launch project_link_qwen_realtime_voice qwen_realtime_demo.launch.py \
+      "${params_args[@]}"
     ;;
   nav2-dry)
     exec ros2 launch project_link_qwen_realtime_voice qwen_realtime_nav2.launch.py \
+      "${params_args[@]}" \
       enable_motion:=false enable_visual_grasp:=false
     ;;
   nav2)
     exec ros2 launch project_link_qwen_realtime_voice qwen_realtime_nav2.launch.py \
+      "${params_args[@]}" \
       enable_motion:=true enable_visual_grasp:=false
     ;;
   fetch)
     exec ros2 launch project_link_qwen_realtime_voice qwen_realtime_nav2.launch.py \
+      "${params_args[@]}" \
       enable_motion:=true enable_visual_grasp:=true
     ;;
   *)

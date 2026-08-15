@@ -35,6 +35,7 @@ from .tools import (
     is_explicit_exit,
     tool_schemas,
 )
+from project_link_voice.voice_profile import prompt_for
 from .transport import DashScopeRealtimeTransport
 
 
@@ -84,7 +85,7 @@ class QwenRealtimeVoiceNode(Node):
             endpoint=str(self.get_parameter("qwen_realtime_endpoint").value).strip(),
             model=str(self.get_parameter("qwen_realtime_model").value).strip(),
             voice=str(self.get_parameter("qwen_realtime_voice").value).strip(),
-            instructions=SYSTEM_PROMPT,
+            instructions=prompt_for("qwen_realtime", SYSTEM_PROMPT),
             tools=tool_schemas(bool(self.get_parameter("enable_demo_motion").value)),
             input_sample_rate=int(self.get_parameter("audio_input_sample_rate").value),
             output_sample_rate=int(self.get_parameter("audio_output_sample_rate").value),

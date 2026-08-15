@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
 
+from .voice_profile import configured_tool_schemas, prompt_for
+
 
 TOOL_SCHEMAS = [
     {
@@ -283,6 +285,8 @@ class ToolCallingClient:
         self._max_history = max_history
         self._history: list[dict] = []
         self._client = None
+        self._tool_schemas = configured_tool_schemas(TOOL_SCHEMAS)
+        self._system_prompt = prompt_for("classic", SYSTEM_PROMPT)
 
     def available(self) -> tuple[bool, str]:
         if not self._enabled:
@@ -405,7 +409,7 @@ class ToolCallingClient:
             stream = self._client.chat.completions.create(
                 model=self._model,
                 messages=messages,
-                tools=TOOL_SCHEMAS,
+                tools=self._tool_schemas,
                 tool_choice="auto",
                 temperature=0.4,
                 max_tokens=384,
@@ -513,7 +517,10 @@ class ToolCallingClient:
 
     def _system_message(self) -> dict:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return {"role": "system", "content": SYSTEM_PROMPT.format(current_time=current_time)}
+        return {
+            "role": "system",
+            "content": self._system_prompt.replace("{current_time}", current_time),
+        }
 
     def _trim_history(self) -> None:
         if len(self._history) > self._max_history * 2:

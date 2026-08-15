@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import threading
 import time
 
@@ -36,6 +38,14 @@ class ConsoleAgent(Node):
         self.declare_parameter("teleop_max_linear_mps", 0.18)
         self.declare_parameter("teleop_max_angular_rps", 0.60)
         self.declare_parameter("state_rate_hz", 2.0)
+        self.declare_parameter(
+            "classic_voice_timing_file",
+            "~/.ros/project_link_voice/voice_timing.jsonl",
+        )
+        self.declare_parameter(
+            "qwen_voice_timing_file",
+            "~/.ros/project_link_qwen_realtime/voice_timing.jsonl",
+        )
 
         self._callbacks = ReentrantCallbackGroup()
         self._systemd = SystemdManager(str(self.get_parameter("systemctl_command").value))
@@ -51,6 +61,14 @@ class ConsoleAgent(Node):
         )
         self._teleop_publisher = None
         self._teleop_was_active = False
+        self._voice_timing_paths = {
+            "classic": Path(str(self.get_parameter("classic_voice_timing_file").value)).expanduser(),
+            "qwen_realtime": Path(str(self.get_parameter("qwen_voice_timing_file").value)).expanduser(),
+        }
+        self._voice_timing_offsets = {
+            backend: path.stat().st_size if path.is_file() else 0
+            for backend, path in self._voice_timing_paths.items()
+        }
 
         self._state_pub = self.create_publisher(SystemState, "/project_link/console/system_state", 10)
         self._event_pub = self.create_publisher(ConsoleEvent, "/project_link/console/events", 20)
@@ -74,6 +92,18 @@ class ConsoleAgent(Node):
             self._clear_emergency_stop,
             callback_group=self._callbacks,
         )
+        self.create_service(
+            Trigger,
+            "/project_link/console/start_uwb_shadow",
+            self._start_uwb_shadow,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            Trigger,
+            "/project_link/console/stop_uwb_shadow",
+            self._stop_uwb_shadow,
+            callback_group=self._callbacks,
+        )
         self._stack_server = ActionServer(
             self,
             ManageStack,
@@ -91,6 +121,7 @@ class ConsoleAgent(Node):
         state_period = 1.0 / max(0.2, float(self.get_parameter("state_rate_hz").value))
         self.create_timer(state_period, self._publish_state, callback_group=self._callbacks)
         self.create_timer(0.05, self._teleop_tick, callback_group=self._callbacks)
+        self.create_timer(0.20, self._poll_voice_timing, callback_group=self._callbacks)
         self.get_logger().info("Project LINK console agent started; no stack or motion was started.")
 
     def _emit(self, subsystem: str, message: str, severity: int = ConsoleEvent.SEVERITY_INFO) -> None:
@@ -104,6 +135,52 @@ class ConsoleAgent(Node):
     def _on_voice_status(self, message: String) -> None:
         with self._lock:
             self._voice = parse_voice_status(message.data)
+
+    def _poll_voice_timing(self) -> None:
+        with self._lock:
+            backend = self._voice.backend
+        path = self._voice_timing_paths.get(backend)
+        if path is None or not path.is_file():
+            return
+        offset = self._voice_timing_offsets.get(backend, 0)
+        try:
+            size = path.stat().st_size
+            if size < offset:
+                offset = 0
+            with path.open("rb") as stream:
+                stream.seek(offset)
+                data = stream.read(262144)
+        except OSError:
+            return
+        if not data:
+            return
+        complete = data.rfind(b"\n")
+        if complete < 0:
+            return
+        self._voice_timing_offsets[backend] = offset + complete + 1
+        for raw_line in data[:complete].splitlines():
+            try:
+                row = json.loads(raw_line.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if row.get("kind") not in {"timing", "timing_summary"}:
+                continue
+            event = ConsoleEvent()
+            event.stamp = self.get_clock().now().to_msg()
+            event.severity = ConsoleEvent.SEVERITY_INFO
+            event.subsystem = "voice"
+            event.trace_id = str(row.get("trace_id", ""))
+            event.phase = str(row.get("phase", "summary"))
+            event.delta_ms = float(
+                row.get("delta_ms", row.get("step_delta_ms", row.get("phase_elapsed_ms", 0.0)))
+            )
+            event.total_ms = float(row.get("total_ms", row.get("trace_total_ms", row.get("elapsed_ms", 0.0))))
+            details = []
+            for key in ("tool", "success", "source", "response_id"):
+                if key in row:
+                    details.append(f"{key}={row[key]}")
+            event.message = " ".join(details)
+            self._event_pub.publish(event)
 
     def _on_teleop(self, message: TeleopCommand) -> None:
         with self._lock:
@@ -363,6 +440,32 @@ class ConsoleAgent(Node):
         response.success = not errors
         response.message = "emergency_stop_latched" if not errors else "; ".join(errors)
         self._emit("safety", response.message, ConsoleEvent.SEVERITY_ERROR)
+        return response
+
+    def _start_uwb_shadow(self, _request, response):
+        try:
+            self._systemd.start(UNITS["uwb_shadow"])
+        except Exception as exc:
+            response.success = False
+            response.message = str(exc)
+            self._emit("uwb", response.message, ConsoleEvent.SEVERITY_ERROR)
+            return response
+        response.success = True
+        response.message = "uwb_shadow_started"
+        self._emit("uwb", response.message)
+        return response
+
+    def _stop_uwb_shadow(self, _request, response):
+        try:
+            self._systemd.stop(UNITS["uwb_shadow"])
+        except Exception as exc:
+            response.success = False
+            response.message = str(exc)
+            self._emit("uwb", response.message, ConsoleEvent.SEVERITY_ERROR)
+            return response
+        response.success = True
+        response.message = "uwb_shadow_stopped"
+        self._emit("uwb", response.message)
         return response
 
     def _clear_emergency_stop(self, _request, response):

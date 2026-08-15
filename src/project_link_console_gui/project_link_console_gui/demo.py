@@ -19,6 +19,10 @@ class DemoBridge(QObject):
     robot_updated = Signal(object)
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
+    voice_status = Signal(dict)
+    uwb_observation = Signal(dict)
+    uwb_status = Signal(str)
+    uwb_goal = Signal(dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -26,6 +30,9 @@ class DemoBridge(QObject):
         self._robot = Pose2D(1.0, 1.0, 0.2)
         self._path: list[tuple[float, float]] = []
         self._cloud_enabled = False
+        self._voice_backend = "off"
+        self._uwb_shadow = False
+        self._tick_count = 0
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
@@ -62,7 +69,9 @@ class DemoBridge(QObject):
             ("Point-LIO 建图", self._mode in (1, 2)),
             ("Navigation2", self._mode == 2),
             ("机械臂服务", False),
-            ("语音服务", False),
+            ("project-link-voice-classic.service", self._voice_backend == "classic"),
+            ("project-link-voice-qwen.service", self._voice_backend == "qwen_realtime"),
+            ("project-link-uwb-shadow.service", self._uwb_shadow),
         ]
         self.system_state.emit(
             {
@@ -70,7 +79,7 @@ class DemoBridge(QObject):
                 "mode_name": state_names.get(self._mode, "unknown"),
                 "emergency_stop_latched": False,
                 "teleop_active": False,
-                "voice_backend": "off",
+                "voice_backend": self._voice_backend,
                 "message": "demo",
                 "subsystems": [
                     {
@@ -134,10 +143,40 @@ class DemoBridge(QObject):
         self.path_updated.emit([])
         self.operation_event.emit("演示紧急停车已锁定")
 
+    def switch_voice(self, backend: int) -> None:
+        self._voice_backend = {0: "off", 1: "classic", 2: "qwen_realtime"}.get(backend, "off")
+        self.operation_event.emit("演示语音后端已切换")
+        self._emit_state()
+        if self._voice_backend != "off":
+            self.voice_status.emit(
+                {
+                    "backend": self._voice_backend,
+                    "state": "idle",
+                    "wakeup_state": "等待唤醒",
+                    "conversation_active": False,
+                    "pending_task": "",
+                    "active_task": "",
+                    "raw": "demo",
+                }
+            )
+
+    def start_uwb_shadow(self) -> None:
+        self._uwb_shadow = True
+        self.uwb_status.emit("demo_shadow_running")
+        self.operation_event.emit("演示 UWB shadow 已启动")
+        self._emit_state()
+
+    def stop_uwb_shadow(self) -> None:
+        self._uwb_shadow = False
+        self.uwb_status.emit("demo_shadow_stopped")
+        self.operation_event.emit("演示 UWB shadow 已停止")
+        self._emit_state()
+
     def set_cloud_enabled(self, enabled: bool) -> None:
         self._cloud_enabled = bool(enabled)
 
     def _tick(self) -> None:
+        self._tick_count += 1
         if self._path:
             x, y = self._path.pop(0)
             self._robot = Pose2D(x, y, self._robot.yaw)
@@ -153,6 +192,35 @@ class DemoBridge(QObject):
         if self._cloud_enabled:
             self.cloud_updated.emit(scan[::4])
         self.robot_updated.emit(self._robot)
+        if self._voice_backend != "off" and self._tick_count % 20 == 0:
+            self.console_event.emit(
+                {
+                    "severity": 0,
+                    "subsystem": "voice",
+                    "phase": "demo_idle",
+                    "delta_ms": 42.0,
+                    "total_ms": 42.0,
+                    "message": "等待唤醒",
+                }
+            )
+        if self._uwb_shadow:
+            angle = 0.7 + 0.35 * math.sin(self._tick_count * 0.04)
+            distance = 2.0 + 0.15 * math.sin(self._tick_count * 0.07)
+            x = distance * math.cos(angle)
+            y = distance * math.sin(angle)
+            self.uwb_observation.emit(
+                {
+                    "source_id": "demo-tag",
+                    "tag_time_raw": self._tick_count,
+                    "x_m": x,
+                    "y_m": y,
+                    "range_m": distance + 0.03,
+                    "coordinate_range_m": distance,
+                    "range_residual_m": 0.03,
+                    "valid": True,
+                    "rejection_reason": "",
+                }
+            )
 
     def stop(self) -> None:
         self._timer.stop()

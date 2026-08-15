@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from project_link_voice.voice_profile import configured_tool_schemas
 from project_link_voice.waypoints import Waypoint
 
 
@@ -169,7 +170,7 @@ def tool_schemas(enable_demo_motion: bool) -> list[dict[str, Any]]:
     schemas = list(BASE_TOOL_SCHEMAS)
     if enable_demo_motion:
         schemas.append(DEMO_TOOL_SCHEMA)
-    return schemas
+    return configured_tool_schemas(schemas)
 
 
 def normalize_spoken_text(text: str) -> str:
