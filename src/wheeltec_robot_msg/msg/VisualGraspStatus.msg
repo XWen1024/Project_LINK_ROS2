@@ -9,6 +9,9 @@ bool model_ready
 bool camera_ready
 bool arm_connected
 bool torque_enabled
+bool arm_calibrated
+string calibration_state
+string calibration_message
 int32 image_width
 int32 image_height
 int32 bbox_x
@@ -18,3 +21,10 @@ int32 bbox_height
 float32 confidence
 string[] joint_names
 float32[] joint_positions
+bool tof_enabled
+bool tof_control_enabled
+bool tof_ready
+float32 tof_range_m
+float32 tof_age_sec
+string tof_state
+string tof_decision

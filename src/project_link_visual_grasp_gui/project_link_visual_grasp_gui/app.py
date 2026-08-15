@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import sys
-from typing import Callable
 
 import cv2
 import numpy as np
 import rclpy
-from rcl_interfaces.msg import Parameter as ParameterMessage
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.parameter_client import AsyncParameterClient
@@ -30,7 +28,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -50,21 +47,73 @@ PARAMETERS = {
     "yolo_max_lost_frames": 15,
     "yolo_infer_interval_sec": 0.0,
     "yolo_ema_alpha": 0.6,
+    "yolo_max_center_jump_ratio": 0.12,
+    "yolo_max_area_change_ratio": 1.8,
+    "yolo_outlier_hold_frames": 4,
+    "yolo_track_iou_weight": 0.5,
     "robot_port": "/dev/so101",
     "robot_id": "so101_slave",
     "pan_gain": 25.0,
     "tilt_gain": 15.0,
+    "pan_direction": 1.0,
+    "tilt_direction": -1.0,
+    "centering_tilt_motion_enabled": False,
+    "auto_lock_vertical_center_on_pregrasp": False,
+    "auto_lock_vertical_center_offset_ratio": 0.10,
     "approach_step": 1.5,
+    "approach_max_command_lead": 4.0,
+    "approach_profile_max_lift_delta": 34.0,
+    "approach_profile_elbow_delta": 12.3,
+    "approach_profile_wrist_delta": -54.0,
+    "approach_profile_wrist_trim": 0.0,
+    "visual_servo_max_joint_step": 6.0,
+    "visual_handoff_enabled": True,
+    "visual_handoff_bbox_height_ratio": 0.85,
+    "visual_handoff_area_ratio": 0.18,
+    "visual_handoff_tof_m": 0.19,
+    "visual_handoff_max_tof_m": 0.21,
+    "final_grasp_tof_m": 0.090,
+    "final_approach_step": 1.0,
+    "final_approach_max_command_lead": 4.0,
+    "final_approach_max_lift_delta": 20.0,
+    "final_approach_command_interval_sec": 0.10,
+    "final_approach_timeout_sec": 6.0,
+    "final_approach_endpoint_settle_sec": 0.75,
     "centering_threshold": 0.04,
+    "centering_limit_hold_cycles": 3,
+    "centering_error_window": 3,
+    "centering_min_samples": 2,
+    "centering_confirm_cycles": 2,
+    "centering_step_limit": 1.5,
+    "centering_min_step_limit": 0.25,
+    "centering_slow_zone": 0.12,
+    "centering_max_command_lead": 4.0,
+    "centering_command_interval_sec": 0.08,
     "grasp_area_threshold": 0.45,
     "gripper_open": 70.0,
     "gripper_close": 0.0,
     "move_fps": 15.0,
     "arrive_threshold": 2.0,
+    "elbow_arrive_threshold": 5.0,
+    "arrive_stable_margin": 0.75,
+    "arrive_stable_delta": 0.35,
+    "arrive_stable_cycles": 5,
     "move_step_limit": 3.0,
     "move_timeout_sec": 15.0,
+    "grasp_timeout_sec": 20.0,
+    "joint_command_limit": 95.0,
+    "preset_joint_limit": 95.0,
+    "standby_joint_limit": 99.5,
     "center_offset_x": 143.0,
     "center_offset_y": 61.0,
+    "tof_enabled": False,
+    "tof_control_enabled": False,
+    "tof_calibrated": False,
+    "tof_topic": "/visual_grasp/tof_range",
+    "tof_stale_timeout_sec": 0.25,
+    "tof_filter_window": 5,
+    "tof_min_valid_samples": 3,
+    "tof_grasp_distance_m": 0.06,
     "action_default_timeout_sec": 45.0,
 }
 
@@ -108,6 +157,8 @@ class RemoteClient(Node):
                 "record_standby", "record_pregrasp", "record_placement",
                 "go_standby", "go_pregrasp", "go_placement",
                 "start_demo_recording", "stop_demo_recording",
+                "calibration_start", "calibration_set_middle",
+                "calibration_finish", "calibration_cancel",
             )
         }
         self.set_torque = self.create_client(SetBool, root + "/set_torque")
@@ -138,7 +189,7 @@ class VisualGraspWindow(QMainWindow):
         self.client = client
         self.parameter_widgets: dict[str, QWidget] = {}
         self._last_image_stamp = None
-        self.setWindowTitle("Project LINK YOLO World ????")
+        self.setWindowTitle("Project LINK YOLO World 远程抓取")
         self.resize(1380, 860)
         self._build_ui()
         self._timer = QTimer(self)
@@ -152,19 +203,26 @@ class VisualGraspWindow(QMainWindow):
         layout.addWidget(self._device_box())
 
         body = QHBoxLayout()
-        self.video = QLabel("?? Orin ???")
+        self.video = QLabel("等待 Orin 视频流")
         self.video.setAlignment(Qt.AlignCenter)
         self.video.setMinimumSize(760, 520)
         self.video.setFrameShape(QLabel.Box)
         body.addWidget(self.video, 3)
 
-        controls = QVBoxLayout()
+        control_widget = QWidget()
+        controls = QVBoxLayout(control_widget)
         controls.addWidget(self._status_box())
         controls.addWidget(self._tracking_box())
         controls.addWidget(self._arm_box())
+        controls.addWidget(self._calibration_box())
         controls.addWidget(self._positions_box())
         controls.addWidget(self._demo_box())
-        body.addLayout(controls, 2)
+        controls.addStretch(1)
+        control_scroll = QScrollArea()
+        control_scroll.setWidgetResizable(True)
+        control_scroll.setWidget(control_widget)
+        control_scroll.setMinimumWidth(430)
+        body.addWidget(control_scroll, 2)
         layout.addLayout(body)
 
         parameter_scroll = QScrollArea()
@@ -175,48 +233,51 @@ class VisualGraspWindow(QMainWindow):
         self.setCentralWidget(root)
 
     def _device_box(self) -> QGroupBox:
-        box = QGroupBox("????")
-        layout = QHBoxLayout(box)
+        box = QGroupBox("设备连接")
+        layout = QGridLayout(box)
         self.device_combo = QComboBox()
         self.device_combo.currentIndexChanged.connect(self._select_discovered_device)
         self.namespace_edit = QLineEdit("/visual_grasp")
-        apply = QPushButton("??????")
+        apply = QPushButton("使用命名空间")
         apply.clicked.connect(self._apply_namespace)
-        refresh = QPushButton("????")
+        refresh = QPushButton("刷新参数")
         refresh.clicked.connect(self._load_parameters)
-        layout.addWidget(QLabel("????"))
-        layout.addWidget(self.device_combo, 2)
-        layout.addWidget(QLabel("??????"))
-        layout.addWidget(self.namespace_edit, 1)
-        layout.addWidget(apply)
-        layout.addWidget(refresh)
+        layout.addWidget(QLabel("自动发现"), 0, 0)
+        layout.addWidget(self.device_combo, 0, 1)
+        layout.addWidget(refresh, 0, 2)
+        layout.addWidget(QLabel("手动命名空间"), 1, 0)
+        layout.addWidget(self.namespace_edit, 1, 1)
+        layout.addWidget(apply, 1, 2)
+        layout.setColumnStretch(1, 1)
         return box
 
     def _status_box(self) -> QGroupBox:
-        box = QGroupBox("??")
+        box = QGroupBox("状态")
         layout = QFormLayout(box)
-        self.state_label = QLabel("???")
-        self.hardware_label = QLabel("????")
+        self.state_label = QLabel("未连接")
+        self.hardware_label = QLabel("等待状态")
+        self.tof_label = QLabel("未启用")
         self.target_label = QLabel("-")
         self.message_label = QLabel("-")
         self.message_label.setWordWrap(True)
-        layout.addRow("????", self.state_label)
-        layout.addRow("??", self.hardware_label)
-        layout.addRow("??", self.target_label)
-        layout.addRow("??", self.message_label)
+        layout.addRow("执行状态", self.state_label)
+        layout.addRow("硬件", self.hardware_label)
+        layout.addRow("末端 ToF", self.tof_label)
+        layout.addRow("目标", self.target_label)
+        layout.addRow("消息", self.message_label)
         return box
 
     def _tracking_box(self) -> QGroupBox:
-        box = QGroupBox("YOLO World ?????")
+        box = QGroupBox("YOLO World 跟踪和抓取")
         layout = QGridLayout(box)
         self.target_edit = QLineEdit()
-        self.target_edit.setPlaceholderText("???red cup")
-        layout.addWidget(QLabel("????"), 0, 0)
+        self.target_edit.setPlaceholderText("例如：red cup")
+        layout.addWidget(QLabel("目标文本"), 0, 0)
         layout.addWidget(self.target_edit, 0, 1, 1, 3)
         controls = [
-            ("????", self._set_target),
-            ("????", lambda: self._trigger("start_approach")),
-            ("????", lambda: self._trigger("stop")),
+            ("开始跟踪", self._set_target),
+            ("开始抓取", lambda: self._trigger("start_approach")),
+            ("停止运动", lambda: self._trigger("stop")),
         ]
         for column, (text, callback) in enumerate(controls):
             button = QPushButton(text)
@@ -227,54 +288,79 @@ class VisualGraspWindow(QMainWindow):
     def _arm_box(self) -> QGroupBox:
         box = QGroupBox("SO-101")
         layout = QGridLayout(box)
-        for column, (text, command) in enumerate((("??", "connect_arm"), ("??", "disconnect_arm"))):
+        for column, (text, command) in enumerate((("连接", "connect_arm"), ("断开", "disconnect_arm"))):
             button = QPushButton(text)
             button.clicked.connect(lambda _checked=False, name=command: self._trigger(name))
             layout.addWidget(button, 0, column)
-        self.torque = QCheckBox("????")
+        self.torque = QCheckBox("启用扭矩")
         self.torque.toggled.connect(self._set_torque)
-        layout.addWidget(self.torque, 0, 2)
+        layout.addWidget(self.torque, 1, 0, 1, 2)
         self.gripper = QDoubleSpinBox()
         self.gripper.setRange(-100.0, 100.0)
         self.gripper.setValue(70.0)
-        set_gripper = QPushButton("????")
+        set_gripper = QPushButton("设置夹爪")
         set_gripper.clicked.connect(self._set_gripper)
-        layout.addWidget(QLabel("??"), 1, 0)
-        layout.addWidget(self.gripper, 1, 1)
-        layout.addWidget(set_gripper, 1, 2)
+        layout.addWidget(QLabel("夹爪"), 2, 0)
+        layout.addWidget(self.gripper, 2, 1)
+        layout.addWidget(set_gripper, 3, 0, 1, 2)
+        return box
+
+    def _calibration_box(self) -> QGroupBox:
+        box = QGroupBox("LeRobot SO-101 校准")
+        layout = QGridLayout(box)
+        self.calibration_label = QLabel("未开始")
+        self.calibration_label.setWordWrap(True)
+        layout.addWidget(self.calibration_label, 0, 0, 1, 2)
+
+        buttons = (
+            ("1. 开始校准并卸力", "calibration_start"),
+            ("2. 记录中位", "calibration_set_middle"),
+            ("3. 完成全行程记录", "calibration_finish"),
+            ("取消校准", "calibration_cancel"),
+        )
+        for row, (text, command) in enumerate(buttons, start=1):
+            button = QPushButton(text)
+            button.clicked.connect(
+                lambda _checked=False, name=command: self._trigger(name)
+            )
+            layout.addWidget(button, row, 0, 1, 2)
         return box
 
     def _positions_box(self) -> QGroupBox:
-        box = QGroupBox("????")
+        box = QGroupBox("预设姿态")
         layout = QGridLayout(box)
-        labels = (("???", "standby"), ("????", "pregrasp"), ("???", "placement"))
+        labels = (("待机位", "standby"), ("待抓取位", "pregrasp"), ("放置位", "placement"))
         for row, (label, name) in enumerate(labels):
             layout.addWidget(QLabel(label), row, 0)
-            record = QPushButton("??")
+            record = QPushButton("录制")
             record.clicked.connect(lambda _checked=False, service="record_" + name: self._trigger(service))
-            go = QPushButton("??")
+            go = QPushButton("前往")
             go.clicked.connect(lambda _checked=False, service="go_" + name: self._trigger(service))
             layout.addWidget(record, row, 1)
             layout.addWidget(go, row, 2)
         return box
 
     def _demo_box(self) -> QGroupBox:
-        box = QGroupBox("????")
+        box = QGroupBox("示教录制")
         layout = QHBoxLayout(box)
-        start = QPushButton("??????")
+        start = QPushButton("开始示教录制")
         start.clicked.connect(lambda: self._trigger("start_demo_recording"))
-        stop = QPushButton("?????")
+        stop = QPushButton("停止并保存")
         stop.clicked.connect(lambda: self._trigger("stop_demo_recording"))
         layout.addWidget(start)
         layout.addWidget(stop)
         return box
 
     def _parameter_box(self) -> QGroupBox:
-        box = QGroupBox("Orin ????????????????")
+        box = QGroupBox("Orin 参数（修改后立即生效并持久保存）")
         layout = QFormLayout(box)
         for name, default in PARAMETERS.items():
             widget: QWidget
-            if isinstance(default, int):
+            if isinstance(default, bool):
+                checkbox = QCheckBox()
+                checkbox.setChecked(default)
+                widget = checkbox
+            elif isinstance(default, int):
                 spin = QSpinBox()
                 spin.setRange(-100000, 100000)
                 spin.setValue(default)
@@ -289,7 +375,7 @@ class VisualGraspWindow(QMainWindow):
                 widget = QLineEdit(str(default))
             self.parameter_widgets[name] = widget
             layout.addRow(name, widget)
-        apply = QPushButton("?????? Orin")
+        apply = QPushButton("应用并保存到 Orin")
         apply.clicked.connect(self._apply_parameters)
         layout.addRow(apply)
         return box
@@ -313,13 +399,28 @@ class VisualGraspWindow(QMainWindow):
         if status is None:
             return
         self.state_label.setText(status.state)
-        hardware = "??:{0} ??:{1} ???:{2} ??:{3}".format(
-            "??" if status.model_ready else "???/??",
-            "??" if status.camera_ready else "???",
-            "???" if status.arm_connected else "???",
-            "??" if status.torque_enabled else "??",
+        hardware = "模型:{0} 相机:{1} 机械臂:{2} 校准:{3} 扭矩:{4}".format(
+            "就绪" if status.model_ready else "加载中/错误",
+            "就绪" if status.camera_ready else "不可用",
+            "已连接" if status.arm_connected else "未连接",
+            "有效" if status.arm_calibrated else "未完成",
+            "开启" if status.torque_enabled else "关闭",
         )
         self.hardware_label.setText(hardware)
+        self.calibration_label.setText(
+            f"{status.calibration_state}: {status.calibration_message}"
+        )
+        if not status.tof_enabled:
+            tof_text = "未启用"
+        elif status.tof_ready:
+            mode = "控制" if status.tof_control_enabled else "影子"
+            tof_text = (
+                f"{status.tof_range_m:.3f} m，{mode}，"
+                f"{status.tof_decision}，年龄 {status.tof_age_sec:.2f} s"
+            )
+        else:
+            tof_text = f"无效：{status.tof_state}，决策 {status.tof_decision}"
+        self.tof_label.setText(tof_text)
         self.target_label.setText(status.target or "-")
         self.message_label.setText(status.message)
         self.torque.blockSignals(True)
@@ -352,7 +453,7 @@ class VisualGraspWindow(QMainWindow):
     def _set_target(self) -> None:
         target = self.target_edit.text().strip()
         if not target:
-            self._show_message("??? YOLO World ????")
+            self._show_message("请输入 YOLO World 目标文本")
             return
         request = SetTarget.Request()
         request.target = target
@@ -373,7 +474,7 @@ class VisualGraspWindow(QMainWindow):
 
     def _call(self, client, request) -> None:
         if not client.wait_for_service(timeout_sec=0.2):
-            self._show_message("Orin ???????? ROS_DOMAIN_ID??????????")
+            self._show_message("Orin 服务不可用；检查 ROS_DOMAIN_ID、命名空间和节点状态")
             return
         future = client.call_async(request)
         future.add_done_callback(self._service_done)
@@ -383,7 +484,7 @@ class VisualGraspWindow(QMainWindow):
             response = future.result()
             self._show_message(response.message)
         except Exception as exc:
-            self._show_message(f"??????: {exc}")
+            self._show_message(f"远程调用失败: {exc}")
 
     def _load_parameters(self) -> None:
         future = self.client.parameter_client.get_parameters(list(PARAMETERS))
@@ -393,11 +494,13 @@ class VisualGraspWindow(QMainWindow):
         try:
             values = future.result().values
         except Exception as exc:
-            self._show_message(f"?? Orin ????: {exc}")
+            self._show_message(f"读取 Orin 参数失败: {exc}")
             return
         for name, value in zip(PARAMETERS, values):
             widget = self.parameter_widgets[name]
-            if isinstance(widget, QSpinBox):
+            if isinstance(widget, QCheckBox):
+                widget.setChecked(value.bool_value)
+            elif isinstance(widget, QSpinBox):
                 widget.setValue(value.integer_value)
             elif isinstance(widget, QDoubleSpinBox):
                 widget.setValue(value.double_value)
@@ -407,7 +510,9 @@ class VisualGraspWindow(QMainWindow):
     def _apply_parameters(self) -> None:
         parameters = []
         for name, widget in self.parameter_widgets.items():
-            if isinstance(widget, QSpinBox):
+            if isinstance(widget, QCheckBox):
+                value = widget.isChecked()
+            elif isinstance(widget, QSpinBox):
                 value = widget.value()
             elif isinstance(widget, QDoubleSpinBox):
                 value = widget.value()
@@ -421,9 +526,9 @@ class VisualGraspWindow(QMainWindow):
         try:
             results = future.result()
             failures = [result.reason for result in results if not result.successful]
-            self._show_message("?????? Orin" if not failures else "; ".join(failures))
+            self._show_message("参数已保存到 Orin" if not failures else "; ".join(failures))
         except Exception as exc:
-            self._show_message(f"?? Orin ????: {exc}")
+            self._show_message(f"保存 Orin 参数失败: {exc}")
 
     def _show_message(self, message: str) -> None:
         self.statusBar().showMessage(message, 6000)
@@ -443,4 +548,4 @@ def main(args=None) -> None:
         app.exec()
     finally:
         client.destroy_node()
-        rclpy.shutdown()
+        rclpy.shutdown()

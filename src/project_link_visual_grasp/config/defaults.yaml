@@ -12,22 +12,74 @@ visual_grasp:
     yolo_max_lost_frames: 15
     yolo_infer_interval_sec: 0.0
     yolo_ema_alpha: 0.6
+    yolo_max_center_jump_ratio: 0.12
+    yolo_max_area_change_ratio: 1.8
+    yolo_outlier_hold_frames: 4
+    yolo_track_iou_weight: 0.5
     robot_port: /dev/so101
     robot_id: so101_slave
     auto_connect_arm: false
     pan_gain: 25.0
     tilt_gain: 15.0
+    pan_direction: 1.0
+    tilt_direction: -1.0
+    centering_tilt_motion_enabled: false
+    auto_lock_vertical_center_on_pregrasp: false
+    auto_lock_vertical_center_offset_ratio: 0.10
     approach_step: 1.5
+    approach_max_command_lead: 4.0
+    approach_profile_max_lift_delta: 34.0
+    approach_profile_elbow_delta: 12.3
+    approach_profile_wrist_delta: -54.0
+    approach_profile_wrist_trim: 0.0
+    visual_servo_max_joint_step: 6.0
+    visual_handoff_enabled: true
+    visual_handoff_bbox_height_ratio: 0.85
+    visual_handoff_area_ratio: 0.18
+    visual_handoff_tof_m: 0.19
+    visual_handoff_max_tof_m: 0.21
+    final_grasp_tof_m: 0.090
+    final_approach_step: 1.0
+    final_approach_max_command_lead: 4.0
+    final_approach_max_lift_delta: 20.0
+    final_approach_command_interval_sec: 0.10
+    final_approach_timeout_sec: 6.0
+    final_approach_endpoint_settle_sec: 0.75
     centering_threshold: 0.04
+    centering_limit_hold_cycles: 3
+    centering_error_window: 3
+    centering_min_samples: 2
+    centering_confirm_cycles: 2
+    centering_step_limit: 1.5
+    centering_min_step_limit: 0.25
+    centering_slow_zone: 0.12
+    centering_max_command_lead: 4.0
+    centering_command_interval_sec: 0.08
     grasp_area_threshold: 0.45
     gripper_open: 70.0
     gripper_close: 0.0
     move_fps: 15.0
     arrive_threshold: 2.0
+    elbow_arrive_threshold: 5.0
+    arrive_stable_margin: 0.75
+    arrive_stable_delta: 0.35
+    arrive_stable_cycles: 5
     move_step_limit: 3.0
     move_timeout_sec: 15.0
+    grasp_timeout_sec: 20.0
+    joint_command_limit: 95.0
+    preset_joint_limit: 95.0
+    standby_joint_limit: 99.5
     center_offset_x: 143.0
     center_offset_y: 61.0
+    tof_enabled: false
+    tof_control_enabled: false
+    tof_calibrated: false
+    tof_topic: /visual_grasp/tof_range
+    tof_stale_timeout_sec: 0.25
+    tof_filter_window: 5
+    tof_min_valid_samples: 3
+    tof_grasp_distance_m: 0.06
     runtime_config_path: ~/.config/project_link/visual_grasp/overrides.yaml
     runtime_positions_path: ~/.config/project_link/visual_grasp/positions.json
-    action_default_timeout_sec: 45.0
+    action_default_timeout_sec: 45.0

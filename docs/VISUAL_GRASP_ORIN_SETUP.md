@@ -6,6 +6,9 @@
 避障，也不会替换当前 SLAM/TF 栈。启用扭矩或开始抓取前，必须清空机械臂周围的人员和
 线缆，并准备物理断电或急停。
 
+完整首次初始化、LeRobot 校准、姿态录制、ToF 影子标定和第一次抓取流程见
+`docs/SO101_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md`。
+
 ## Orin 部署
 
 1. 通过 Git 更新仓库并构建新包：
@@ -14,7 +17,8 @@
    cd /home/wte/wheeltec_robot
    source /opt/ros/humble/setup.bash
    rosdep install --from-paths src --ignore-src -r -y
-   colcon build --symlink-install --packages-select wheeltec_robot_msg project_link_visual_grasp project_link_visual_grasp_gui
+   sudo apt install python3-serial
+   colcon build --packages-select wheeltec_robot_msg project_link_vl53l0x project_link_visual_grasp project_link_visual_grasp_gui
    ```
 
 2. 在能够导入 `rclpy` 的 Orin Python 环境安装 Jetson 兼容的 PyTorch/CUDA、
@@ -40,7 +44,7 @@
 ```bash
 cd /home/wte/wheeltec_robot
 ./start_slam_tmux.sh --restart
-./scripts/start_visual_grasp_tmux.sh --restart
+./scripts/start_visual_grasp_tmux.sh --restart --with-tof
 ```
 
 Ubuntu 显示电脑构建并 source 相同项目包，安装 `PySide6`、OpenCV、NumPy 后运行：
@@ -52,6 +56,19 @@ ros2 run project_link_visual_grasp_gui visual_grasp_gui
 
 GUI 通过 ROS 2 心跳自动发现 Orin；命名空间手动输入仅作回退。所有控制走 DDS，不创建
 按 IP 的自定义 TCP 控制协议。
+
+首次接入保持：
+
+```yaml
+tof_enabled: true
+tof_control_enabled: false
+tof_calibrated: false
+```
+
+先确认 GUI 距离、年龄和 `WOULD_GRASP` 判断与实际夹爪位置一致。完成卷尺标定和至少
+10 次影子判断后，才把 `tof_grasp_distance_m` 写入 Orin 运行时参数并启用
+`tof_calibrated: true` 和 `tof_control_enabled: true`。控制模式下拔掉 USB 或让数据过期，状态必须进入
+`RANGE_WAIT`，且机械臂不得继续逼近。
 
 ## 恢复
 

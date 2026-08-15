@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import csv
+from collections import deque
 import socket
 from pathlib import Path
+from statistics import median
 import time
 from typing import Any
 
@@ -15,7 +17,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, Range
 from std_srvs.srv import SetBool, Trigger
 from wheeltec_robot_msg.action import TrackAndGrasp
 from wheeltec_robot_msg.msg import VisualGraspStatus
@@ -27,6 +29,7 @@ from .core import (
     RuntimeStore,
     SO101Arm,
     ServoState,
+    TofReading,
     VisualServoController,
     YoloWorldTracker,
 )
@@ -45,22 +48,72 @@ PARAMETER_DEFAULTS: dict[str, Any] = {
     "yolo_max_lost_frames": 15,
     "yolo_infer_interval_sec": 0.0,
     "yolo_ema_alpha": 0.6,
+    "yolo_max_center_jump_ratio": 0.12,
+    "yolo_max_area_change_ratio": 1.8,
+    "yolo_outlier_hold_frames": 4,
+    "yolo_track_iou_weight": 0.5,
     "robot_port": "/dev/so101",
     "robot_id": "so101_slave",
     "auto_connect_arm": False,
     "pan_gain": 25.0,
     "tilt_gain": 15.0,
+    "pan_direction": 1.0,
+    "tilt_direction": -1.0,
+    "centering_tilt_motion_enabled": False,
+    "auto_lock_vertical_center_on_pregrasp": False,
+    "auto_lock_vertical_center_offset_ratio": 0.10,
     "approach_step": 1.5,
+    "approach_max_command_lead": 4.0,
+    "approach_profile_max_lift_delta": 34.0,
+    "approach_profile_elbow_delta": 12.3,
+    "approach_profile_wrist_delta": -54.0,
+    "approach_profile_wrist_trim": 0.0,
+    "visual_servo_max_joint_step": 6.0,
+    "visual_handoff_enabled": True,
+    "visual_handoff_bbox_height_ratio": 0.85,
+    "visual_handoff_area_ratio": 0.18,
+    "visual_handoff_tof_m": 0.19,
+    "visual_handoff_max_tof_m": 0.21,
+    "final_grasp_tof_m": 0.090,
+    "final_approach_step": 1.0,
+    "final_approach_max_command_lead": 4.0,
+    "final_approach_max_lift_delta": 20.0,
+    "final_approach_command_interval_sec": 0.10,
+    "final_approach_timeout_sec": 6.0,
+    "final_approach_endpoint_settle_sec": 0.75,
     "centering_threshold": 0.04,
+    "centering_limit_hold_cycles": 3,
+    "centering_error_window": 3,
+    "centering_min_samples": 2,
+    "centering_confirm_cycles": 2,
+    "centering_step_limit": 1.5,
+    "centering_min_step_limit": 0.25,
+    "centering_slow_zone": 0.12,
+    "centering_max_command_lead": 4.0,
+    "centering_command_interval_sec": 0.08,
     "grasp_area_threshold": 0.45,
     "gripper_open": 70.0,
     "gripper_close": 0.0,
     "move_fps": 15.0,
     "arrive_threshold": 2.0,
+    "elbow_arrive_threshold": 5.0,
+    "arrive_stable_margin": 0.75,
+    "arrive_stable_delta": 0.35,
+    "arrive_stable_cycles": 5,
     "move_step_limit": 3.0,
     "move_timeout_sec": 15.0,
+    "preset_joint_limit": 95.0,
+    "standby_joint_limit": 99.5,
     "center_offset_x": 143.0,
     "center_offset_y": 61.0,
+    "tof_enabled": False,
+    "tof_control_enabled": False,
+    "tof_calibrated": False,
+    "tof_topic": "/visual_grasp/tof_range",
+    "tof_stale_timeout_sec": 0.25,
+    "tof_filter_window": 5,
+    "tof_min_valid_samples": 3,
+    "tof_grasp_distance_m": 0.06,
     "runtime_config_path": "~/.config/project_link/visual_grasp/overrides.yaml",
     "runtime_positions_path": "~/.config/project_link/visual_grasp/positions.json",
     "action_default_timeout_sec": 45.0,
@@ -93,6 +146,9 @@ class VisualGraspNode(Node):
         self._last_detection: Detection | None = None
         self._last_preview_time = 0.0
         self._last_message = "Starting"
+        self._tof_samples = deque(maxlen=int(self._values["tof_filter_window"]))
+        self._tof_last_monotonic: float | None = None
+        self._tof_subscription = None
 
         self._arm = SO101Arm()
         self._tracker = YoloWorldTracker(str(self._values["model_path"]), self._values)
@@ -102,6 +158,7 @@ class VisualGraspNode(Node):
             self._runtime.load_positions(),
         )
         self._action_group = ReentrantCallbackGroup()
+        self._create_tof_subscription()
         self._open_camera()
         if bool(self._values["auto_connect_arm"]):
             self._connect_arm()
@@ -127,6 +184,7 @@ class VisualGraspNode(Node):
         period = 1.0 / max(float(self._values["move_fps"]), 1.0)
         self._tick_timer = self.create_timer(period, self._tick)
         self._status_timer = self.create_timer(0.5, self._publish_status)
+        self._calibration_timer = self.create_timer(0.05, self._arm.calibration_sample)
         self.get_logger().info("Visual grasp node started without GUI")
 
     def _apply_runtime_overrides(self) -> None:
@@ -142,24 +200,125 @@ class VisualGraspNode(Node):
 
     def _on_parameters_set(self, parameters: list[Parameter]) -> SetParametersResult:
         for parameter in parameters:
-            if parameter.name in {"camera_width", "camera_height", "jpeg_quality"} and parameter.value <= 0:
+            if parameter.name in {
+                "camera_width",
+                "camera_height",
+                "jpeg_quality",
+                "tof_filter_window",
+                "tof_min_valid_samples",
+            } and parameter.value <= 0:
                 return SetParametersResult(successful=False, reason=f"{parameter.name} must be positive")
             if parameter.name in {"yolo_ema_alpha", "yolo_conf_threshold", "centering_threshold", "grasp_area_threshold"}:
                 if not 0.0 <= float(parameter.value) <= 1.0:
                     return SetParametersResult(successful=False, reason=f"{parameter.name} must be between 0 and 1")
+            if parameter.name in {"tof_stale_timeout_sec", "tof_grasp_distance_m"}:
+                if float(parameter.value) <= 0.0:
+                    return SetParametersResult(successful=False, reason=f"{parameter.name} must be positive")
+            if parameter.name == "auto_lock_vertical_center_offset_ratio":
+                if not -0.25 <= float(parameter.value) <= 0.40:
+                    return SetParametersResult(
+                        successful=False,
+                        reason="auto_lock_vertical_center_offset_ratio must be between -0.25 and 0.40",
+                    )
+            if parameter.name == "approach_profile_wrist_trim":
+                if not -10.0 <= float(parameter.value) <= 10.0:
+                    return SetParametersResult(
+                        successful=False,
+                        reason="approach_profile_wrist_trim must be between -10 and 10",
+                    )
+            if parameter.name in {
+                "approach_profile_max_lift_delta",
+                "visual_servo_max_joint_step",
+                "visual_handoff_max_tof_m",
+                "final_grasp_tof_m",
+                "final_approach_endpoint_settle_sec",
+            } and float(parameter.value) <= 0.0:
+                return SetParametersResult(
+                    successful=False,
+                    reason=f"{parameter.name} must be positive",
+                )
         changed = {parameter.name: parameter.value for parameter in parameters if parameter.name in PARAMETER_DEFAULTS}
+        proposed = dict(self._values)
+        proposed.update(changed)
+        if int(proposed["tof_min_valid_samples"]) > int(proposed["tof_filter_window"]):
+            return SetParametersResult(
+                successful=False,
+                reason="tof_min_valid_samples cannot exceed tof_filter_window",
+            )
         self._values.update(changed)
         if hasattr(self, "_tracker"):
             self._tracker.update_config(changed)
             self._controller.update_config(changed)
             if {"camera_device", "camera_width", "camera_height", "camera_fps"} & changed.keys():
                 self._reopen_camera()
+            if "tof_filter_window" in changed:
+                existing = list(self._tof_samples)
+                self._tof_samples = deque(
+                    existing[-int(self._values["tof_filter_window"]):],
+                    maxlen=int(self._values["tof_filter_window"]),
+                )
+            if "tof_topic" in changed:
+                self._create_tof_subscription()
         persisted = {name: self._values[name] for name in PERSISTED_PARAMETERS}
         try:
             self._runtime.save_overrides(persisted)
         except OSError as exc:
             return SetParametersResult(successful=False, reason=f"Unable to persist parameters: {exc}")
         return SetParametersResult(successful=True, reason="Parameters applied and saved on Orin")
+
+    def _create_tof_subscription(self) -> None:
+        if self._tof_subscription is not None:
+            self.destroy_subscription(self._tof_subscription)
+        tof_qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
+        self._tof_subscription = self.create_subscription(
+            Range,
+            str(self._values["tof_topic"]),
+            self._on_tof_range,
+            tof_qos,
+        )
+
+    def _on_tof_range(self, message: Range) -> None:
+        value = float(message.range)
+        if not message.min_range <= value <= message.max_range:
+            return
+        now = time.monotonic()
+        if (
+            self._tof_last_monotonic is not None
+            and now - self._tof_last_monotonic
+            > float(self._values["tof_stale_timeout_sec"])
+        ):
+            self._tof_samples.clear()
+        self._tof_samples.append(value)
+        self._tof_last_monotonic = now
+
+    def _current_tof_reading(self) -> TofReading:
+        if not bool(self._values["tof_enabled"]):
+            return TofReading(None, float("inf"), False, "disabled")
+        if self._tof_last_monotonic is None:
+            return TofReading(None, float("inf"), False, "no_range")
+
+        age_sec = max(0.0, time.monotonic() - self._tof_last_monotonic)
+        if age_sec > float(self._values["tof_stale_timeout_sec"]):
+            return TofReading(None, age_sec, False, "stale")
+        if len(self._tof_samples) < int(self._values["tof_min_valid_samples"]):
+            return TofReading(None, age_sec, False, "insufficient_samples")
+        return TofReading(float(median(self._tof_samples)), age_sec, True, "valid")
+
+    def _tof_decision(self, reading: TofReading) -> str:
+        if not bool(self._values["tof_enabled"]):
+            return "DISABLED"
+        if not reading.valid:
+            return "HOLD" if bool(self._values["tof_control_enabled"]) else "INVALID"
+        threshold_name = (
+            "final_grasp_tof_m"
+            if self._controller.state == ServoState.FINAL_APPROACH
+            else "tof_grasp_distance_m"
+        )
+        if reading.range_m is not None and reading.range_m <= float(
+            self._values[threshold_name]
+        ):
+            return "GRASP" if bool(self._values["tof_control_enabled"]) else "WOULD_GRASP"
+        return "APPROACH" if bool(self._values["tof_control_enabled"]) else "OBSERVE"
 
     def _create_services(self) -> None:
         self.create_service(SetTarget, "/visual_grasp/set_target", self._set_target)
@@ -177,10 +336,27 @@ class VisualGraspNode(Node):
         self.create_service(Trigger, "/visual_grasp/go_placement", self._go_position("placement"))
         self.create_service(Trigger, "/visual_grasp/start_demo_recording", self._start_demo)
         self.create_service(Trigger, "/visual_grasp/stop_demo_recording", self._stop_demo)
+        self.create_service(Trigger, "/visual_grasp/calibration_start", self._calibration_start)
+        self.create_service(
+            Trigger,
+            "/visual_grasp/calibration_set_middle",
+            self._calibration_set_middle,
+        )
+        self.create_service(
+            Trigger,
+            "/visual_grasp/calibration_finish",
+            self._calibration_finish,
+        )
+        self.create_service(
+            Trigger,
+            "/visual_grasp/calibration_cancel",
+            self._calibration_cancel,
+        )
 
     def _set_target(self, request: SetTarget.Request, response: SetTarget.Response) -> SetTarget.Response:
         response.success, response.message = self._tracker.set_target(request.target)
         if response.success:
+            self._last_detection = None
             self._controller.set_tracking()
         return response
 
@@ -193,7 +369,12 @@ class VisualGraspNode(Node):
         return response
 
     def _disconnect_arm_service(self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
-        response.success, response.message = self._arm.disconnect()
+        operation = (
+            self._arm.cancel_calibration
+            if self._arm.calibration_active
+            else self._arm.disconnect
+        )
+        response.success, response.message = operation()
         return response
 
     def _connect_arm(self) -> tuple[bool, str]:
@@ -254,6 +435,46 @@ class VisualGraspNode(Node):
         response.message = f"Demo recording saved to {output}"
         return response
 
+    def _calibration_start(
+        self,
+        _request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        self._controller.stop()
+        response.success, response.message = self._arm.start_calibration(
+            str(self._values["robot_port"]),
+            str(self._values["robot_id"]),
+        )
+        return response
+
+    def _calibration_set_middle(
+        self,
+        _request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        response.success, response.message = self._arm.calibration_set_middle()
+        return response
+
+    def _calibration_finish(
+        self,
+        _request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        response.success, response.message = self._arm.finish_calibration()
+        if response.success:
+            self._controller.positions.clear()
+            self._runtime.save_positions(self._controller.positions)
+            response.message += "; saved poses were cleared and must be recorded again"
+        return response
+
+    def _calibration_cancel(
+        self,
+        _request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        response.success, response.message = self._arm.cancel_calibration()
+        return response
+
     def _accept_goal(self, _goal: TrackAndGrasp.Goal) -> GoalResponse:
         return GoalResponse.ACCEPT
 
@@ -271,6 +492,7 @@ class VisualGraspNode(Node):
             result.final_state = "REJECTED"
             result.message = message
             return result
+        self._last_detection = None
         self._controller.set_tracking()
         started_motion = False
         deadline = time.monotonic() + timeout
@@ -288,7 +510,11 @@ class VisualGraspNode(Node):
                 result.message = "Track-and-grasp action canceled"
                 return result
             if not started_motion and self._last_detection is not None:
-                accepted, message = self._controller.start_approach()
+                accepted, message = self._arm.set_gripper(
+                    float(self._values["gripper_open"])
+                )
+                if accepted:
+                    accepted, message = self._controller.start_grasp_sequence()
                 if not accepted:
                     goal_handle.abort()
                     result.success = False
@@ -312,7 +538,11 @@ class VisualGraspNode(Node):
         self._controller.stop()
         goal_handle.abort()
         result.success = False
-        result.final_state = "TIMEOUT" if started_motion else "TARGET_NOT_FOUND"
+        tof_reading = self._current_tof_reading()
+        if started_motion and bool(self._values["tof_control_enabled"]) and not tof_reading.valid:
+            result.final_state = "RANGE_STALE"
+        else:
+            result.final_state = "TIMEOUT" if started_motion else "TARGET_NOT_FOUND"
         result.message = "Timed out waiting for a grasp result"
         return result
 
@@ -354,7 +584,11 @@ class VisualGraspNode(Node):
         self._frame_size = (width, height)
         detection = self._tracker.submit(frame)
         self._last_detection = detection
-        self._controller.update(detection, self._frame_size)
+        self._controller.update(
+            detection,
+            self._frame_size,
+            self._current_tof_reading(),
+        )
         self._publish_preview(frame, detection)
 
     def _publish_preview(self, frame, detection: Detection | None) -> None:
@@ -402,6 +636,7 @@ class VisualGraspNode(Node):
             self._last_message = f"Preview encoding failed: {exc}"
 
     def _publish_status(self) -> None:
+        tof_reading = self._current_tof_reading()
         message = VisualGraspStatus()
         message.stamp = self.get_clock().now().to_msg()
         message.robot_namespace = str(self._values["robot_namespace"])
@@ -414,6 +649,9 @@ class VisualGraspNode(Node):
         message.camera_ready = self._camera_ready
         message.arm_connected = self._arm.connected
         message.torque_enabled = self._arm.torque_enabled
+        message.arm_calibrated = self._arm.calibrated
+        message.calibration_state = self._arm.calibration_state
+        message.calibration_message = self._arm.calibration_message
         message.image_width, message.image_height = self._frame_size
         if self._last_detection:
             x, y, width, height = self._last_detection.bbox
@@ -423,6 +661,15 @@ class VisualGraspNode(Node):
         joints = self._arm.get_joints()
         message.joint_names = list(ALL_JOINTS)
         message.joint_positions = [float(joints.get(name, 0.0)) for name in ALL_JOINTS]
+        message.tof_enabled = bool(self._values["tof_enabled"])
+        message.tof_control_enabled = bool(self._values["tof_control_enabled"])
+        message.tof_ready = tof_reading.valid
+        message.tof_range_m = float(tof_reading.range_m or 0.0)
+        message.tof_age_sec = (
+            float(tof_reading.age_sec) if tof_reading.age_sec != float("inf") else -1.0
+        )
+        message.tof_state = tof_reading.reason
+        message.tof_decision = self._tof_decision(tof_reading)
         self._status_pub.publish(message)
         self._discovery_pub.publish(message)
 
@@ -456,4 +703,4 @@ def main(args=None) -> None:
     finally:
         executor.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.shutdown()
