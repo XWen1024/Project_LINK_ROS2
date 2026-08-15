@@ -1,0 +1,28 @@
+menu "VL53L0X USB bridge"
+
+config VL53L0X_I2C_SDA_GPIO
+    int "I2C SDA GPIO"
+    range 0 21
+    default 4
+
+config VL53L0X_I2C_SCL_GPIO
+    int "I2C SCL GPIO"
+    range 0 21
+    default 5
+
+config VL53L0X_I2C_FREQUENCY_HZ
+    int "I2C clock frequency (Hz)"
+    range 100000 400000
+    default 400000
+
+config VL53L0X_SAMPLE_INTERVAL_MS
+    int "Measurement interval (ms)"
+    range 20 5000
+    default 50
+
+config VL53L0X_IO_TIMEOUT_MS
+    int "Sensor I/O timeout (ms)"
+    range 50 5000
+    default 500
+
+endmenu

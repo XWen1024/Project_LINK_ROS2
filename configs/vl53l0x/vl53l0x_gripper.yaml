@@ -1,0 +1,14 @@
+vl53l0x_serial_range_node:
+  ros__parameters:
+    device: /dev/vl53l0x-gripper
+    baudrate: 115200
+    frame_id: so101_tof_link
+    range_topic: /visual_grasp/tof_range
+    status_topic: /visual_grasp/tof_status
+    min_range_m: 0.03
+    max_range_m: 2.0
+    field_of_view_rad: 0.4363
+    serial_timeout_sec: 0.20
+    reconnect_interval_sec: 2.0
+    stale_timeout_sec: 0.50
+    max_line_bytes: 256

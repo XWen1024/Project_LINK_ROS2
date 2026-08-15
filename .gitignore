@@ -6,7 +6,10 @@ log/
 .idea/
 
 # Independent upstream reference checkouts (keep their own Git history).
-/external/
+# The ESP32-C3 bridge below is repository-owned firmware, not an upstream checkout.
+/external/*
+!/external/esp32_c3_vl53l0x_usb_bridge/
+!/external/esp32_c3_vl53l0x_usb_bridge/**
 
 __pycache__/
 *.py[cod]
