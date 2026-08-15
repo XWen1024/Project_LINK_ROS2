@@ -36,6 +36,7 @@ def test_console_window_is_responsive_collapsible_and_single_instance():
     assert "availableGeometry" in app
     assert "toggle_sidebar" in app
     assert "self.sidebar.setFixedWidth(72 if collapsed else 220)" in app
+    assert "setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)" in app
     assert "QLockFile" in app
     assert "中控台已经在运行" in app
 

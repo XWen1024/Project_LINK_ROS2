@@ -142,6 +142,7 @@ class ConsoleWindow(QMainWindow):
         sidebar_layout.addWidget(self.brand)
         self.navigation = QListWidget()
         self.navigation.setIconSize(QSize(22, 22))
+        self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         page_specs = [
             ("建图与导航", QStyle.StandardPixmap.SP_DriveNetIcon),
             ("机械臂", QStyle.StandardPixmap.SP_ComputerIcon),

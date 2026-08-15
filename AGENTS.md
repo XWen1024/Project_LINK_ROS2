@@ -85,12 +85,19 @@ are evidence snapshots, not current operating instructions.
   give Linux tools arguments such as `1\r`. The Base64 single-line transport avoids
   both unmatched-quote/unexpected-EOF and CRLF corruption. Request each system-level
   SSH execution individually when approval is required.
-- The Ubuntu desktop proxy is not automatically inherited by command-line Git.
-  If `ssh seewo` GitHub HTTPS operations fail with HTTP/2 framing errors or hang,
-  inspect the active GNOME/Clash listener instead of changing the remote. Use the
-  discovered loopback port only for that command, for example
-  `git -c http.proxy=http://127.0.0.1:<port> -c http.version=HTTP/1.1 pull --ff-only`.
-  Do not persist a guessed proxy port. The verified port on 2026-08-15 was `7897`.
+- The Ubuntu laptop runs Mihomo on loopback port `7897`, but command-line Git and
+  dependency tools do not automatically inherit it. When `ssh seewo` network
+  operations fail, hang, report HTTP/2 framing errors or cannot reach an external
+  package service, retry the network command with these temporary exports:
+  `export https_proxy=http://127.0.0.1:7897`,
+  `export http_proxy=http://127.0.0.1:7897`, and
+  `export all_proxy=socks5://127.0.0.1:7897`. Prefer applying them only to the
+  current remote shell or command. Do not write them into `.bashrc`, systemd
+  units, ROS launch environments or repository files unless the user explicitly
+  requests persistence. Do not assume the same loopback proxy exists on Orin;
+  confirm it before using these values with `ssh orin`. If port `7897` refuses the
+  connection, ask whether Mihomo is running instead of cycling through guessed
+  proxy ports.
 - Level 2 — safe remote/environment failures: continue with read-only diagnosis,
   then retry a bounded number of materially different, non-destructive fixes. This
   includes a missing workspace setup, stale Git checkout, inactive user service,
