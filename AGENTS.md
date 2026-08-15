@@ -8,9 +8,9 @@ context belongs in `docs/modules/`; historical context belongs in `docs/archive/
 - Current phase: build the Ubuntu 22.04 PySide6 control console and migrate Orin
   production lifecycle management from tmux to `systemd --user`.
 - Immediate order:
-  1. Build and verify the console interfaces and agent on Orin.
+  1. Build and verify the console interfaces, agent and GUI on Ubuntu/Orin.
   2. Install and validate the versioned systemd user units without auto-starting hardware.
-  3. Implement the navigation/mapping page and safe dead-man teleoperation.
+  3. Validate the navigation/mapping page, goal control and dead-man teleoperation.
   4. Integrate the existing Ubuntu visual-grasp client.
   5. Add classic/Qwen voice switching, timing events and configuration editing.
   6. Add UWB shadow visualization and calibration capture.
@@ -41,6 +41,8 @@ are evidence snapshots, not current operating instructions.
 
 ## Active ROS Packages
 
+- Console: `project_link_console_interfaces`, `project_link_console_agent`,
+  `project_link_console_gui`.
 - Navigation/base: `turn_on_wheeltec_robot`, `wheeltec_nav2`,
   `wheeltec_slam_toolbox`, `rf2o_laser_odometry`, `wheeltec_robot_msg`.
 - Voice: `project_link_voice`, `project_link_qwen_realtime_voice`,

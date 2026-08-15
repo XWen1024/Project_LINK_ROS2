@@ -16,8 +16,8 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
   but must never run simultaneously.
 - UWB: shadow ingestion and guarded Nav2 bridge exist; calibration is invalid by default.
-- Console: typed interfaces, headless agent and versioned systemd user units are
-  implemented offline; Orin field validation and the PySide6 GUI are next.
+- Console: typed interfaces, headless agent, versioned systemd user units and the
+  PySide6 shell/navigation page are implemented offline; Ubuntu/Orin validation is next.
 
 See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware gates.
 
@@ -69,6 +69,14 @@ hardware:
 
 See [deploy/systemd/README.md](deploy/systemd/README.md). The systemd route is
 not the production default until it passes two supervised field cycles.
+
+The GUI has a hardware-free demo mode:
+
+```bash
+ros2 run project_link_console_gui project_link_console --demo
+```
+
+See [src/project_link_console_gui/README.md](src/project_link_console_gui/README.md).
 
 ## ROS Network
 

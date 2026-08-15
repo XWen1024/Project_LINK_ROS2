@@ -38,6 +38,8 @@ Archive tags:
 - Console-agent pure logic and deployment-contract tests: 11 passed.
 - The versioned systemd graph contains 13 services and 3 mode targets with no
   missing Project LINK unit references.
+- Console GUI pure model and safety-contract tests: 5 passed. Python syntax and
+  package XML pass; PySide6 rendering remains an Ubuntu validation item.
 
 ## Current Implementation Order
 
@@ -47,8 +49,9 @@ Archive tags:
 3. [x] Add versioned `systemd --user` component units and mapping/navigation targets.
        Linux syntax/unit verification and two supervised Orin cycles remain required.
 4. [x] Keep current scripts as fallback wrappers during field validation.
-5. [ ] Create the PySide6 console shell and offline demo mode.
-6. [ ] Implement navigation/mapping visualization, goal control and safe teleop.
+5. [x] Create the PySide6 console shell and offline demo mode.
+6. [x] Implement the first navigation/mapping visualization, goal control and
+       safe teleop slice. Ubuntu rendering, ROS integration and field motion remain.
 7. [ ] Integrate the existing Ubuntu manipulation client as a console page.
 8. [ ] Normalize voice status/events and implement classic/Qwen switching.
 9. [ ] Add prompt/tool profiles and masked global configuration management.
