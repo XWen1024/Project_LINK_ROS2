@@ -54,11 +54,38 @@ are evidence snapshots, not current operating instructions.
   sandbox may not see the user's SSH aliases, keys or agent state reliably.
 - Use the system SSH aliases `ssh orin` for the Orin Nano (`wte@orin`) and
   `ssh seewo` for the Ubuntu laptop. Do not replace them with guessed IP addresses.
-- If a remote command requires `sudo`, ask the user to run it instead of attempting
-  privilege workarounds. If a command fails because of permissions, SSH state,
-  host configuration or another machine-local condition, report the exact command
-  and error and ask the user to run or resolve it before trying alternate methods.
-  Do not repeatedly retry failed remote commands through different shells or paths.
+
+### Failure Handling Levels
+
+- Level 1 — agent-owned command errors: diagnose and retry autonomously. This
+  includes quoting/escaping mistakes, unexpected EOF, PowerShell-to-Bash parsing,
+  harmless path mistakes, incorrect flags, transient read-only timeouts and other
+  non-destructive command-construction failures. Use multiple evidence-based
+  attempts when useful; do not stop and ask the user to run these commands.
+- Recurring PowerShell SSH rule: avoid a double-quoted remote command containing
+  Bash `$variables`, nested quotes or command substitutions. Use a simple direct
+  form for one command, such as `ssh orin hostname`. For a multi-line or quote-heavy
+  Linux check, send a PowerShell single-quoted here-string to `ssh <alias> bash -s`;
+  this prevents PowerShell from expanding Bash syntax and avoids the recurring
+  unmatched-quote/unexpected-EOF failure. Do not use a here-string prefix approval;
+  request the individual system-level SSH execution when approval is required.
+- Level 2 — safe remote/environment failures: continue with read-only diagnosis,
+  then retry a bounded number of materially different, non-destructive fixes. This
+  includes a missing workspace setup, stale Git checkout, inactive user service,
+  missing non-privileged environment variable or ordinary build error. Preserve
+  the original error and do not hide it with unrelated workarounds.
+- Level 3 — user-owned authority or physical action: ask the user immediately.
+  This includes `sudo` or password prompts, installing system packages, changing
+  udev/system network/device configuration, rebooting or power-cycling equipment,
+  enabling physical motion, manipulating cables/E-stop, entering credentials, or
+  any destructive or difficult-to-reverse operation.
+- Escalate a Level 1/2 problem to the user only after the same blocker remains
+  after reasonable diagnosis, or when the next useful step crosses into Level 3.
+  Report the exact command, error, attempted fixes and the single requested action.
+- Treat failures as project knowledge. When a problem is recurring and its fix is
+  generalizable, update this file or the relevant runbook in the same coherent
+  change so future agents use the proven command pattern. Do not document one-off
+  noise that has no reusable lesson.
 
 ## Active ROS Packages
 
