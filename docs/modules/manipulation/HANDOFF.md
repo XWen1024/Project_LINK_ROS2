@@ -3,7 +3,7 @@
 Status: current, pending Orin-to-Ubuntu field validation
 Last reviewed: 2026-08-15
 Canonical branch: `main`
-Key commits: `89e4e1d`, `ef05a47`
+Key commits: `89e4e1d`, `ef05a47`, `184fee1`, `8e420b4`, `60e1b74`
 
 ## Scope And Boundary
 
@@ -37,6 +37,9 @@ depth-grasp planner.
 - The unsafe fixed elbow polynomial and shoulder-lift image-Y correction were
   removed. Current approach uses bounded taught shoulder/elbow/wrist motion.
 - ESP32-C3 firmware emitted a valid `43 mm`, status-0 frame.
+- On 2026-08-15 the embedded panel built and initialized on the Ubuntu 22.04
+  Humble laptop. The visible read-only console remains active and the panel shows
+  the expected disconnected state while the Orin visual-grasp service is stopped.
 
 ## Console Integration
 
@@ -46,6 +49,13 @@ mechanical-arm page while retaining the standalone Ubuntu entrypoint. Simple mod
 hides the raw Orin parameter editor; advanced mode reveals it. Constructing the
 page creates only the remote ROS client and does not start the Orin visual-grasp,
 SO-101 or VL53L0X services.
+
+The Ubuntu Humble `rclpy` package does not provide `rclpy.parameter_client`.
+Remote parameter editing therefore uses explicit `GetParameters` and
+`SetParameters` service clients. Page-construction exceptions are retained after
+Qt signal connections are installed, printed to the journal and summarized in
+the console log. Qt owns SIGINT/SIGTERM while the console is running so rapid
+systemd restarts cannot shut down the ROS context halfway through page creation.
 
 ## Remaining Gates
 

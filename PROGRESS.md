@@ -39,8 +39,8 @@ Archive tags:
 - Console-agent pure logic and deployment-contract tests: 13 passed.
 - The versioned systemd graph contains 13 services, 3 mode targets and 1 shared
   platform target with no missing Project LINK unit references.
-- Console GUI pure model and safety-contract tests: 5 passed. Python syntax and
-  package XML pass; PySide6 rendering remains an Ubuntu validation item.
+- Console GUI pure model, embedding and safety-contract checks: 9 passed. Python
+  syntax and package XML pass.
 - Orin validation on 2026-08-15: console interfaces and agent built successfully;
   the 17-unit systemd graph passed `systemd-analyze --user verify`; the installer
   started only the console agent; `/project_link/console/system_state` reported
@@ -53,8 +53,13 @@ Archive tags:
   Git, colcon and Navigation2 prerequisites were installed; PySide6 6.11.1 was
   installed user-local; console interfaces/GUI built successfully; offline demo
   and the real ROS bridge passed offscreen smoke tests. Ubuntu received the Orin
-  mode-`off` system state over domain 42. Visible-window validation remains pending
-  only because the laptop had not yet logged into the local `xwen` desktop session.
+  mode-`off` system state over domain 42. A visible read-only console is active in
+  the local `xwen` desktop session.
+- The embedded mechanical-arm page was visually and offscreen validated on Ubuntu
+  at `60e1b74`. Its Humble-incompatible `rclpy.parameter_client` import was replaced
+  with standard parameter services; initialization errors now survive page
+  construction and reach the console log. Three rapid service restarts completed
+  without traceback or timeout (`0.80 s`, `0.02 s`, `0.02 s`).
 
 ## Current Implementation Order
 
@@ -68,7 +73,8 @@ Archive tags:
 6. [x] Implement the first navigation/mapping visualization, goal control and
        safe teleop slice. Ubuntu rendering, ROS integration and field motion remain.
 7. [x] Refactor and embed the existing Ubuntu manipulation client as a console
-       page. Ubuntu runtime and Orin service/video validation remain required.
+       page. Ubuntu rendering/initialization is verified; Orin service/video and
+       supervised SO-101 field validation remain required.
 8. [ ] Normalize voice status/events and implement classic/Qwen switching.
 9. [ ] Add prompt/tool profiles and masked global configuration management.
 10. [ ] Add UWB shadow plots and proposed-calibration capture.

@@ -40,6 +40,10 @@ are evidence snapshots, not current operating instructions.
 - Ubuntu PySide6 is a user-level pinned pip dependency from
   `src/project_link_console_gui/requirements-ubuntu.txt`; do not search for or
   install PySide6 on Windows.
+- Treat the installed ROS 2 Humble Python API as authoritative. The current
+  Ubuntu Humble build has no `rclpy.parameter_client`; GUI parameter access uses
+  explicit `rcl_interfaces/srv/GetParameters` and `SetParameters` clients. Do
+  not reintroduce a newer-distro import without verifying it on `ssh seewo`.
 - Both computers use ROS 2 Humble, `ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=0`.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
 
@@ -76,6 +80,12 @@ are evidence snapshots, not current operating instructions.
   give Linux tools arguments such as `1\r`. The Base64 single-line transport avoids
   both unmatched-quote/unexpected-EOF and CRLF corruption. Request each system-level
   SSH execution individually when approval is required.
+- The Ubuntu desktop proxy is not automatically inherited by command-line Git.
+  If `ssh seewo` GitHub HTTPS operations fail with HTTP/2 framing errors or hang,
+  inspect the active GNOME/Clash listener instead of changing the remote. Use the
+  discovered loopback port only for that command, for example
+  `git -c http.proxy=http://127.0.0.1:<port> -c http.version=HTTP/1.1 pull --ff-only`.
+  Do not persist a guessed proxy port. The verified port on 2026-08-15 was `7897`.
 - Level 2 — safe remote/environment failures: continue with read-only diagnosis,
   then retry a bounded number of materially different, non-destructive fixes. This
   includes a missing workspace setup, stale Git checkout, inactive user service,
