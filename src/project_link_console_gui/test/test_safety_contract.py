@@ -24,3 +24,10 @@ def test_rviz_profile_contains_only_operator_diagnostics():
     assert "Value: /local_costmap/costmap" in profile
     assert "Value: /scan" in profile
     assert "Value: /point_lio/cloud_registered" in profile
+
+
+def test_ubuntu_pyside_version_is_pinned_outside_rosdep():
+    requirements = (PACKAGE_ROOT / "requirements-ubuntu.txt").read_text(encoding="utf-8")
+    package_xml = (PACKAGE_ROOT / "package.xml").read_text(encoding="utf-8")
+    assert requirements.strip() == "PySide6==6.11.1"
+    assert "python3-pyside6" not in package_xml

@@ -25,6 +25,10 @@ repository-owned RViz2 profile. The user-unit graph is documented in
 `deploy/systemd/README.md`; it remains behind the existing script fallback until
 two supervised Orin validation cycles pass.
 
+Ubuntu validation uses `/home/xwen/wheeltec_robot` and pinned user-local PySide6
+from `src/project_link_console_gui/requirements-ubuntu.txt`. ROS 2 Humble remains
+system-installed; the GUI dependency is not represented as a Jammy apt rosdep key.
+
 The GUI subscribes directly to ROS maps, costmaps, scans, paths, images and
 module status. Process lifecycle is requested through the console agent, which
 controls an allowlisted set of `systemd --user` units. Secrets are edited through

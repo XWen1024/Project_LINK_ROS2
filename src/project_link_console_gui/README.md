@@ -9,12 +9,18 @@ Build the first console slice on Ubuntu/Orin:
 ```bash
 cd ~/wheeltec_robot
 source /opt/ros/humble/setup.bash
+python3 -m pip install --user -r src/project_link_console_gui/requirements-ubuntu.txt
 colcon build --packages-select \
   project_link_console_interfaces \
   project_link_console_agent \
   project_link_console_gui
 source install/setup.bash
 ```
+
+Verified Ubuntu prerequisites are `git`, `python3-pip`,
+`python3-colcon-common-extensions`, `ros-humble-navigation2` and
+`ros-humble-nav2-bringup`. PySide6 is intentionally installed in the operator's
+user Python environment rather than declared as a Jammy apt/rosdep dependency.
 
 Laptop-only visual development:
 

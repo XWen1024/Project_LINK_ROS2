@@ -50,8 +50,11 @@ Archive tags:
   `main` is now the only local branch/worktree. Runtime `.data` and `.posegraph`
   files were preserved untracked.
 - Ubuntu laptop validation found Ubuntu 22.04.5 x86_64 and ROS 2 Humble Desktop.
-  Git, colcon, Navigation2 packages and system Python pip/PySide6 still need the
-  documented prerequisite installation before GUI build/render validation.
+  Git, colcon and Navigation2 prerequisites were installed; PySide6 6.11.1 was
+  installed user-local; console interfaces/GUI built successfully; offline demo
+  and the real ROS bridge passed offscreen smoke tests. Ubuntu received the Orin
+  mode-`off` system state over domain 42. Visible-window validation remains pending
+  only because the laptop had not yet logged into the local `xwen` desktop session.
 
 ## Current Implementation Order
 

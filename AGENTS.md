@@ -36,6 +36,10 @@ are evidence snapshots, not current operating instructions.
 - Jetson Orin Nano at `wte@orin` owns all hardware access and robot control.
 - Orin workspace: `/home/wte/wheeltec_robot`.
 - Ubuntu 22.04 laptop owns all GUI, video, chart, map and RViz2 rendering.
+- Ubuntu laptop workspace: `/home/xwen/wheeltec_robot`.
+- Ubuntu PySide6 is a user-level pinned pip dependency from
+  `src/project_link_console_gui/requirements-ubuntu.txt`; do not search for or
+  install PySide6 on Windows.
 - Both computers use ROS 2 Humble, `ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=0`.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
 

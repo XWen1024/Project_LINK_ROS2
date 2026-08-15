@@ -11,9 +11,6 @@
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>project_link_console_interfaces</exec_depend>
-  <exec_depend>python3-pyside6.qtcore</exec_depend>
-  <exec_depend>python3-pyside6.qtgui</exec_depend>
-  <exec_depend>python3-pyside6.qtwidgets</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>nav2_rviz_plugins</exec_depend>
