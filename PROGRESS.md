@@ -2108,3 +2108,27 @@ SO-101 与 2D 视觉伺服；GUI 负责远端标注画面、参数、姿态、�
 - [ ] 当前旧 venv 指向已卸载的 Python 3.12；重建仓库 `.venv` 后运行依赖检查和离屏 GUI
 - [ ] 使用真实 SO-101 完成一次 Windows 六电机校准并验证重启后冷加载
 - [ ] 使用真实 SO-101、摄像头和 ESP32-C3 按安全顺序完成硬件测试
+---
+
+## 20. Qwen3.5 Omni Realtime 独立语音链路
+
+- [x] 创建独立分支 `codex/qwen35-omni-realtime`，不合并 Volc S2S 分支。
+- [x] 新建 `project_link_qwen_realtime_voice` ament_python 包和独立启动入口。
+- [x] 接入 DashScope Realtime transport、显式 semantic VAD 和有界全双工 PCM 队列。
+- [x] 迁移天气、位姿、航点、Nav2/直驱、视觉抓取、取消和 Demo 运动工具。
+- [x] 保留 Python 明确确认、命名航点、TF、cmd_vel 发布者和纯测试安全门。
+- [x] 增加打断、首音频、工具调用和播放完成时延日志。
+- [x] 按官方 wheel 源码锁定 DashScope SDK `1.26.5`，待 Orin 实机网络验证。
+- [x] Orin 创建 `.venv-qwen-realtime`、安装依赖并完成单包构建。
+- [x] Orin 包发现、launch 展开、9 项单测和禁用音频/运动的节点冒烟通过。
+- [x] 修复 Humble setup 在 Bash `nounset` 下读取未定义变量导致的一键启动失败。
+- [x] 修复 ROS 安装入口保留 `/usr/bin/python3` shebang 时无法导入虚拟环境 DashScope 的问题。
+- [x] 修复 Realtime 协议错误触发重连后麦克风输入门未恢复，以及 Ctrl+C 异常退出问题。
+- [x] 实机确认文本 item 必须显式发送 `response.create`；协议级 active response 错误保持非致命处理。
+- [x] 修复缓存“我在”播放期间静音计时器提前触发“好的，我退下了”的竞态。
+- [x] 连续对话跟随静音改为 30 秒，并扩展安全的本地退出口语匹配。
+- [x] 和风天气迁移到项目专属 API Host、新 GeoAPI 路径和 Header Key 鉴权。
+- [x] 修复和风专属 Host 返回 Gzip JSON 时被误当作 UTF-8 文本解码的问题。
+- [ ] 验证讯飞板载 AEC 参考接线和 20 轮外放无自打断。
+- [ ] 配置 `/home/wte/.config/project_link/qwen_realtime.env` 中的真实 DashScope 密钥和业务空间端点。
+- [ ] 依次完成 pure-test、Demo 悬空、Nav2 dry-run、命名航点和抓取验收。

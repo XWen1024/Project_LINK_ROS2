@@ -881,3 +881,47 @@ priority, update:
   commands, and require every joint including the gripper to move through a
   safe nonzero range. The field runbook is
   `docs/SO101_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md`.
+## Qwen Realtime Voice
+
+- `project_link_qwen_realtime_voice` is an independently launched alternative
+  to `project_link_voice`; never run both nodes because they share serial wake,
+  microphone, speaker, and robot tool ownership.
+- It uses DashScope `qwen3.5-omni-flash-realtime` for semantic VAD, ASR,
+  Function Calling, and PCM audio on one WebSocket. Custom tools require
+  `enable_search=false`.
+- Full-duplex barge-in defaults on only because the iFlytek board is expected to
+  receive the physical speaker AEC reference. Disable `barge_in_enabled` if
+  speaker leakage triggers false `speech_started` events.
+- The model never owns ROS Actions or `/cmd_vel`. Python validates exact local
+  confirmation, named waypoints, SLAM/TF readiness, expected Nav2 publishers,
+  visual-grasp enablement, and cancellation priority.
+- Secrets live in `/home/wte/.config/project_link/qwen_realtime.env`; never
+  commit `DASHSCOPE_API_KEY`, workspace URLs containing private identifiers, or
+  QWeather credentials.
+- The verified Orin Python environment is
+  `/home/wte/wheeltec_robot/.venv-qwen-realtime` with system site packages and
+  DashScope `1.26.5`. `scripts/start_qwen_realtime_voice.sh` must activate this
+  environment before invoking ROS 2.
+- Keep Bash `nounset` disabled while sourcing ROS, the virtual environment, and
+  workspace setup files; enable `set -u` only after those setup scripts finish.
+- The Humble `ament_python` console script may retain a `/usr/bin/python3`
+  shebang even when the Qwen virtual environment is active. The launcher must
+  prepend `.venv-qwen-realtime` site-packages to `PYTHONPATH` so DashScope and
+  its pinned dependencies remain importable from the ROS-installed entrypoint.
+- Qwen audio input remains name-bound to `XFM-DP-V0.0.18`; card numbers and
+  PyAudio indices may change after reconnect. Protocol-level Realtime errors
+  must not close an otherwise healthy WebSocket or leave the microphone input
+  gate disabled after session recovery.
+- Server VAD automatically creates responses only for committed audio turns.
+  Text conversation items and Function Calling results both require an explicit
+  `response.create`; Orin live testing confirmed text items otherwise remain idle.
+- Conversation silence timers must run only while microphone input is actually
+  requested. Never count cached wake acknowledgement playback or a pending local
+  exit reply as user silence.
+- The production realtime default is one wake for multi-turn conversation with
+  a 30-second follow-up silence timeout. Explicit local exit phrases accept
+  bounded polite prefixes/suffixes, but must not match embedded negative phrases.
+- QWeather requires both `QWEATHER_API_KEY` and the project-specific
+  `QWEATHER_API_HOST`. Use `/geo/v2/city/lookup` and `/v7/weather/now` on that
+  host with `X-QW-Api-Key`; transparently decode Gzip responses and do not
+  restore retired public QWeather domains.

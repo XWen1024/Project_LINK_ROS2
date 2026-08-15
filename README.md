@@ -1223,3 +1223,45 @@ Windows 默认关闭 `auto_lock_vertical_center_on_pregrasp`，自动抓取使�
 消息，因此界面不会在“纵向
 未对齐”和“等待新帧”之间闪烁。视觉交接开启时，自动抓取启动前强制要求
 `tof_enabled`、`tof_control_enabled`、`tof_calibrated` 全部开启。
+---
+
+## Qwen3.5 Omni Realtime 独立语音链路
+
+`project_link_qwen_realtime_voice` 是与现有 `project_link_voice` 完全独立启动的
+实时语音方案。它在同一条 DashScope WebSocket 中完成语义 VAD、实时 ASR、
+Function Calling 和 24 kHz PCM 语音输出；原有火山 ASR、DeepSeek、火山 TTS
+链路保持不变。两套语音节点禁止同时启动。
+
+```bash
+cd /home/wte/wheeltec_robot
+source /opt/ros/humble/setup.bash
+source scripts/project_link_env.sh
+source /home/wte/.config/project_link/qwen_realtime.env
+colcon build --packages-select project_link_qwen_realtime_voice
+source install/setup.bash
+bash scripts/start_qwen_realtime_voice.sh pure-test
+```
+
+可用模式为 `pure-test`、`demo`、`nav2-dry`、`nav2` 和 `fetch`。生产运动仍只
+允许命名航点并要求本地明确“确认开始”；Qwen 不直接持有 ROS Action 或
+`/cmd_vel`。完整参数和 AEC 要求见
+`src/project_link_qwen_realtime_voice/README.md`，协议调研见
+`docs/qwen35_omni_flash_realtime_orin_guide.md`。
+
+启动脚本会先加载 ROS、虚拟环境和工作区 setup，再开启 Bash `nounset`；不要把
+`set -u` 提前到 `/opt/ros/humble/setup.bash` 之前。
+脚本还会把 `.venv-qwen-realtime` 的 site-packages 显式加入 `PYTHONPATH`，以兼容
+Humble `ament_python` 入口保留 `/usr/bin/python3` shebang 的情况。
+
+启动后日志必须显示 `Audio input ready`，唤醒并开始监听后必须显示
+`Microphone PCM upload started`。设备按 `XFM-DP-V0.0.18` 名称匹配，不依赖重新插拔后变化的卡号或 PyAudio 索引。
+服务端只为 VAD 提交的音频自动创建响应；文本输入和 Function Calling 结果都必须显式发送 `response.create`。
+首轮无语音超时从缓存唤醒播报播放完成、麦克风真正开始上传后计时，不包含“我在，请说”的播放时间。
+首轮成功识别后默认保持多轮连续对话，跟随静音 30 秒才自动退下；说“停止”“取消”“退出”“退下”或“休息”等明确口语命令会立即结束并回到唤醒等待。
+
+天气工具需要同时配置和风控制台中的 Key 与项目专属 API Host：
+
+```bash
+export QWEATHER_API_KEY=...
+export QWEATHER_API_HOST=YOUR_PROJECT_HOST.re.qweatherapi.com
+```
