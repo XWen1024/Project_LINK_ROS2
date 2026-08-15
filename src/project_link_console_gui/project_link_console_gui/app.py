@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 from pathlib import Path
+import signal
 import sys
 
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, QTimer, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -208,6 +209,11 @@ def main() -> None:
     parser.add_argument("--demo", action="store_true", help="Run with generated offline data")
     arguments, qt_arguments = parser.parse_known_args()
     app = QApplication([sys.argv[0], *qt_arguments])
+    signal.signal(signal.SIGINT, lambda *_args: app.quit())
+    signal.signal(signal.SIGTERM, lambda *_args: app.quit())
+    signal_pump = QTimer()
+    signal_pump.timeout.connect(lambda: None)
+    signal_pump.start(250)
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     if arguments.demo:

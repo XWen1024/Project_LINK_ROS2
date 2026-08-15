@@ -31,3 +31,13 @@ def test_ubuntu_pyside_version_is_pinned_outside_rosdep():
     package_xml = (PACKAGE_ROOT / "package.xml").read_text(encoding="utf-8")
     assert requirements.strip() == "PySide6==6.11.1"
     assert "python3-pyside6" not in package_xml
+
+
+def test_console_handles_service_stop_signals_without_systemd_timeout():
+    source = (PACKAGE_ROOT / "project_link_console_gui" / "app.py").read_text(
+        encoding="utf-8"
+    )
+    assert "signal.SIGTERM" in source
+    assert "signal.SIGINT" in source
+    assert "app.quit()" in source
+    assert "signal_pump.start(250)" in source
