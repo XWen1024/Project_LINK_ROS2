@@ -54,6 +54,11 @@ are evidence snapshots, not current operating instructions.
   sandbox may not see the user's SSH aliases, keys or agent state reliably.
 - Use the system SSH aliases `ssh orin` for the Orin Nano (`wte@orin`) and
   `ssh seewo` for the Ubuntu laptop. Do not replace them with guessed IP addresses.
+- If a remote command requires `sudo`, ask the user to run it instead of attempting
+  privilege workarounds. If a command fails because of permissions, SSH state,
+  host configuration or another machine-local condition, report the exact command
+  and error and ask the user to run or resolve it before trying alternate methods.
+  Do not repeatedly retry failed remote commands through different shells or paths.
 
 ## Active ROS Packages
 
