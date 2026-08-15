@@ -82,4 +82,4 @@ future = client.send_goal_async(goal)
 ```
 
 在确认机械臂预设姿态、物体位置和周围空间安全之前，不得调用此 action。
-首次初始化和重新校准按 `docs/SO101_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md` 执行。
+首次初始化和重新校准按 `docs/modules/manipulation/CALIBRATION.md` 执行。

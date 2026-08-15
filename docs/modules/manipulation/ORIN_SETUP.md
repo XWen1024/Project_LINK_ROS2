@@ -7,7 +7,7 @@
 线缆，并准备物理断电或急停。
 
 完整首次初始化、LeRobot 校准、姿态录制、ToF 影子标定和第一次抓取流程见
-`docs/SO101_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md`。
+`docs/modules/manipulation/CALIBRATION.md`。
 
 ## Orin 部署
 

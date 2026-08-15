@@ -989,8 +989,8 @@ Orin 曾无法直连 Hugging Face；局域网代理
 | `scripts/start_voice_nav2_stack.sh` | Navigation Two + 生产语音一键入口 |
 | `scripts/start_llm_voice_car_demo.sh` | 当前演示一键入口 |
 | `scripts/site_waypoints.sh` | 航点保存和查看 |
-| `docs/NAVIGATION_TWO_HANDOFF.md` | Nav2 详细交接 |
-| `docs/VISUAL_GRASP_INTERFACE.md` | 抓取接口 |
+| `docs/modules/navigation/HANDOFF.md` | Nav2 详细交接 |
+| `docs/modules/manipulation/INTERFACES.md` | 抓取接口 |
 
 ## 18. 构建与测试
 
@@ -1093,8 +1093,8 @@ TTS: 当前 Volcano V3
 迁移负责人开始编码前应确认：
 
 - [ ] 已阅读本文档；
-- [ ] 已阅读 `docs/NAVIGATION_TWO_HANDOFF.md`；
-- [ ] 已阅读 `docs/VISUAL_GRASP_INTERFACE.md`；
+- [ ] 已阅读 `docs/modules/navigation/HANDOFF.md`；
+- [ ] 已阅读 `docs/modules/manipulation/INTERFACES.md`；
 - [ ] 已拿到火山 ASR 产品与协议选择；
 - [ ] 已拿到火山 LLM/豆包 endpoint ID 和 Tool Calling 能力说明；
 - [ ] 已拿到 TTS Resource ID 和 speaker 权限；

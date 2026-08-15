@@ -37,7 +37,7 @@
 | `navigation_two_start_uwb.sh` | 在健康 Nav2 上启动 UWB shadow/live 桥，不发送任务目标 |
 | `navigation_two_uwb.sh` | 查看状态或发送召唤、跟随、停止高层命令 |
 
-最短命令清单见 `docs/NAVIGATION_TWO_COMMANDS.md`。
+最短命令清单见 `docs/modules/navigation/COMMANDS.md`。
 
 ## 3. 当前数据流
 
@@ -366,7 +366,7 @@ UWB 不属于 Navigation Two 基础启动，必须在本栈健康后单独启动
   --params ~/.config/project_link/uwb_navigation.yaml
 ```
 
-数据流、协议、标定和现场门禁见 `docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md`。
+数据流、协议、标定和现场门禁见 `docs/modules/uwb/HANDOFF.md`。
 `navigation_two_stop.sh` 会先请求 `/uwb_navigation/stop`，再关闭 UWB、Nav2、
 Point-LIO 和底盘会话。
 

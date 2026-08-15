@@ -914,7 +914,7 @@ class VisualGraspLab(QMainWindow):
         self._log("已恢复并保存推荐参数；画面对齐位置保持不变")
 
     def _open_tutorial(self) -> None:
-        path = REPO_ROOT / "docs" / "WINDOWS_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md"
+        path = REPO_ROOT / "docs" / "modules" / "manipulation" / "WINDOWS_LAB.md"
         if not path.exists():
             QMessageBox.warning(self, "完整教程", f"教程文件不存在：{path}")
             return

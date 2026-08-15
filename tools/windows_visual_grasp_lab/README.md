@@ -86,5 +86,5 @@ Status 和扭矩寄存器。日志不保存摄像头画面或模型文件。问�
 的 `.jsonl` 文件直接发给维护者即可。
 
 从首次安装、LeRobot 校准、预设位录制、YOLO 调整、ToF 标定到第一次监督抓取的完整
-步骤见 `docs/WINDOWS_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md`，也可以点击 GUI 顶部
+步骤见 `docs/modules/manipulation/WINDOWS_LAB.md`，也可以点击 GUI 顶部
 “打开 Windows 完整教程”。
