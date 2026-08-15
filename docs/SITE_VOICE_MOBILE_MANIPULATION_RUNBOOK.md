@@ -185,16 +185,33 @@ ls -l /dev/serial/by-id/
 dmesg -w
 ```
 
-For the USB speaker, first verify Linux sees it:
+Install the stable voice-device aliases once after checkout or rule changes:
+
+```bash
+cd /home/wte/wheeltec_robot
+bash scripts/install_project_link_voice_io_aliases.sh
+```
+
+This binds the iFlytek wake board's USB serial `0004` to
+`/dev/project_link_wakeup`. The microphone is selected by the persistent
+`XFM-DP-V0.0.18` name, not a PyAudio index. The USB speaker is selected by the
+C-Media Pulse sink name, not an ALSA card number.
+Every start also selects the iFlytek Pulse source as the default input, so
+reconnecting the output-only speaker cannot redirect capture to its monitor or
+to the onboard analog source.
+
+Verify Linux sees the USB speaker:
 
 ```bash
 aplay -l
 speaker-test -t wav -c 2
 ```
 
-The Volcano TTS path plays through the default ALSA/Pulse device used by
-`pygame`. If audio comes out of the wrong device, set the system default output
-before launching the voice stack.
+The voice launchers source `scripts/project_link_voice_io.sh`, force pygame to
+PulseAudio, and select
+`alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo`.
+If that sink is absent, the launcher prints a warning instead of relying on a
+replug-sensitive ALSA card index.
 
 ## Step 5: Enable Direct Drive
 

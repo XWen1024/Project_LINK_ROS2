@@ -1,10 +1,11 @@
 # Voice LLM Tool Orchestration Runbook
 
-This is the production voice path for the current no-Nav2 direct-drive phase.
+This is the production voice path for Nav2 and the retained direct-drive fallback.
 
 ```text
-wakeup -> FunVAD -> faster-whisper -> DeepSeek official Tool Calling
--> Python safety executor -> Volcano TTS confirmation
+wakeup -> 20 ms PCM -> FunVAD + Volcano bidirectional streaming ASR
+-> DeepSeek official non-thinking streaming Tool Calling
+-> Python safety executor -> Volcano bidirectional streaming TTS
 -> DriveToPoint -> optional TrackAndGrasp
 ```
 
@@ -21,6 +22,10 @@ chmod 600 /home/wte/.config/project_link/voice_api.env
 Expected values:
 
 ```bash
+export PROJECT_LINK_ASR_PROVIDER=volcano
+export VOLCANO_ASR_API_KEY=...
+export VOLCANO_ASR_RESOURCE_ID=volc.seedasr.sauc.duration
+export VOLCANO_ASR_ENDPOINT=wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async
 export DEEPSEEK_API_KEY=...
 export VOLCANO_APP_ID=...
 export VOLCANO_ACCESS_TOKEN=...
@@ -28,6 +33,19 @@ export VOLCANO_RESOURCE_ID=seed-tts-2.0
 export VOLCANO_SPEAKER=...
 export QWEATHER_API_KEY=...
 ```
+
+Manual local ASR fallback:
+
+```bash
+export PROJECT_LINK_ASR_PROVIDER=faster_whisper
+export PROJECT_LINK_WHISPER_MODEL=/home/wte/.cache/project_link/models/faster-whisper-small
+```
+
+The cloud ASR and local fallback are mutually exclusive per process. Volcano is
+the default and does not prewarm or automatically invoke Whisper.
+The launch scripts validate this before starting. Existing TTS App ID/token
+values are separate credentials and may return HTTP 403 at the ASR endpoint;
+prefer a dedicated `VOLCANO_ASR_API_KEY` with the configured ASR resource.
 
 The voice nodes default to `https://api.deepseek.com` with model
 `deepseek-v4-flash`. `SILICONFLOW_API_KEY` is not used by the voice LLM path;
@@ -139,16 +157,27 @@ such as:
 
 ```text
 vad_record
-asr
+speech_end_to_vad
+vad_to_asr_final
+asr_final_to_llm_send
+llm_to_tool_call
 llm_api_roundtrip
-llm_response_parse
 llm_tool_arguments_parse
 python_tool
-llm_total
-tts_dispatch
-tts_first_audio
+tool_to_tts_send
+tts_to_first_audio
+first_audio_to_playback
+speech_end_to_first_playback
 tts_synthesis_complete
 ```
+
+DeepSeek requests force `thinking: {type: disabled}`. Plain text deltas are
+batched for no more than 80 ms, 12 characters, or the next punctuation boundary,
+then sent into one Volcano bidirectional TTS session. The first PCM frame is
+played immediately. After a tool call, Python executes the validated tool and
+the next LLM round opens the formal TTS response. A cached `好的。` is eligible
+500 ms after FunVAD ends only if no formal TTS first frame exists and the output
+device is idle.
 
 Timing rows are also printed to the console with prefix `[VOICE_TIMING]`. Follow
 the persistent logs on Orin with:
@@ -156,6 +185,12 @@ the persistent logs on Orin with:
 ```bash
 tail -f ~/.ros/project_link_voice/voice_timing.jsonl
 tail -f ~/.ros/project_link_voice/voice_debug.jsonl
+```
+
+Summarize recent P50/P95 values:
+
+```bash
+python3 src/project_link_voice/tools/summarize_voice_timing.py --last 20
 ```
 
 Each JSONL row includes `trace_id`, local timestamp, phase, and milliseconds.
