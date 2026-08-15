@@ -52,8 +52,8 @@ are evidence snapshots, not current operating instructions.
   be off, so ask the user to power it on before a validation step that requires it.
 - Prefer a system-level/escalated SSH command instead of sandboxed SSH. The
   sandbox may not see the user's SSH aliases, keys or agent state reliably.
-- Use `wte@orin` for the Orin. Do not invent an Ubuntu hostname or address; use
-  the user-provided SSH target when the Ubuntu laptop is needed.
+- Use the system SSH aliases `ssh orin` for the Orin Nano (`wte@orin`) and
+  `ssh seewo` for the Ubuntu laptop. Do not replace them with guessed IP addresses.
 
 ## Active ROS Packages
 
