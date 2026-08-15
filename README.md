@@ -16,7 +16,8 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
   but must never run simultaneously.
 - UWB: shadow ingestion and guarded Nav2 bridge exist; calibration is invalid by default.
-- Console: architecture accepted; systemd control layer and GUI implementation are next.
+- Console: typed interfaces, headless agent and versioned systemd user units are
+  implemented offline; Orin field validation and the PySide6 GUI are next.
 
 See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware gates.
 
@@ -40,7 +41,7 @@ The previous detailed README is preserved at
 src/                 ROS 2 packages
 scripts/             operator and deployment helpers
 configs/             repository-owned integration defaults
-deploy/              planned systemd and console deployment assets
+deploy/              systemd user units and deployment assets
 docs/modules/        current module handoffs and runbooks
 docs/architecture/   system and console design
 docs/archive/        superseded handoffs and experiments
@@ -58,6 +59,16 @@ source install/setup.bash
 
 Some Humble Python packages on the current Orin must use normal install mode
 instead of `--symlink-install` because of the installed setuptools version.
+
+After building the console packages, install the user units without starting
+hardware:
+
+```bash
+./deploy/systemd/install-user-units.sh
+```
+
+See [deploy/systemd/README.md](deploy/systemd/README.md). The systemd route is
+not the production default until it passes two supervised field cycles.
 
 ## ROS Network
 

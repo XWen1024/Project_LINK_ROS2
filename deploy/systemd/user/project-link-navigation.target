@@ -1,0 +1,5 @@
+[Unit]
+Description=Project LINK supervised Nav2 mode
+Requires=project-link-mapping.target project-link-nav2.service
+After=project-link-mapping.target project-link-nav2.service
+Conflicts=project-link-rf2o-fallback.target

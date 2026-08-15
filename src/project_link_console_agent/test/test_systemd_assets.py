@@ -1,0 +1,35 @@
+from pathlib import Path
+
+from project_link_console_agent.systemd import UNITS
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+DEPLOY_ROOT = REPOSITORY_ROOT / "deploy" / "systemd"
+
+
+def test_every_allowlisted_unit_is_versioned():
+    unit_dir = DEPLOY_ROOT / "user"
+    missing = [unit for unit in UNITS.values() if not (unit_dir / unit).is_file()]
+    assert not missing
+
+
+def test_systemd_deployment_does_not_use_tmux_or_nonzero_velocity():
+    deployment_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for root in (DEPLOY_ROOT / "bin", DEPLOY_ROOT / "user")
+        for path in root.rglob("*")
+        if path.is_file()
+    )
+    assert "tmux " not in deployment_text
+    assert "linear: {x:" not in deployment_text
+    assert "angular: {z:" not in deployment_text
+
+
+def test_targets_preserve_mapping_when_navigation_stops():
+    unit_dir = DEPLOY_ROOT / "user"
+    navigation = (unit_dir / UNITS["navigation_target"]).read_text(encoding="utf-8")
+    nav2 = (unit_dir / UNITS["nav2"]).read_text(encoding="utf-8")
+    mapping = (unit_dir / UNITS["mapping_target"]).read_text(encoding="utf-8")
+    assert f"Requires={UNITS['mapping_target']} {UNITS['nav2']}" in navigation
+    assert f"PartOf={UNITS['navigation_target']}" in nav2
+    assert f"PartOf={UNITS['navigation_target']}" not in mapping

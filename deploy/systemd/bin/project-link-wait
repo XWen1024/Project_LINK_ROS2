@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+kind="${1:-}"
+name="${2:-}"
+timeout_sec="${3:-30}"
+workspace="${PROJECT_LINK_WORKSPACE:-/home/wte/wheeltec_robot}"
+
+set +u
+source "$workspace/scripts/project_link_env.sh"
+set -u
+
+deadline=$((SECONDS + timeout_sec))
+while (( SECONDS < deadline )); do
+  case "$kind" in
+    topic)
+      if timeout 3 ros2 topic echo --once "$name" >/dev/null 2>&1; then
+        echo "Ready topic: $name"
+        exit 0
+      fi
+      ;;
+    action)
+      if timeout 3 ros2 action list 2>/dev/null | grep -Fxq "$name"; then
+        echo "Ready action: $name"
+        exit 0
+      fi
+      ;;
+    *)
+      echo "Usage: project-link-wait {topic|action} NAME [TIMEOUT_SEC]" >&2
+      exit 2
+      ;;
+  esac
+  sleep 1
+done
+
+echo "Timed out waiting for $kind $name after ${timeout_sec}s." >&2
+exit 1

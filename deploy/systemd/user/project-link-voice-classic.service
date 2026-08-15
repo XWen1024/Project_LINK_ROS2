@@ -1,0 +1,14 @@
+[Unit]
+Description=Project LINK classic Volcano and DeepSeek voice backend
+Conflicts=project-link-voice-qwen.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/console.env
+ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component voice-classic
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /voice/status 45
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=15

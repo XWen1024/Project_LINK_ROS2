@@ -19,6 +19,10 @@ Target: Ubuntu 22.04 + ROS 2 Humble
 - `project_link_console_gui`: Ubuntu PySide6 application.
 - `deploy/systemd/user`: versioned user services and mapping/navigation targets.
 
+The interface, agent and systemd foundation are implemented in the repository.
+The user-unit graph is documented in `deploy/systemd/README.md`; it remains behind
+the existing script fallback until two supervised Orin validation cycles pass.
+
 The GUI subscribes directly to ROS maps, costmaps, scans, paths, images and
 module status. Process lifecycle is requested through the console agent, which
 controls an allowlisted set of `systemd --user` units. Secrets are edited through

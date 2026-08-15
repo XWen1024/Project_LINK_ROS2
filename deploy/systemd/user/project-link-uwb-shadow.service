@@ -1,0 +1,13 @@
+[Unit]
+Description=Project LINK BU04 UWB shadow-mode service
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/console.env
+ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component uwb-shadow
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /uwb/person_observation 30
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait action /uwb_navigation/person_navigation 30
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=10

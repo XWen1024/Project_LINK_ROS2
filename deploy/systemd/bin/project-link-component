@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+component="${1:-}"
+workspace="${PROJECT_LINK_WORKSPACE:-/home/wte/wheeltec_robot}"
+unilidar_ws="${UNILIDAR_WS:-/home/wte/unilidar_sdk/unitree_lidar_ros2}"
+
+source_main() {
+  cd "$workspace"
+  # project_link_env owns the shared ROS domain and installed overlays.
+  set +u
+  source "$workspace/scripts/project_link_env.sh"
+  set -u
+}
+
+source_optional_env() {
+  local path="$1"
+  if [[ -f "$path" ]]; then
+    set +u
+    set -a
+    # shellcheck disable=SC1090
+    source "$path"
+    set +a
+    set -u
+  fi
+}
+
+case "$component" in
+  console-agent)
+    source_main
+    exec ros2 run project_link_console_agent console_agent
+    ;;
+  base)
+    source_main
+    exec ros2 launch turn_on_wheeltec_robot base_serial.launch.py
+    ;;
+  lidar)
+    source /opt/ros/humble/setup.bash
+    source "$unilidar_ws/install/setup.bash"
+    export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
+    export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
+    exec ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
+      -p port:="${UNILIDAR_PORT:-/dev/unilidar}"
+    ;;
+  robot-description)
+    source_main
+    exec ros2 launch turn_on_wheeltec_robot robot_mode_description.launch.py
+    ;;
+  scan)
+    source_main
+    exec ros2 launch turn_on_wheeltec_robot unilidar_p2s.launch.py
+    ;;
+  point-lio-map)
+    source_main
+    exec ros2 launch turn_on_wheeltec_robot point_lio_unilidar_l1.launch.py \
+      enable_slam_toolbox:=true \
+      odom_only:="${POINT_LIO_ODOM_ONLY:-true}" \
+      point_filter_num:="${POINT_LIO_POINT_FILTER_NUM:-2}" \
+      filter_size_surf:="${POINT_LIO_FILTER_SIZE_SURF:-0.15}" \
+      filter_size_map:="${POINT_LIO_FILTER_SIZE_MAP:-0.15}" \
+      cube_side_length:="${POINT_LIO_CUBE_SIDE_LENGTH:-150.0}" \
+      det_range:="${POINT_LIO_DET_RANGE:-40.0}"
+    ;;
+  nav2)
+    source_main
+    if pgrep -f 'c63_keyboard_teleop\..*\.py|rviz_ab_drive.py|ab_drive_server|llm_motion_demo_node' >/dev/null 2>&1; then
+      echo "A competing direct-drive or keyboard teleop process is running." >&2
+      exit 1
+    fi
+    "$workspace/deploy/systemd/bin/project-link-wait" topic /map 30
+    "$workspace/deploy/systemd/bin/project-link-wait" topic /odom_lio 30
+    "$workspace/deploy/systemd/bin/project-link-wait" topic /odom 30
+    "$workspace/deploy/systemd/bin/project-link-wait" topic /scan_accumulated 30
+    exec ros2 launch wheeltec_nav2 point_lio_navigation.launch.py
+    ;;
+  rf2o-fallback)
+    source_main
+    "$workspace/deploy/systemd/bin/project-link-wait" topic /odom 30
+    "$workspace/deploy/systemd/bin/project-link-wait" topic /scan 30
+    exec ros2 launch turn_on_wheeltec_robot rf2o_slam_toolbox.launch.py
+    ;;
+  visual-grasp)
+    source_main
+    exec ros2 launch project_link_visual_grasp visual_grasp.launch.py \
+      config:="${VISUAL_GRASP_CONFIG:-$workspace/configs/visual_grasp/visual_grasp.yaml}"
+    ;;
+  vl53l0x)
+    source_main
+    exec ros2 launch project_link_vl53l0x vl53l0x_gripper.launch.py \
+      config:="${VL53L0X_CONFIG:-$workspace/configs/vl53l0x/vl53l0x_gripper.yaml}"
+    ;;
+  voice-classic)
+    source_main
+    source_optional_env "${PROJECT_LINK_VOICE_ENV:-$HOME/.config/project_link/voice_api.env}"
+    set +u
+    source "$workspace/scripts/project_link_voice_io.sh"
+    set -u
+    exec ros2 launch project_link_voice voice_nav2.launch.py \
+      enable_motion:="${PROJECT_LINK_VOICE_ENABLE_MOTION:-false}" \
+      enable_visual_grasp:="${PROJECT_LINK_VOICE_ENABLE_VISUAL_GRASP:-false}"
+    ;;
+  voice-qwen)
+    source_main
+    set +u
+    source "$workspace/scripts/project_link_voice_io.sh"
+    set -u
+    exec "$workspace/scripts/start_qwen_realtime_voice.sh" \
+      "${PROJECT_LINK_QWEN_MODE:-nav2-dry}"
+    ;;
+  uwb-shadow)
+    source_main
+    source_optional_env "${PROJECT_LINK_UWB_ENV:-$HOME/.config/project_link/uwb.env}"
+    export RMW_IMPLEMENTATION="${PROJECT_LINK_UWB_RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+    : "${PROJECT_LINK_UWB_TAG_ADDRESS:?Set PROJECT_LINK_UWB_TAG_ADDRESS in the private UWB environment file}"
+    : "${PROJECT_LINK_UWB_DEVICE:=/dev/uwb-bu04}"
+    [[ -e "$PROJECT_LINK_UWB_DEVICE" ]] || {
+      echo "BU04 device does not exist: $PROJECT_LINK_UWB_DEVICE" >&2
+      exit 1
+    }
+    exec ros2 launch project_link_uwb_navigation uwb_navigation.launch.py enable_motion:=false
+    ;;
+  *)
+    echo "Unknown Project LINK component: $component" >&2
+    exit 2
+    ;;
+esac

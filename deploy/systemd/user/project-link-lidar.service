@@ -1,0 +1,15 @@
+[Unit]
+Description=Project LINK Unitree L1 lidar driver
+PartOf=project-link-mapping.target project-link-rf2o-fallback.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/unilidar_sdk/unitree_lidar_ros2
+EnvironmentFile=-%h/.config/project_link/console.env
+ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component lidar
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /unilidar/cloud 30
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /unilidar/imu 30
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGINT
+TimeoutStopSec=10

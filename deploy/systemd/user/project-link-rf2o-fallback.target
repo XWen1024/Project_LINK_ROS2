@@ -1,0 +1,5 @@
+[Unit]
+Description=Project LINK rf2o fallback mapping mode
+Requires=project-link-base.service project-link-lidar.service project-link-robot-description.service project-link-scan.service project-link-rf2o-fallback.service
+After=project-link-base.service project-link-lidar.service project-link-robot-description.service project-link-scan.service project-link-rf2o-fallback.service
+Conflicts=project-link-mapping.target project-link-navigation.target

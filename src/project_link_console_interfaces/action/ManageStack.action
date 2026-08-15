@@ -1,0 +1,15 @@
+uint8 OPERATION_START_MAPPING=1
+uint8 OPERATION_START_NAVIGATION=2
+uint8 OPERATION_START_RF2O_FALLBACK=3
+uint8 OPERATION_STOP_NAVIGATION=4
+uint8 OPERATION_STOP_ALL=5
+uint8 operation
+bool restart
+---
+bool success
+uint8 final_mode
+string message
+---
+string step
+float32 progress
+string message

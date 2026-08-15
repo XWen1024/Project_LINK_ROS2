@@ -1,0 +1,12 @@
+uint8 BACKEND_OFF=0
+uint8 BACKEND_CLASSIC=1
+uint8 BACKEND_QWEN_REALTIME=2
+uint8 backend
+---
+bool success
+uint8 active_backend
+string message
+---
+string step
+float32 progress
+string message

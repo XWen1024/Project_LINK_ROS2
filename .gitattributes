@@ -4,6 +4,7 @@
 .editorconfig text eol=lf
 *.md text working-tree-encoding=UTF-8 eol=lf
 *.sh text eol=lf
+deploy/systemd/bin/* text eol=lf
 *.py text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf

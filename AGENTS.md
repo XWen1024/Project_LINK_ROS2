@@ -8,8 +8,8 @@ context belongs in `docs/modules/`; historical context belongs in `docs/archive/
 - Current phase: build the Ubuntu 22.04 PySide6 control console and migrate Orin
   production lifecycle management from tmux to `systemd --user`.
 - Immediate order:
-  1. Add typed console interfaces and an Orin console agent.
-  2. Add versioned systemd user units for mapping, navigation and independent modules.
+  1. Build and verify the console interfaces and agent on Orin.
+  2. Install and validate the versioned systemd user units without auto-starting hardware.
   3. Implement the navigation/mapping page and safe dead-man teleoperation.
   4. Integrate the existing Ubuntu visual-grasp client.
   5. Add classic/Qwen voice switching, timing events and configuration editing.

@@ -1,0 +1,20 @@
+[Unit]
+Description=Project LINK Nav2 on live Point-LIO map
+Requires=project-link-mapping.target
+After=project-link-mapping.target
+Conflicts=project-link-rf2o-fallback.target
+PartOf=project-link-navigation.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/console.env
+ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component nav2
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait action /navigate_to_pose 45
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /local_costmap/costmap 45
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /global_costmap/costmap 45
+ExecStopPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-zero-velocity
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=15

@@ -1,0 +1,15 @@
+[Unit]
+Description=Project LINK C63A base serial
+PartOf=project-link-mapping.target project-link-rf2o-fallback.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/console.env
+ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component base
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /odom 30
+ExecStopPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-zero-velocity
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGINT
+TimeoutStopSec=10

@@ -35,14 +35,18 @@ Archive tags:
 - Python syntax checks passed for visual grasp, VL53L0X, Windows lab and Qwen packages.
 - PowerShell parsing passed for the Windows visual-grasp launcher.
 - Qwen and classic voice are both present on `main` but remain mutually exclusive at runtime.
+- Console-agent pure logic and deployment-contract tests: 11 passed.
+- The versioned systemd graph contains 13 services and 3 mode targets with no
+  missing Project LINK unit references.
 
 ## Current Implementation Order
 
-1. [ ] Add `project_link_console_interfaces`.
-2. [ ] Add `project_link_console_agent` with typed health, systemd control,
-       journal events, configuration validation and teleop watchdog.
-3. [ ] Add versioned `systemd --user` component units and mapping/navigation targets.
-4. [ ] Keep current scripts as fallback wrappers during field validation.
+1. [x] Add `project_link_console_interfaces`.
+2. [x] Add the `project_link_console_agent` lifecycle, typed state and fail-closed
+       teleop foundation. Journal event streaming and configuration validation remain.
+3. [x] Add versioned `systemd --user` component units and mapping/navigation targets.
+       Linux syntax/unit verification and two supervised Orin cycles remain required.
+4. [x] Keep current scripts as fallback wrappers during field validation.
 5. [ ] Create the PySide6 console shell and offline demo mode.
 6. [ ] Implement navigation/mapping visualization, goal control and safe teleop.
 7. [ ] Integrate the existing Ubuntu manipulation client as a console page.

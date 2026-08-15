@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+workspace="${PROJECT_LINK_WORKSPACE:-/home/wte/wheeltec_robot}"
+set +u
+source "$workspace/scripts/project_link_env.sh"
+set -u
+
+# This helper can only publish an all-zero Twist and is safe to call repeatedly.
+timeout 2 ros2 topic pub --rate 20 --times 5 \
+  /cmd_vel geometry_msgs/msg/Twist '{}' >/dev/null 2>&1 || true
