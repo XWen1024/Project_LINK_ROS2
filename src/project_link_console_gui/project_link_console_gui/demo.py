@@ -20,6 +20,8 @@ class DemoBridge(QObject):
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
     voice_status = Signal(dict)
+    voice_control_available = Signal(bool, str)
+    voice_operation = Signal(str)
     uwb_observation = Signal(dict)
     uwb_status = Signal(str)
     uwb_goal = Signal(dict)
@@ -39,6 +41,7 @@ class DemoBridge(QObject):
 
     def start(self) -> None:
         self.connection_changed.emit(True, "离线演示")
+        self.voice_control_available.emit(True, "离线演示语音控制已连接")
         QTimer.singleShot(0, self._emit_map)
         QTimer.singleShot(0, self._emit_state)
         self._timer.start()
@@ -146,6 +149,7 @@ class DemoBridge(QObject):
     def switch_voice(self, backend: int) -> None:
         self._voice_backend = {0: "off", 1: "classic", 2: "qwen_realtime"}.get(backend, "off")
         self.operation_event.emit("演示语音后端已切换")
+        self.voice_operation.emit("演示语音后端已切换")
         self._emit_state()
         if self._voice_backend != "off":
             self.voice_status.emit(
@@ -159,6 +163,9 @@ class DemoBridge(QObject):
                     "raw": "demo",
                 }
             )
+
+    def probe_voice_control(self) -> None:
+        self.voice_control_available.emit(True, "离线演示语音控制已连接")
 
     def start_uwb_shadow(self) -> None:
         self._uwb_shadow = True

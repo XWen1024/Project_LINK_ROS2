@@ -32,6 +32,8 @@ class RosBridge(QObject):
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
     voice_status = Signal(dict)
+    voice_control_available = Signal(bool, str)
+    voice_operation = Signal(str)
     uwb_observation = Signal(dict)
     uwb_status = Signal(str)
     uwb_goal = Signal(dict)
@@ -50,6 +52,7 @@ class RosBridge(QObject):
         self._last_state_monotonic = 0.0
         self._connected = False
         self._cloud_enabled = False
+        self._voice_control_ready: bool | None = None
 
     def start(self) -> None:
         import rclpy
@@ -153,12 +156,14 @@ class RosBridge(QObject):
         self._node.create_timer(0.05, self._process_commands)
         self._node.create_timer(0.20, self._publish_robot_pose)
         self._node.create_timer(0.50, self._check_state_freshness)
+        self._node.create_timer(1.00, self._check_voice_control)
 
         self._executor = MultiThreadedExecutor(num_threads=3)
         self._executor.add_node(self._node)
         self._thread = threading.Thread(target=self._executor.spin, name="console-ros", daemon=True)
         self._thread.start()
         self.connection_changed.emit(False, "等待 Orin console agent")
+        self.voice_control_available.emit(False, "等待发现 Orin 语音控制")
 
     def _put(self, command: tuple[Any, ...]) -> None:
         try:
@@ -186,6 +191,9 @@ class RosBridge(QObject):
     def switch_voice(self, backend: int) -> None:
         self._put(("switch_voice", int(backend)))
 
+    def probe_voice_control(self) -> None:
+        self._put(("probe_voice",))
+
     def start_uwb_shadow(self) -> None:
         self._put(("uwb_shadow", True))
 
@@ -212,6 +220,8 @@ class RosBridge(QObject):
                 self._call_emergency_stop()
             elif command[0] == "switch_voice":
                 self._switch_voice(command[1])
+            elif command[0] == "probe_voice":
+                self._probe_voice_control()
             elif command[0] == "uwb_shadow":
                 self._set_uwb_shadow(command[1])
         if latest_teleop is not None:
@@ -238,31 +248,65 @@ class RosBridge(QObject):
         future.add_done_callback(self._manage_goal_response)
 
     def _switch_voice(self, backend: int) -> None:
-        if not self._switch_voice_client.wait_for_server(timeout_sec=0.0):
-            self.operation_event.emit("语音切换服务尚未连接")
+        if not self._switch_voice_client.wait_for_server(timeout_sec=0.25):
+            self._set_voice_control_ready(False, "未发现 Orin 语音控制；请检查局域网和 ROS Domain 42")
+            self._emit_voice_operation("语音切换服务尚未连接")
             return
+        self._set_voice_control_ready(True, "Orin 语音控制已连接")
         goal = self._switch_voice_type.Goal()
         goal.backend = backend
         future = self._switch_voice_client.send_goal_async(
             goal,
-            feedback_callback=lambda message: self.operation_event.emit(
+            feedback_callback=lambda message: self._emit_voice_operation(
                 f"语音切换：{message.feedback.message}"
             ),
         )
         future.add_done_callback(self._voice_goal_response)
 
+    def _probe_voice_control(self) -> None:
+        ready = self._switch_voice_client.wait_for_server(timeout_sec=0.35)
+        self._set_voice_control_ready(
+            ready,
+            "Orin 语音控制已连接"
+            if ready
+            else "未发现 Orin 语音控制；请检查局域网和 ROS Domain 42",
+            force=True,
+        )
+
+    def _check_voice_control(self) -> None:
+        self._set_voice_control_ready(
+            bool(self._switch_voice_client.server_is_ready()),
+            "Orin 语音控制已连接"
+            if self._switch_voice_client.server_is_ready()
+            else "等待发现 Orin 语音控制",
+        )
+
+    def _set_voice_control_ready(self, ready: bool, message: str, force: bool = False) -> None:
+        ready = bool(ready)
+        if force or ready != self._voice_control_ready:
+            self._voice_control_ready = ready
+            self.voice_control_available.emit(ready, message)
+
+    def _emit_voice_operation(self, message: str) -> None:
+        self.voice_operation.emit(message)
+        self.operation_event.emit(message)
+
     def _voice_goal_response(self, future) -> None:
         try:
             handle = future.result()
         except Exception as exc:
-            self.operation_event.emit(f"语音切换失败：{exc}")
+            self._emit_voice_operation(f"语音切换失败：{exc}")
             return
         if not handle.accepted:
-            self.operation_event.emit("语音切换请求被拒绝")
+            self._emit_voice_operation("语音切换请求被拒绝")
             return
-        handle.get_result_async().add_done_callback(
-            lambda done: self.operation_event.emit(done.result().result.message)
-        )
+        handle.get_result_async().add_done_callback(self._voice_result)
+
+    def _voice_result(self, future) -> None:
+        try:
+            self._emit_voice_operation(future.result().result.message)
+        except Exception as exc:
+            self._emit_voice_operation(f"语音切换结果读取失败：{exc}")
 
     def _set_uwb_shadow(self, enabled: bool) -> None:
         client = self._start_uwb_client if enabled else self._stop_uwb_client

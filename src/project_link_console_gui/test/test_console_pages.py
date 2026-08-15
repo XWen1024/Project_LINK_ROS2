@@ -21,10 +21,23 @@ def test_all_planned_console_pages_are_real_widgets():
 def test_voice_page_uses_typed_switch_action_via_bridge():
     page = _source("voice_page.py")
     bridge = _source("ros_bridge.py")
-    assert "switch_voice(1)" in page
-    assert "switch_voice(2)" in page
+    assert '_request_switch(1, "经典链路")' in page
+    assert '_request_switch(2, "Qwen Realtime")' in page
     assert "SwitchVoice" in bridge
     assert '"/project_link/console/switch_voice"' in bridge
+    assert "probe_voice_control" in page
+    assert "voice_control_available" in bridge
+    assert "ROS_DOMAIN_ID=42" in page
+
+
+def test_console_window_is_responsive_collapsible_and_single_instance():
+    app = _source("app.py")
+    assert "ResponsiveStackedWidget" in app
+    assert "availableGeometry" in app
+    assert "toggle_sidebar" in app
+    assert "self.sidebar.setFixedWidth(72 if collapsed else 220)" in app
+    assert "QLockFile" in app
+    assert "中控台已经在运行" in app
 
 
 def test_uwb_page_is_shadow_only_and_never_publishes_velocity():

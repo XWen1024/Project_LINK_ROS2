@@ -67,9 +67,13 @@ Archive tags:
   and keeps classic/Qwen mutually exclusive. Both voice services and UWB remained
   inactive throughout validation.
 - The allowlisted configuration helper passed masking and runtime-YAML tests.
-  Ubuntu verified the Orin host identity, but GUI-to-Orin SSH remains pending
-  because the laptop has no user key authorized on Orin. Do not copy the Windows
-  private key; bootstrap a separate Ubuntu key.
+  Ubuntu now has its own ED25519 key authorized exactly once on Orin; real config
+  read, secret masking and no-op write passed without copying the Windows key.
+- The console window now ignores hidden-page minimum sizes, bounds its initial
+  geometry to the Ubuntu desktop, reduces the embedded manipulation minimums and
+  provides a manually collapsible icon sidebar. Real mode also uses a local lock
+  to prevent duplicate GUI/ROS nodes. The voice page now exposes automatic/manual
+  control-Action discovery and shows start/switch results directly on the page.
 
 ## Current Implementation Order
 

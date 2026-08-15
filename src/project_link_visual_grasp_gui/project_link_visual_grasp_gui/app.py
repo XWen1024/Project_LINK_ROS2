@@ -224,7 +224,7 @@ class VisualGraspPanel(QWidget):
         body = QHBoxLayout()
         self.video = QLabel("等待 Orin 视频流")
         self.video.setAlignment(Qt.AlignCenter)
-        self.video.setMinimumSize(760, 520)
+        self.video.setMinimumSize(480, 320)
         self.video.setFrameShape(QLabel.Box)
         body.addWidget(self.video, 3)
 
@@ -240,7 +240,7 @@ class VisualGraspPanel(QWidget):
         control_scroll = QScrollArea()
         control_scroll.setWidgetResizable(True)
         control_scroll.setWidget(control_widget)
-        control_scroll.setMinimumWidth(430)
+        control_scroll.setMinimumWidth(340)
         body.addWidget(control_scroll, 2)
         layout.addLayout(body)
 

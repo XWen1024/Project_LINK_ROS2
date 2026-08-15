@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import os
 from pathlib import Path
 import signal
 import sys
 
-from PySide6.QtCore import QProcess, QTimer, Qt
+from PySide6.QtCore import QLockFile, QProcess, QSize, QStandardPaths, QTimer, Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -20,8 +22,11 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QStyle,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -59,6 +64,8 @@ QTabBar::tab { background: #20252c; padding: 8px 16px; margin-right: 2px; }
 QTabBar::tab:selected { background: #343c46; }
 QFrame#statusCard { background: #1b2027; border: 1px solid #343b45; border-radius: 7px; }
 QScrollArea { border: 0; }
+QToolButton#sidebarToggle { background: transparent; border: 0; color: #aeb6c2; padding: 7px; }
+QToolButton#sidebarToggle:hover { background: #252b33; border-radius: 6px; color: white; }
 """
 
 
@@ -86,48 +93,79 @@ class PlaceholderPage(QWidget):
         pass
 
 
+class ResponsiveStackedWidget(QStackedWidget):
+    """Do not let a hidden page force the whole window beyond the desktop."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(480, 320)
+
+    def sizeHint(self) -> QSize:
+        current = self.currentWidget()
+        if current is None:
+            return QSize(1100, 720)
+        hint = current.sizeHint()
+        return QSize(min(hint.width(), 1200), min(hint.height(), 760))
+
+
 class ConsoleWindow(QMainWindow):
     def __init__(self, bridge, demo: bool = False) -> None:
         super().__init__()
         self._bridge = bridge
         self._demo = demo
+        self._sidebar_collapsed = False
+        self._connection_text = "未连接"
+        self._connection_ok = False
         self.config_client = ConfigClient(self)
         self.setWindowTitle("Project LINK 中控台" + (" — 离线演示" if demo else ""))
-        self.resize(1500, 960)
 
         central = QWidget()
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        sidebar = QWidget()
-        sidebar.setFixedWidth(220)
-        sidebar_layout = QVBoxLayout(sidebar)
+        self.sidebar = QWidget()
+        self.sidebar.setFixedWidth(220)
+        sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(10, 16, 10, 12)
-        brand = QLabel("PROJECT LINK\n灵犀中控")
-        brand.setStyleSheet("font-size: 18px; font-weight: 600; padding: 8px 12px 18px 12px;")
-        sidebar_layout.addWidget(brand)
+        self.sidebar_toggle = QToolButton()
+        self.sidebar_toggle.setObjectName("sidebarToggle")
+        self.sidebar_toggle.setText("«  收起导航")
+        self.sidebar_toggle.setToolTip("收起导航栏（Ctrl+B）")
+        self.sidebar_toggle.clicked.connect(self.toggle_sidebar)
+        sidebar_layout.addWidget(self.sidebar_toggle)
+        self.brand = QLabel("PROJECT LINK\n灵犀中控")
+        self.brand.setStyleSheet("font-size: 18px; font-weight: 600; padding: 8px 12px 18px 12px;")
+        sidebar_layout.addWidget(self.brand)
         self.navigation = QListWidget()
+        self.navigation.setIconSize(QSize(22, 22))
         page_specs = [
-            ("建图与导航", "建图、Navigation2、地图图层、打点导航和安全遥控。"),
-            ("机械臂", "集成现有 Ubuntu 远程渲染客户端，Orin 继续独占相机、SO-101 和 ToF。"),
-            ("语音控制", "经典链路与 Qwen Realtime 互斥切换、会话状态、精简日志和阶段耗时。"),
-            ("语音配置", "VAD、常用参数、系统提示词和工具注册表；高级模式显示完整注释。"),
-            ("远程召唤", "UWB shadow 距离、相对角度、残差趋势与四方向标定采集。"),
-            ("全局设置", "统一管理设备、路径、ROS 网络和经过掩码保护的私密环境配置。"),
+            ("建图与导航", QStyle.StandardPixmap.SP_DriveNetIcon),
+            ("机械臂", QStyle.StandardPixmap.SP_ComputerIcon),
+            ("语音控制", QStyle.StandardPixmap.SP_MediaVolume),
+            ("语音配置", QStyle.StandardPixmap.SP_FileDialogDetailedView),
+            ("远程召唤", QStyle.StandardPixmap.SP_DialogResetButton),
+            ("全局设置", QStyle.StandardPixmap.SP_FileDialogContentsView),
         ]
-        for title, _description in page_specs:
-            self.navigation.addItem(QListWidgetItem(title))
+        self._page_titles = [title for title, _icon in page_specs]
+        for title, icon_name in page_specs:
+            item = QListWidgetItem(self.style().standardIcon(icon_name), title)
+            item.setToolTip(title)
+            self.navigation.addItem(item)
         sidebar_layout.addWidget(self.navigation, 1)
         self.advanced_toggle = QCheckBox("高级模式")
+        self.advanced_toggle.setToolTip("显示各页面的完整参数和诊断信息")
         sidebar_layout.addWidget(self.advanced_toggle)
         self.connection_label = QLabel("● 未连接")
         self.connection_label.setStyleSheet("color: #ef9a9a; padding: 8px;")
         sidebar_layout.addWidget(self.connection_label)
-        root.addWidget(sidebar)
+        root.addWidget(self.sidebar)
 
         content_splitter = QSplitter(Qt.Vertical)
-        self.pages = QStackedWidget()
+        self.pages = ResponsiveStackedWidget()
         self.navigation_page = NavigationPage(bridge)
         self.pages.addWidget(self.navigation_page)
         self.manipulation_page = ManipulationPage(demo=demo)
@@ -170,6 +208,8 @@ class ConsoleWindow(QMainWindow):
         bridge.operation_event.connect(self._append_log)
         bridge.console_event.connect(self._console_event)
         bridge.voice_status.connect(self.voice_page.update_voice_status)
+        bridge.voice_control_available.connect(self.voice_page.set_voice_control_available)
+        bridge.voice_operation.connect(self.voice_page.show_voice_operation)
         bridge.uwb_observation.connect(self.uwb_page.update_observation)
         bridge.uwb_status.connect(self.uwb_page.update_status)
         bridge.uwb_goal.connect(self.uwb_page.update_goal)
@@ -182,6 +222,48 @@ class ConsoleWindow(QMainWindow):
             if self.manipulation_page.initialization_traceback is not None:
                 print(self.manipulation_page.initialization_traceback, file=sys.stderr)
 
+        self._sidebar_shortcut = QShortcut(QKeySequence("Ctrl+B"), self)
+        self._sidebar_shortcut.activated.connect(self.toggle_sidebar)
+        self._fit_to_available_screen()
+
+    def _fit_to_available_screen(self) -> None:
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1280, 800)
+            return
+        available = screen.availableGeometry()
+        width = min(1500, max(900, int(available.width() * 0.92)))
+        height = min(960, max(620, int(available.height() * 0.90)))
+        self.resize(min(width, available.width()), min(height, available.height()))
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
+
+    def toggle_sidebar(self) -> None:
+        self._sidebar_collapsed = not self._sidebar_collapsed
+        collapsed = self._sidebar_collapsed
+        self.sidebar.setFixedWidth(72 if collapsed else 220)
+        self.brand.setVisible(not collapsed)
+        self.sidebar_toggle.setText("»" if collapsed else "«  收起导航")
+        self.sidebar_toggle.setToolTip(
+            "展开导航栏（Ctrl+B）" if collapsed else "收起导航栏（Ctrl+B）"
+        )
+        self.advanced_toggle.setText("" if collapsed else "高级模式")
+        self.connection_label.setText(
+            ("●" if self._connection_ok else "○")
+            if collapsed
+            else (("● " if self._connection_ok else "○ ") + self._connection_text)
+        )
+        self.connection_label.setToolTip(self._connection_text)
+        self.navigation.setStyleSheet(
+            "QListWidget { padding: 7px; } QListWidget::item { padding: 12px 8px; }"
+            if collapsed else ""
+        )
+        for index, title in enumerate(self._page_titles):
+            item = self.navigation.item(index)
+            item.setText("" if collapsed else title)
+            item.setTextAlignment(Qt.AlignCenter if collapsed else Qt.AlignVCenter | Qt.AlignLeft)
+
     def _set_advanced(self, enabled: bool) -> None:
         for index in range(self.pages.count()):
             page = self.pages.widget(index)
@@ -189,8 +271,15 @@ class ConsoleWindow(QMainWindow):
                 page.set_advanced(enabled)
 
     def _connection_changed(self, connected: bool, text: str) -> None:
+        self._connection_ok = bool(connected)
+        self._connection_text = text
         color = "#81c784" if connected else "#ef9a9a"
-        self.connection_label.setText(("● " if connected else "○ ") + text)
+        self.connection_label.setText(
+            ("●" if connected else "○")
+            if self._sidebar_collapsed
+            else (("● " if connected else "○ ") + text)
+        )
+        self.connection_label.setToolTip(text)
         self.connection_label.setStyleSheet(f"color: {color}; padding: 8px;")
         self.navigation_page.set_connection_available(connected)
         self.voice_page.set_connection_available(connected)
@@ -236,6 +325,21 @@ def main() -> None:
     parser.add_argument("--demo", action="store_true", help="Run with generated offline data")
     arguments, qt_arguments = parser.parse_known_args()
     app = QApplication([sys.argv[0], *qt_arguments])
+    instance_lock = None
+    if not arguments.demo:
+        runtime_dir = QStandardPaths.writableLocation(QStandardPaths.RuntimeLocation)
+        if not runtime_dir:
+            runtime_dir = QStandardPaths.writableLocation(QStandardPaths.TempLocation)
+        lock_name = f"project-link-console-{os.getuid() if hasattr(os, 'getuid') else 'user'}.lock"
+        instance_lock = QLockFile(str(Path(runtime_dir) / lock_name))
+        instance_lock.setStaleLockTime(5000)
+        if not instance_lock.tryLock(100):
+            QMessageBox.information(
+                None,
+                "Project LINK 中控台",
+                "中控台已经在运行。请切换到现有窗口，不要重复启动多个实例。",
+            )
+            return
     shutdown_requested = [False]
 
     def request_shutdown(*_args) -> None:

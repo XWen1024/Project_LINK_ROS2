@@ -38,6 +38,13 @@ export ROS_LOCALHOST_ONLY=0
 ros2 run project_link_console_gui project_link_console
 ```
 
+Only one real console instance may run per Ubuntu login. If the console is
+already active, a second launch asks the operator to return to the existing
+window instead of creating duplicate ROS nodes. The initial window size is
+bounded to the desktop's available geometry. Use the button at the top of the
+left sidebar, or `Ctrl+B`, to switch between the full navigation labels and the
+compact icon-only sidebar.
+
 Opening the GUI starts no hardware, stack, goal or velocity. Mapping/navigation
 buttons call the typed Orin lifecycle Action. Mapping teleop sends a 20 Hz lease
 to the agent only while this page owns keyboard focus and Space plus W/A/S/D is
@@ -51,8 +58,9 @@ the Orin visual-grasp, arm or ToF services.
 
 The remaining pages are implemented as follows:
 
-- Voice control: mutually exclusive classic/Qwen switching, wake/session/task
-  state and sanitized per-stage timing from the Orin agent.
+- Voice control: automatic plus manual Orin control-Action detection, mutually
+  exclusive classic/Qwen switching, page-local operation results,
+  wake/session/task state and sanitized per-stage timing from the Orin agent.
 - Voice configuration: common VAD/audio values, separate system prompts and an
   editable registry limited to built-in Python tool executors.
 - UWB: shadow-only start/stop, distance/angle view, distance/residual chart,
@@ -70,3 +78,9 @@ ssh-copy-id wte@<Orin SSH target>
 
 Then set the matching SSH target and `/home/wte/wheeltec_robot` workspace on the
 Global Settings page. Saving configuration does not restart any service.
+
+The SSH target above is only for configuration files. Voice start/stop uses ROS
+2 directly: keep Ubuntu and Orin on the same LAN with `ROS_DOMAIN_ID=42` and
+`ROS_LOCALHOST_ONLY=0`, open the Voice Control page, wait for the green
+"Orin 语音控制已连接" state (or press "重新检测连接"), then start exactly one
+backend. Starting a backend does not start Nav2, UWB or manipulation services.

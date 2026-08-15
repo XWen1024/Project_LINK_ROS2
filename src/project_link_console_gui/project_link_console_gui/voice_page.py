@@ -60,6 +60,7 @@ class VoicePage(QWidget):
         super().__init__(parent)
         self._bridge = bridge
         self._connected = False
+        self._control_available = False
         self._backend = "off"
 
         root = QVBoxLayout(self)
@@ -74,19 +75,42 @@ class VoicePage(QWidget):
         header.addWidget(self.backend_badge)
         root.addLayout(header)
 
-        controls = QGroupBox("后端选择（互斥）")
+        connection = QGroupBox("1. 连接 Orin 语音控制")
+        connection_layout = QHBoxLayout(connection)
+        connection_text = QVBoxLayout()
+        self.control_connection = QLabel("正在自动发现 Orin 中控代理…")
+        self.control_connection.setStyleSheet("font-weight: 600;")
+        self.connection_hint = QLabel(
+            "无需填写 IP。Ubuntu 与 Orin 需在同一局域网，并使用 ROS_DOMAIN_ID=42；"
+            "检测成功后再选择下方语音后端。"
+        )
+        self.connection_hint.setWordWrap(True)
+        self.connection_hint.setStyleSheet("color: #8f99a6;")
+        connection_text.addWidget(self.control_connection)
+        connection_text.addWidget(self.connection_hint)
+        self.probe_button = QPushButton("重新检测连接")
+        self.probe_button.clicked.connect(self._probe_connection)
+        connection_layout.addLayout(connection_text, 1)
+        connection_layout.addWidget(self.probe_button)
+        root.addWidget(connection)
+
+        controls = QGroupBox("2. 启动语音后端（互斥）")
         control_layout = QHBoxLayout(controls)
         self.classic_button = QPushButton("启动经典链路")
         self.qwen_button = QPushButton("启动 Qwen Realtime")
         self.stop_button = QPushButton("关闭语音服务")
         self.stop_button.setObjectName("dangerButton")
-        self.classic_button.clicked.connect(lambda: self._bridge.switch_voice(1))
-        self.qwen_button.clicked.connect(lambda: self._bridge.switch_voice(2))
-        self.stop_button.clicked.connect(lambda: self._bridge.switch_voice(0))
+        self.classic_button.clicked.connect(lambda: self._request_switch(1, "经典链路"))
+        self.qwen_button.clicked.connect(lambda: self._request_switch(2, "Qwen Realtime"))
+        self.stop_button.clicked.connect(lambda: self._request_switch(0, "关闭语音服务"))
         control_layout.addWidget(self.classic_button)
         control_layout.addWidget(self.qwen_button)
         control_layout.addWidget(self.stop_button)
         control_layout.addStretch()
+        self.operation_label = QLabel("等待操作")
+        self.operation_label.setStyleSheet("color: #8f99a6;")
+        self.operation_label.setWordWrap(True)
+        control_layout.addWidget(self.operation_label, 1)
         root.addWidget(controls)
 
         cards = QGridLayout()
@@ -137,9 +161,31 @@ class VoicePage(QWidget):
 
     def set_connection_available(self, connected: bool) -> None:
         self._connected = bool(connected)
+        if connected:
+            self.set_voice_control_available(True, "Orin 状态心跳正常，语音控制可用")
         if not connected:
-            self.service_card.value.setText("Orin 未连接")
+            self.service_card.value.setText("状态心跳未连接")
         self._refresh_buttons()
+
+    def set_voice_control_available(self, available: bool, message: str) -> None:
+        self._control_available = bool(available)
+        color = "#81c784" if available else "#ef9a9a"
+        prefix = "● " if available else "○ "
+        self.control_connection.setText(prefix + message)
+        self.control_connection.setStyleSheet(f"font-weight: 600; color: {color};")
+        self._refresh_buttons()
+
+    def _probe_connection(self) -> None:
+        self.control_connection.setText("正在检测 Orin 语音控制 Action…")
+        self.control_connection.setStyleSheet("font-weight: 600; color: #ffd180;")
+        self._bridge.probe_voice_control()
+
+    def _request_switch(self, backend: int, label: str) -> None:
+        self.operation_label.setText(f"正在请求：{label}…")
+        self._bridge.switch_voice(backend)
+
+    def show_voice_operation(self, message: str) -> None:
+        self.operation_label.setText(message)
 
     def update_system_state(self, state: dict) -> None:
         backend = str(state.get("voice_backend", "off") or "off")
@@ -200,7 +246,7 @@ class VoicePage(QWidget):
         return "-" if number <= 0.0 else f"{number:.0f} ms"
 
     def _refresh_buttons(self) -> None:
-        enabled = self._connected
+        enabled = self._control_available
         self.classic_button.setEnabled(enabled and self._backend != "classic")
         self.qwen_button.setEnabled(enabled and self._backend not in {"qwen_realtime", "qwen-realtime"})
         self.stop_button.setEnabled(enabled and self._backend != "off")

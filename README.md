@@ -19,7 +19,9 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
 - Console: typed interfaces, headless agent, versioned systemd user units and the
   six PySide6 pages are implemented. The visible Ubuntu GUI includes navigation,
   manipulation, voice switching/timing, voice profiles/tools, UWB shadow plots,
-  and masked global settings. Live hardware loops remain supervised field items.
+  and masked global settings. The window is desktop-bounded, the sidebar can
+  collapse to icons, and real mode is single-instance to avoid duplicate ROS
+  nodes. Live hardware loops remain supervised field items.
 
 See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware gates.
 
