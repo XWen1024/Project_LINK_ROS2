@@ -82,7 +82,7 @@ class RelativeUwbView(QWidget):
         painter.drawLine(center, target)
         painter.setBrush(QColor("#ef9a62"))
         painter.drawEllipse(target, 8, 8)
-        angle = math.degrees(math.atan2(float(display["y_m"]), float(display["x_m"])))
+        angle = math.degrees(math.atan2(y, x))
         painter.setPen(QColor("#f2c29f"))
         painter.drawText(
             QRectF(target.x() + 12, target.y() - 28, 180, 45),
@@ -319,7 +319,7 @@ class UwbPage(QWidget):
         distance = float(observation.get("coordinate_range_m", math.hypot(x, y)))
         module_range = float(observation.get("range_m", 0.0))
         residual = float(observation.get("range_residual_m", module_range - distance))
-        angle = math.degrees(math.atan2(y, x))
+        angle = math.degrees(math.atan2(float(display["y_m"]), float(display["x_m"])))
         valid = bool(observation.get("valid", False))
         values = {
             "distance": f"{distance:.3f} m",
