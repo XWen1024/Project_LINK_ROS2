@@ -15,6 +15,10 @@ def test_visual_grasp_client_exposes_an_embeddable_panel():
     assert "class VisualGraspPanel(QWidget):" in source
     assert "class VisualGraspWindow(QMainWindow):" in source
     assert "self.panel = VisualGraspPanel" in source
+    assert "class ParameterServiceClient:" in source
+    assert "from rcl_interfaces.srv import GetParameters, SetParameters" in source
+    assert "rclpy.parameter_client" not in source
+    assert "future.result().results" in source
 
 
 def test_console_manipulation_page_only_constructs_a_remote_client():
@@ -29,3 +33,5 @@ def test_console_manipulation_page_only_constructs_a_remote_client():
     assert "VisualGraspPanel" in source
     assert "start_approach" not in source
     assert "set_torque" not in source
+    assert "self.initialization_error" in source
+    assert "self.initialization_traceback" in source

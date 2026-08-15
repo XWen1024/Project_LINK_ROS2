@@ -6,9 +6,9 @@ import sys
 import cv2
 import numpy as np
 import rclpy
+from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-from rclpy.parameter_client import AsyncParameterClient
 from sensor_msgs.msg import CompressedImage
 from std_srvs.srv import SetBool, Trigger
 from wheeltec_robot_msg.msg import VisualGraspStatus
@@ -118,6 +118,25 @@ PARAMETERS = {
 }
 
 
+class ParameterServiceClient:
+    """Small parameter client compatible with the ROS 2 Humble rclpy API."""
+
+    def __init__(self, node: Node, remote_node_name: str) -> None:
+        root = "/" + remote_node_name.strip("/")
+        self._get_client = node.create_client(GetParameters, root + "/get_parameters")
+        self._set_client = node.create_client(SetParameters, root + "/set_parameters")
+
+    def get_parameters(self, names: list[str]):
+        request = GetParameters.Request()
+        request.names = names
+        return self._get_client.call_async(request)
+
+    def set_parameters(self, parameters: list[Parameter]):
+        request = SetParameters.Request()
+        request.parameters = [parameter.to_parameter_msg() for parameter in parameters]
+        return self._set_client.call_async(request)
+
+
 class RemoteClient(Node):
     def __init__(self) -> None:
         super().__init__("visual_grasp_gui")
@@ -149,7 +168,7 @@ class RemoteClient(Node):
         root = self.namespace.rstrip("/")
         self.set_target = self.create_client(SetTarget, root + "/set_target")
         self.set_gripper = self.create_client(SetGripper, root + "/set_gripper")
-        self.parameter_client = AsyncParameterClient(self, root.lstrip("/"))
+        self.parameter_client = ParameterServiceClient(self, root)
         self.triggers = {
             name: self.create_client(Trigger, root + "/" + name)
             for name in (
@@ -524,7 +543,7 @@ class VisualGraspPanel(QWidget):
 
     def _parameters_applied(self, future) -> None:
         try:
-            results = future.result()
+            results = future.result().results
             failures = [result.reason for result in results if not result.successful]
             self._show_message("参数已保存到 Orin" if not failures else "; ".join(failures))
         except Exception as exc:

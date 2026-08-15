@@ -150,6 +150,14 @@ class ConsoleWindow(QMainWindow):
         bridge.operation_event.connect(self._append_log)
         bridge.console_event.connect(self._console_event)
 
+        if self.manipulation_page.initialization_error is not None:
+            self._append_log(
+                "机械臂页面初始化失败："
+                + self.manipulation_page.initialization_error
+            )
+            if self.manipulation_page.initialization_traceback is not None:
+                print(self.manipulation_page.initialization_traceback, file=sys.stderr)
+
     def _set_advanced(self, enabled: bool) -> None:
         for index in range(self.pages.count()):
             page = self.pages.widget(index)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import traceback
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -13,6 +15,8 @@ class ManipulationPage(QWidget):
         super().__init__(parent)
         self._client = None
         self._panel = None
+        self.initialization_error: str | None = None
+        self.initialization_traceback: str | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         title = QLabel("机械臂与视觉抓取")
@@ -38,11 +42,12 @@ class ManipulationPage(QWidget):
             self._panel.message.connect(self.message.emit)
             layout.addWidget(self._panel, 1)
         except Exception as exc:
-            note = QLabel(f"机械臂页面初始化失败：{exc}")
+            self.initialization_error = f"{type(exc).__name__}: {exc}"
+            self.initialization_traceback = traceback.format_exc()
+            note = QLabel(f"机械臂页面初始化失败：{self.initialization_error}")
             note.setWordWrap(True)
             layout.addWidget(note)
             layout.addStretch()
-            self.message.emit(str(exc))
 
     def set_advanced(self, enabled: bool) -> None:
         if self._panel is not None:
