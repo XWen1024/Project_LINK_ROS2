@@ -36,11 +36,12 @@ Archive tags:
 - Python syntax checks passed for visual grasp, VL53L0X, Windows lab and Qwen packages.
 - PowerShell parsing passed for the Windows visual-grasp launcher.
 - Qwen and classic voice are both present on `main` but remain mutually exclusive at runtime.
-- Console-agent pure logic and deployment-contract tests: 13 passed.
+- Orin direct pytest across console agent, classic voice and Qwen Realtime:
+  79 passed after the new event/config integration.
 - The versioned systemd graph contains 13 services, 3 mode targets and 1 shared
   platform target with no missing Project LINK unit references.
-- Console GUI pure model, embedding and safety-contract checks: 9 passed. Python
-  syntax and package XML pass.
+- Console GUI model, configuration-helper, page, embedding and safety checks:
+  16 passed on Ubuntu. Python syntax, package XML and all four new page renders pass.
 - Orin validation on 2026-08-15: console interfaces and agent built successfully;
   the 17-unit systemd graph passed `systemd-analyze --user verify`; the installer
   started only the console agent; `/project_link/console/system_state` reported
@@ -60,6 +61,15 @@ Archive tags:
   with standard parameter services; initialization errors now survive page
   construction and reach the console log. Three rapid service restarts completed
   without traceback or timeout (`0.80 s`, `0.02 s`, `0.02 s`).
+- Voice control, voice configuration, UWB shadow and global-settings pages were
+  implemented and visually validated on Ubuntu at `dbc31a7`. The Orin agent now
+  forwards sanitized timing phases, exposes only UWB shadow start/stop services,
+  and keeps classic/Qwen mutually exclusive. Both voice services and UWB remained
+  inactive throughout validation.
+- The allowlisted configuration helper passed masking and runtime-YAML tests.
+  Ubuntu verified the Orin host identity, but GUI-to-Orin SSH remains pending
+  because the laptop has no user key authorized on Orin. Do not copy the Windows
+  private key; bootstrap a separate Ubuntu key.
 
 ## Current Implementation Order
 
@@ -75,9 +85,10 @@ Archive tags:
 7. [x] Refactor and embed the existing Ubuntu manipulation client as a console
        page. Ubuntu rendering/initialization is verified; Orin service/video and
        supervised SO-101 field validation remain required.
-8. [ ] Normalize voice status/events and implement classic/Qwen switching.
-9. [ ] Add prompt/tool profiles and masked global configuration management.
-10. [ ] Add UWB shadow plots and proposed-calibration capture.
+8. [x] Normalize voice status/events and implement classic/Qwen switching.
+9. [x] Add prompt/tool profiles and masked global configuration management.
+       Cross-machine SSH authentication still needs one user bootstrap step.
+10. [x] Add UWB shadow plots, tuning and proposed-calibration capture.
 
 ## Existing Hardware Gates
 

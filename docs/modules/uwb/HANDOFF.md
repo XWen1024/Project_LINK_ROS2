@@ -196,6 +196,11 @@ calibration_status: valid
 
 ## 7. Shadow 模式
 
+The Ubuntu console includes a shadow-only page for BU04 start/stop, raw and
+calibrated relative plots, distance/residual history, common thresholds and
+four-direction sample capture. It can save only `calibration_status: proposed`;
+the helper cannot approve `valid` or enable motion.
+
 先启动已验证的 Navigation Two：
 
 ```bash

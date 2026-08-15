@@ -19,3 +19,9 @@ model.
 
 The Volcengine Embedded Kit S2S work is archived under
 `docs/archive/experiments/volc-s2s/` and is not a normal console backend.
+
+The Ubuntu console switches the two supported backends through the typed
+console-agent Action and displays sanitized JSONL timing phases. Shared operator
+profiles live in `~/.config/project_link/voice_profile.json`; prompts and schemas
+may be edited, but only the seven repository-registered Python executors can be
+enabled. Runtime YAML overrides remain local mode-0600 files on Orin.

@@ -19,7 +19,7 @@ Target: Ubuntu 22.04 + ROS 2 Humble
 - `project_link_console_gui`: Ubuntu PySide6 application.
 - `deploy/systemd/user`: versioned user services and mapping/navigation targets.
 
-The interface, agent, systemd foundation and first PySide6 navigation slice are
+The interface, agent, systemd foundation and all six planned PySide6 pages are
 implemented in the repository. The GUI includes a hardware-free demo mode and a
 repository-owned RViz2 profile. The user-unit graph is documented in
 `deploy/systemd/README.md`; it remains behind the existing script fallback until
@@ -34,6 +34,12 @@ module status. Process lifecycle is requested through the console agent, which
 controls an allowlisted set of `systemd --user` units. Secrets are edited through
 an SSH-invoked allowlisted configuration helper and are never transported as ROS
 messages.
+
+The helper is `scripts/project_link_console_config.py`. It accepts only the
+`voice`, `global` and `uwb` sections, validates allowlisted fields, writes local
+mode-0600 files atomically, never returns secret values, and never accepts a
+shell command or arbitrary path. The Ubuntu GUI sends JSON through SSH stdin.
+Ubuntu needs its own authorized SSH key; Windows private keys must not be copied.
 
 ## Pages
 

@@ -17,9 +17,9 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
   but must never run simultaneously.
 - UWB: shadow ingestion and guarded Nav2 bridge exist; calibration is invalid by default.
 - Console: typed interfaces, headless agent, versioned systemd user units and the
-  PySide6 navigation/manipulation pages are implemented. The visible Ubuntu
-  read-only GUI receives Orin state; live manipulation video/control remains a
-  supervised field-validation item.
+  six PySide6 pages are implemented. The visible Ubuntu GUI includes navigation,
+  manipulation, voice switching/timing, voice profiles/tools, UWB shadow plots,
+  and masked global settings. Live hardware loops remain supervised field items.
 
 See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware gates.
 

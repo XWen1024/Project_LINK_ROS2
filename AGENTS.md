@@ -62,6 +62,11 @@ are evidence snapshots, not current operating instructions.
   sandbox may not see the user's SSH aliases, keys or agent state reliably.
 - Use the system SSH aliases `ssh orin` for the Orin Nano (`wte@orin`) and
   `ssh seewo` for the Ubuntu laptop. Do not replace them with guessed IP addresses.
+- The Ubuntu GUI configuration channel is a separate Ubuntu-to-Orin SSH
+  connection; Windows aliases and keys are not automatically available there.
+  Never copy a Windows private key to the laptop. If BatchMode reports
+  `Permission denied`, ask the user to create an Ubuntu user key and authorize
+  only its public key on Orin, then set the SSH target in Global Settings.
 
 ### Failure Handling Levels
 

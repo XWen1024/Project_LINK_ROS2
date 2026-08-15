@@ -48,3 +48,25 @@ The manipulation page embeds `VisualGraspPanel` from the existing Ubuntu client.
 Simple mode keeps raw Orin parameters hidden; advanced mode reveals the full
 parameter editor. The embedded page creates only a ROS client and does not start
 the Orin visual-grasp, arm or ToF services.
+
+The remaining pages are implemented as follows:
+
+- Voice control: mutually exclusive classic/Qwen switching, wake/session/task
+  state and sanitized per-stage timing from the Orin agent.
+- Voice configuration: common VAD/audio values, separate system prompts and an
+  editable registry limited to built-in Python tool executors.
+- UWB: shadow-only start/stop, distance/angle view, distance/residual chart,
+  common tuning and four-direction `proposed` calibration capture.
+- Global settings: device/network values and masked classic/Qwen/UWB secrets.
+
+Secrets use the fixed allowlisted helper over SSH stdin; they never travel over
+ROS and are never read back in plaintext. Before using Read/Save on the laptop,
+configure a separate Ubuntu-to-Orin key; do not copy the Windows private key:
+
+```bash
+ssh-keygen -t ed25519
+ssh-copy-id wte@<Orin SSH target>
+```
+
+Then set the matching SSH target and `/home/wte/wheeltec_robot` workspace on the
+Global Settings page. Saving configuration does not restart any service.
