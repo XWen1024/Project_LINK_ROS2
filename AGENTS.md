@@ -151,6 +151,10 @@ are evidence snapshots, not current operating instructions.
   Commit a coherent change directly on `main` once it is useful and verified.
 - Never rewrite published `main` history for appearance. Use forward commits,
   merges, tags and cleanup.
+- An archived worktree with initialized submodules may reject ordinary
+  `git worktree remove` even when clean. Use `--force` only after all three checks
+  pass: the resolved path is the intended archived worktree, `git status --porcelain`
+  is empty, and the branch tip exactly matches its pushed `archive/*` tag.
 - Edit and test locally, commit, push to GitHub, then update Orin with
   `git pull --ff-only`. Do not replace repository files with `scp`.
 - Do not commit build/install/log folders, bags, temporary maps, generated audio,

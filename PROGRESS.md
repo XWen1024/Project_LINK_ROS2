@@ -24,6 +24,7 @@ Archive tags:
 
 - `archive/qwen-realtime-premerge-20260814`
 - `archive/volc-s2s-smoke-20260812`
+- `archive/volc-s2s-smoke-orin-final-20260815`
 - `archive/volc-s2s-integration-20260812`
 - `archive/slam-migration-20260627`
 
@@ -35,7 +36,7 @@ Archive tags:
 - Python syntax checks passed for visual grasp, VL53L0X, Windows lab and Qwen packages.
 - PowerShell parsing passed for the Windows visual-grasp launcher.
 - Qwen and classic voice are both present on `main` but remain mutually exclusive at runtime.
-- Console-agent pure logic and deployment-contract tests: 11 passed.
+- Console-agent pure logic and deployment-contract tests: 13 passed.
 - The versioned systemd graph contains 13 services, 3 mode targets and 1 shared
   platform target with no missing Project LINK unit references.
 - Console GUI pure model and safety-contract tests: 5 passed. Python syntax and
@@ -44,6 +45,13 @@ Archive tags:
   the 17-unit systemd graph passed `systemd-analyze --user verify`; the installer
   started only the console agent; `/project_link/console/system_state` reported
   mode `off`, no teleop and all hardware/navigation units inactive.
+- Orin repository consolidation was repeated after field validation: archived
+  Volc worktrees were removed, their unique tips are pushed as archive tags, and
+  `main` is now the only local branch/worktree. Runtime `.data` and `.posegraph`
+  files were preserved untracked.
+- Ubuntu laptop validation found Ubuntu 22.04.5 x86_64 and ROS 2 Humble Desktop.
+  Git, colcon, Navigation2 packages and system Python pip/PySide6 still need the
+  documented prerequisite installation before GUI build/render validation.
 
 ## Current Implementation Order
 
@@ -51,7 +59,7 @@ Archive tags:
 2. [x] Add the `project_link_console_agent` lifecycle, typed state and fail-closed
        teleop foundation. Journal event streaming and configuration validation remain.
 3. [x] Add versioned `systemd --user` component units and mapping/navigation targets.
-       Linux syntax/unit verification and two supervised Orin cycles remain required.
+       Linux syntax/unit verification passed; two supervised Orin cycles remain required.
 4. [x] Keep current scripts as fallback wrappers during field validation.
 5. [x] Create the PySide6 console shell and offline demo mode.
 6. [x] Implement the first navigation/mapping visualization, goal control and
