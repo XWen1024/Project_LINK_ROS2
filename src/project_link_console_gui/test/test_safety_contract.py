@@ -39,5 +39,5 @@ def test_console_handles_service_stop_signals_without_systemd_timeout():
     )
     assert "signal.SIGTERM" in source
     assert "signal.SIGINT" in source
-    assert "app.quit()" in source
+    assert "window.close()" in source
     assert "signal_pump.start(250)" in source

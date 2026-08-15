@@ -19,6 +19,7 @@ def test_visual_grasp_client_exposes_an_embeddable_panel():
     assert "from rcl_interfaces.srv import GetParameters, SetParameters" in source
     assert "rclpy.parameter_client" not in source
     assert "future.result().results" in source
+    assert "if not rclpy.ok():" in source
 
 
 def test_console_manipulation_page_only_constructs_a_remote_client():

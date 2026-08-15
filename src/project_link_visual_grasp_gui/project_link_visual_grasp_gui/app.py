@@ -400,6 +400,9 @@ class VisualGraspPanel(QWidget):
         return box
 
     def _spin_and_refresh(self) -> None:
+        if not rclpy.ok():
+            self._timer.stop()
+            return
         rclpy.spin_once(self.client, timeout_sec=0.0)
         self._refresh_devices()
         self._refresh_status()
