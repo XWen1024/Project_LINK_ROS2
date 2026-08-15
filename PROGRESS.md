@@ -1,5 +1,26 @@
 # Project LINK / 灵犀 助老移动操作机器人 Progress 进度文档
 
+## ESP32-C3 + VL53L0X USB bridge validation - 2026-08-10
+
+* Added a repository-owned ESP-IDF v6.0.2 firmware under
+  external/esp32_c3_vl53l0x_usb_bridge. It reads a VL53L0X over GPIO4/GPIO5
+  I2C and publishes bounded CSV-like DATA lines over native ESP32-C3 USB
+  Serial/JTAG.
+* Added a Windows Python GUI with COM discovery, live distance/status/rate,
+  a rolling chart, and CSV recording.
+* Built and flashed the firmware to an ESP32-C3 revision v1.1 with 4 MB Flash;
+  boot, application image, write hashes, and the native USB console passed.
+* Captured a valid DATA frame reporting 43 mm with range status 0, proving the
+  current power, I2C, parser, and USB path.
+* Documented the current reset limitation: resetting only the ESP32 may leave
+  the still-powered VL53L0X in a non-default state. Full power cycling recovers
+  it; the recommended firmware hardening is GPIO-controlled XSHUT plus retry.
+* Added docs/ESP32_C3_VL53L0X_USB_ROS2_HANDOFF.md with the serial protocol,
+  stable Linux device alias, sensor_msgs/Range mapping, TF ownership, ROS package
+  design, validation gates, and optional Nav2 local range-layer boundary. The
+  repository now contains `project_link_vl53l0x`; Orin build and mounted-sensor
+  field validation remain pending.
+
 ## UWB summon/follow ROS 2 and Nav2 migration - 2026-08-04
 
 * Imported the upstream `human-chocker-and-robot-dog/mcp-for-UWB` repository as
@@ -304,9 +325,13 @@ CPU/memory/temperature observations for each test.
 
 * Added `project_link_voice_interfaces/DriveToPoint.action` and the
   `project_link_voice` ament Python package.
-* `voice_dialog_node` uses serial wakeup, 16 kHz FunASR `fsmn-vad` endpointing,
-  faster-whisper recognition, SiliconFlow OpenAI-compatible Tool Calling, and an
+* `voice_dialog_node` uses serial wakeup, 20 ms 16 kHz PCM capture, FunASR
+  `fsmn-vad` endpointing, Volcano bidirectional streaming ASR, DeepSeek official
+  OpenAI-compatible Tool Calling, and an
   explicit Python safety confirmation state machine.
+* The local faster-whisper path remains as an explicit `.env` fallback only.
+  Volcano mode does not load or prewarm Whisper and does not silently fall back
+  after a cloud error.
 * Restored the intended ASR -> LLM tool call -> Python executor chain. The LLM
   can choose whitelisted tools such as `navigate_to_location` and
   `fetch_item_from_location`, but it never publishes `/cmd_vel`, enables torque,
@@ -318,6 +343,37 @@ CPU/memory/temperature observations for each test.
   `voice_dialog_node` uses it in-process for streamed LLM speech and fixed safety
   confirmations; `voice_tts_node` remains as a `/voice/tts_text` bridge for other
   modules. API keys stay in `/home/wte/.config/project_link/voice_api.env`.
+* Added the low-latency path: capture frames feed cloud ASR while FunVAD runs,
+  DeepSeek streaming has thinking disabled, text is incrementally fed into one
+  bidirectional TTS session, first PCM is played immediately, and stale TTS
+  generations are discarded when a newer answer supersedes them.
+* Added a 500 ms local waiting prompt, metadata-validated fixed phrase cache,
+  bounded TTL/LRU dynamic cache, and phase summaries for speech end, VAD, ASR,
+  LLM/Tool Call, Python execution, TTS first audio, and first playback.
+* Fixed USB replug instability in the voice I/O path. The WCH wake board with
+  serial `0004` now has `/dev/project_link_wakeup`; FunVAD selects the iFlytek
+  microphone by `XFM-DP-V0.0.18` instead of PyAudio index; pygame is forced to
+  PulseAudio and the C-Media USB speaker sink. This prevents the output-only USB
+  speaker from becoming the default capture device after replug.
+* Added bounded continuous conversation to `voice_dialog_node`. One wake event
+  now opens multiple ASR/DeepSeek/TTS turns, follow-up recording waits until the
+  current TTS generation has really finished, and 8 seconds of silence returns
+  to wake wait with the cached phrase `好的，我退下了`. Local stop/cancel/exit
+  keywords bypass the LLM, cancel active robot work, speak that fixed phrase,
+  and close the session; silence-only timeout closes speech without canceling a
+  task that is already running.
+* [ ] When the chassis controller is connected again, enumerate every WCH serial
+  device and verify the chassis is serial `0002` while the wake board is `0004`.
+  Only then narrow the generic `wheeltec_controller.rules` match to chassis
+  serial `0002`, preserve `/dev/project_link_wakeup` for `0004`, reload udev, and
+  cold-replug both devices to verify both aliases. Do not delete or overwrite the
+  existing chassis rule before this hardware identity check passes.
+* Orin dependency audit passed for FunASR, faster-whisper, PyAudio, OpenAI,
+  pygame, websockets, and pytest. A live ASR authentication smoke test using the
+  existing TTS App ID/token returned HTTP 403, confirming that a dedicated
+  `VOLCANO_ASR_API_KEY` or ASR-authorized legacy pair is still required before
+  Volcano ASR can be enabled on Orin. Launch scripts now fail early when this is
+  missing instead of starting a nonfunctional voice node.
 * `ab_drive_server` is the sole voice direct-drive publisher. It rejects goals
   unless `enable_motion:=true`, requires `map -> base_footprint`, limits range,
   watchdogs command output, and zeroes velocity on cancellation, TF loss,
@@ -360,13 +416,6 @@ CPU/memory/temperature observations for each test.
   binary frames, and `我在，请说。` is cached at
   `~/.cache/project_link_voice/wakeup_ack.mp3`, played locally to completion,
   then FunVAD recording starts.
-* Added bounded continuous conversation to `voice_dialog_node`. One wake event
-  now opens multiple ASR/DeepSeek/TTS turns, follow-up recording waits until the
-  current TTS generation has really finished, and 8 seconds of silence returns
-  to wake wait with the cached phrase `好的，我退下了`. Local stop/cancel/exit
-  keywords bypass the LLM, cancel active robot work, speak that fixed phrase,
-  and close the session; silence-only timeout closes speech without canceling a
-  task that is already running.
 
 ### Second-camera fall response module
 
@@ -999,7 +1048,7 @@ tts_feedback_node
 
 ```text
 火山引擎 ASR
-硅基流动 LLM
+DeepSeek 官方 LLM (`deepseek-v4-flash`)
 火山引擎 TTS
 ```
 
@@ -1942,3 +1991,120 @@ SO-101 与 2D 视觉伺服；GUI 负责远端标注画面、参数、姿态、�
 - [x] 提供 Orin tmux 启动脚本、部署说明和导航调度接口文档
 - [ ] 在 Orin 验证 Jetson PyTorch、YOLO-World、`/dev/RgbCam`、`/dev/so101` 和模型路径
 - [ ] 在安全条件下验证人工跟踪→逼近→抓取，再验证导航后 `TrackAndGrasp` action
+
+---
+
+## 18. ESP32-C3 VL53L0X 末端距离闭环（待 Orin 与实机验证）
+
+已新增 `project_link_vl53l0x` ROS 2 Python 包，解析 ESP32-C3 的 `DATA` 文本帧，
+独占 `/dev/vl53l0x-gripper`，发布 `/visual_grasp/tof_range` 和
+`/visual_grasp/tof_status`，并处理格式错误、非零传感器状态、量程越界、长行、掉线
+重连和数据过期。
+
+- [x] 协议解析拆为纯函数并覆盖有效、非 DATA、字段数、整数和负数测试
+- [x] 视觉抓取增加 ToF 中值窗口、影子模式、控制模式和失效保持
+- [x] ToF 控制模式下取消目标框面积自动闭合回退
+- [x] `VisualGraspStatus` 和 Ubuntu GUI 显示距离、年龄、状态和控制决策
+- [x] `start_visual_grasp_tmux.sh --with-tof` 同时启动串口节点和视觉抓取
+- [ ] 在 Orin 普通安装构建 `project_link_vl53l0x` 并安装 `python3-serial`
+- [ ] 建立 `/dev/vl53l0x-gripper` 私有稳定 udev 别名并做冷插拔验证
+- [ ] 先完成 10 次影子判断，再标定 `tof_grasp_distance_m`
+- [ ] 完成数据过期、拔线、遮挡和连续 3 次低速距离闭环抓取验收
+
+### SO-101 远程校准与现场教程
+
+- [x] GUI 设备刷新/命名空间按钮上下排列，扭矩控制独立成行
+- [x] 右侧控制区增加滚动，避免小窗口下控件重叠
+- [x] 连接机械臂改为非交互模式，缺少校准时明确失败
+- [x] 增加开始校准、记录中位、全行程采样、完成保存和取消服务
+- [x] GUI 显示 `WAIT_MIDDLE`、`RECORDING_RANGE`、`READY` 和错误消息
+- [x] 增加从首次初始化到自动抓取的完整现场教程
+- [ ] 在 Orin 实机完成一次六关节校准并验证冷启动重新加载
+
+---
+
+## 19. Windows 机械臂一体化测试台
+
+已新增 `tools/windows_visual_grasp_lab`，直接复用当前视觉抓取核心和 VL53L0X 协议，
+在不安装 ROS 2 的 Windows 电脑上集中测试摄像头、YOLO-World、SO-101、夹爪、预设
+姿态、卸力示教、ToF 和自动抓取。
+
+- [x] 自动复用原 VisualTracker venv 和本地 LeRobot 源码
+- [x] 摄像头、机械臂和 ESP32-C3 串口分别连接，启动默认不占用硬件
+- [x] 五关节完整命令、夹爪独立命令和实时六关节读数
+- [x] standby、pregrasp、placement 录制与分阶段执行
+- [x] YOLO 跟踪、视觉伺服、ToF 影子/控制和标定门
+- [x] 卸力示教 CSV、运行时配置和姿态持久化
+- [x] 卸力示教升级为 YOLO 视觉示教，平铺记录 bbox 中心/面积、误差、可信状态、ToF 和六关节
+- [x] 视觉示教开始前要求可信绿色框，录制期间保持 YOLO 跟踪并在画面显示样本数
+- [x] 已读取 `visual_demo_20260810_190054.csv`，提取预抓取到闭合前的肩/肘/腕联动轨迹
+- [x] 删除危险的固定肘关节多项式，按示教相对量 `lift +34 / elbow +12.3 / wrist -54` 重写逼近
+- [x] 增加 `visual_servo_max_joint_step=6`，任何单次危险关节跳变在下发前拒绝
+- [x] 普通停止先下发完整当前关节保持命令；紧急停止直接断扭矩，不等待保持命令
+- [x] 点击选择视觉中心会关闭并清除自动纵向锁定；自动抓取不再覆盖手动保存的点位
+- [x] `lift +34` 终点改为相对保存的 pregrasp，而非相对少到位的实时反馈重新计程
+- [x] 最终终点命令后增加 `0.75 s` 关节/ToF 稳定窗口，避免电机尚未到位就提前报错
+- [x] 增加 `approach_profile_wrist_trim` 抓取高度微调，核心强制限制 `-10..+10`
+- [x] 增加第一版 `FINAL_APPROACH` 视觉交接：近场后允许 YOLO 消失并切换到 ToF 控制
+- [x] 居中阶段默认禁止 shoulder lift 伸臂，避免“纵向居中”实际变成提前逼近
+- [x] 最终盲区逼近增加 ToF 有效门、6 秒超时、20 单位最大行程和关节软限位
+- [x] 远处大框必须同时通过 ToF 近场门，避免仅凭 bbox 面积误触发盲区抓取
+- [ ] 现场验证试教水平轨迹、`0.21 m` 最大视觉交接门和用户指定的 `final_grasp_tof_m=0.090`
+- [ ] 再采集 2–3 条纯抓取示教，校正当前第一条示教轨迹的平均比例
+- [x] 自动锁定保留为可选模式，默认关闭；开启时才将首帧目标点下移框高 `10%`
+- [x] 重复 YOLO 序号不再覆盖有意义状态消息，修复 GUI 两条提示来回闪烁
+- [x] 视觉交接开启时启动前强制检查 ToF 启用、控制和标定三个开关
+- [x] 可见“紧急停止并关闭扭矩”按钮
+- [x] 修复刷新串口与机械臂扭矩控件重叠，改为上下独立布局
+- [x] 关节页增加滚动区域，避免较小 Windows 窗口压缩控件
+- [x] Windows GUI 增加开始卸力、记录中位、50 ms 全行程采样、完成保存和取消校准
+- [x] 校准期间禁用普通连接、扭矩、夹爪、预设位、示教和自动抓取控制
+- [x] 修复 LeRobot 连接配置结束后重新启用扭矩但 GUI 状态仍显示关闭的问题
+- [x] 断扭矩增加整组重试、逐电机重试、同步广播和寄存器读取确认
+- [x] 断开机械臂无论电机错误都继续释放串口，避免过热后 COM 口残留占用
+- [x] 电机硬件故障锁存后禁止重新启用扭矩和开始校准
+- [x] SO-101 总线操作增加可重入互斥锁，避免 Qt 工作线程和状态定时器并发访问串口
+- [x] 连接或校准期间暂停后台关节轮询，忙时读取直接跳过而不阻塞 GUI
+- [x] 全电机 `Port is in use` 时在独占总线后清除 Feetech 陈旧忙标志并重试
+- [x] 冷启动校准不匹配时先自动重写已保存文件并读回验证，不再立即要求重新校准
+- [x] 校准完成后先恢复断扭矩并验证 EEPROM，再保存文件和报告 `READY`
+- [x] 自动恢复失败时输出各关节 homing/range 的文件值与电机值差异
+- [x] 修复 STS3215 负位置 `327xx/329xx` 被当成无符号校准最大值的问题
+- [x] 校准完成时自动调整 homing，将实测行程重新居中到合法 `0..4095`
+- [x] 保存和恢复前拒绝超出电机分辨率的旧校准范围
+- [x] Windows 姿态录制和姿态执行权限拆分为扭矩关闭/扭矩开启两组
+- [x] 修复启用扭矩后“前往”按钮反而被禁用的问题
+- [x] 修复停止、急停和校准流程错误进入 `TRACKING` 的状态语义
+- [x] 自动抓取固定执行打开夹爪、待抓取位、居中、逼近和夹取
+- [x] GUI 明确标注纯目标跟踪不会移动机械臂
+- [x] 预设位移动改为五关节同步 S 曲线插值，移除反馈增量抖动和延迟底座旋转
+- [x] 视觉居中增加单周期步长限制，逼近增加归一化关节软限位
+- [x] 增加视觉抓取总超时，未达到夹取条件时在机械极限前停止
+- [x] 重新校准后自动清除旧预设，要求重新录制三个位姿
+- [x] 修复预设实际到位但在超时边界被误判为 `ERROR` 的判断顺序
+- [x] 预设超时日志列出未到位关节及剩余误差，Windows GUI 记录控制器状态转换
+- [x] 自动抓取移动前检查待抓取位是否超出视觉伺服软限位
+- [x] 移除完整五关节命令写入前的冗余串口反馈读取，避免到位后的瞬时读取失败触发假 `ERROR`
+- [x] 增加 `preset_joint_limit` 端点余量，录制和执行阶段拒绝接近归一化 `+/-100` 的不可达预设
+- [x] Windows 参数页补充到位容差，并为受重力影响的肘关节增加独立 `elbow_arrive_threshold=5.0`
+- [x] 预设完成增加严格容差与稳定近目标双判定，修复远距离运动后 `2.03 > 2.00` 的边缘误报
+- [x] Windows 增加 JSONL debug 模式，记录配置、预设、校准、逐周期反馈和错误瞬间电机寄存器
+- [x] 待机位改用独立 `standby_joint_limit=99.5`，允许保存监督下的收拢初始姿态
+- [x] 视觉居中越过软限位时先安全钳位，连续 3 个新 YOLO 结果仍不收敛才进入错误
+- [x] Windows 视频叠加视觉伺服期望中心、检测框中心和误差连线，支持现场重调中心偏移
+- [x] Windows 增加点击视频设置视觉抓取中心，自动换算缩放画面坐标并持久化中心偏移
+- [x] 点击选点文案明确为目标框中心对齐位置，并增加一键使用当前绿色检测点
+- [x] YOLO 跟踪增加目标关联、中心/面积跳变拒绝和短时稳定框保持
+- [x] 视觉居中改为每个新 YOLO 结果最多动作一次，避免 GUI 重复使用旧框造成过冲
+- [x] 视觉居中使用 3 个新结果中值、远距离快速步长、近中心减速和连续居中确认
+- [x] 根据现场 JSONL 响应确认当前安装 `tilt_direction=-1`，修复纵向越调越远后触限
+- [x] 修复肩关节小目标无法克服负载时反复发送同一目标、长期卡在 `CENTERING` 的问题
+- [x] 视觉伺服目标允许有界累计，默认相对反馈最多领先 `4.0`，兼顾启动死区与安全
+- [x] 逼近目标同样使用有界累计，避免进入 `APPROACHING` 后重复无效小目标
+- [x] Windows 参数页增加独立滚动、滚轮防误改、恢复已保存和一键推荐复位
+- [x] 增加 Windows 从环境初始化到第一次监督抓取的完整教程和 GUI 打开入口
+- [x] 启动器会检测并跳过无法运行的旧 VisualTracker venv，同时继续加载本地 LeRobot 源码
+- [x] Windows GUI、启动器和共享校准核心通过语法、静态交互禁用和范围记录检查
+- [ ] 当前旧 venv 指向已卸载的 Python 3.12；重建仓库 `.venv` 后运行依赖检查和离屏 GUI
+- [ ] 使用真实 SO-101 完成一次 Windows 六电机校准并验证重启后冷加载
+- [ ] 使用真实 SO-101、摄像头和 ESP32-C3 按安全顺序完成硬件测试

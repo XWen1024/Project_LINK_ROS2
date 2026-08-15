@@ -103,6 +103,14 @@ Nav2 configuration, message packages, and integration launch/config files.
 - Lidar: Unitree L1 / UniLidar for the target SLAM route; current Wheeltec config
   also contains `lidar_type: ls_M10P_uart`.
 - Manipulator: SO-101, currently outside this ROS workspace's main SLAM task.
+- ESP32-C3 + VL53L0X bench bridge: native USB Serial/JTAG 303a:1001, I2C on
+  GPIO4/GPIO5, 50 ms text output, and a valid 43 mm/status-0 measurement were
+  verified on 2026-08-10. Firmware and the bench GUI live under
+  external/esp32_c3_vl53l0x_usb_bridge. The repository now also contains the
+  `project_link_vl53l0x` headless ROS package described in
+  docs/ESP32_C3_VL53L0X_USB_ROS2_HANDOFF.md; Orin build and mounted-sensor field
+  validation remain pending. The ROS node publishes sensor_msgs/Range, owns the
+  serial port exclusively, and never publishes cmd_vel.
 
 ## ROS 2 Packages In This Workspace
 
@@ -116,12 +124,15 @@ Nav2 configuration, message packages, and integration launch/config files.
 - `wheeltec_robot_msg`: custom Wheeltec messages.
 - `project_link_voice_interfaces`: `DriveToPoint.action` for voice direct-drive.
 - `project_link_emergency_interfaces`: fall-response Action/Service interfaces.
-- `project_link_voice`: FunASR VAD, faster-whisper ASR, SiliconFlow LLM tool
-  calling, Volcano TTS, guarded direct-drive, and voice-to-grasp orchestration.
+- `project_link_voice`: FunASR VAD, Volcano bidirectional streaming ASR with
+  explicit faster-whisper fallback, DeepSeek official LLM tool calling,
+  Volcano bidirectional TTS, guarded direct-drive, and voice-to-grasp orchestration.
 - `project_link_fall_response`: second-camera fall assessment, SiliconFlow
   vision call, TTS alert, and Feishu bot notification bridge.
 - `project_link_visual_grasp`: headless Orin YOLO-World camera, SO-101 control,
   and visual-servo ROS services/actions.
+- `project_link_vl53l0x`: sole serial owner for the ESP32-C3 VL53L0X bridge;
+  publishes the SO-101 end-effector Range topic and status only.
 - `project_link_uwb_interfaces`: UWB observation message and long-running
   summon/follow Action interface.
 - `project_link_uwb_navigation`: bounded BU04 serial decoder, calibration and
@@ -517,6 +528,22 @@ asks for persistent shell configuration.
 ## Update And Git Rules
 
 - Treat GitHub as the source of truth for repository files.
+- `main` is the sole long-lived integration and development branch. Routine
+  work should be based directly on the latest `main`; do not create feature,
+  experiment, or worktree branches unless the user explicitly requests one or
+  a special isolation requirement has first been explained and approved.
+- Consolidate every change that is still needed from existing branches onto the
+  latest `main`, verify the combined result there, then archive experimental,
+  superseded, and otherwise unnecessary branches and remove their active
+  worktrees. Archived experimental code must remain recoverable through an
+  annotated tag or an `archive/*` remote ref, but must not remain an active
+  development line.
+- Do not commit speculative work merely to save it. For an uncertain experiment,
+  keep the relevant changes uncommitted while testing them; if the result is not
+  useful, discard only that experiment without disturbing unrelated user work.
+  If it is useful and verified, make a coherent commit directly on `main`.
+- Do not rewrite published `main` history to make it look cleaner. Restore order
+  through forward commits, merges, archival tags, and branch/worktree cleanup.
 - Do not update Orin repository files by directly copying over them with `scp`,
   ad-hoc shell writes, or other out-of-band replacement methods.
 - Preferred update path:
@@ -563,9 +590,11 @@ priority, update:
   `map -> base_footprint` are healthy and a physical E-stop is available.
 - Do not run `ab_drive_server` concurrently with
   `scripts/rviz_ab_drive.py --enable-motion`; both publish `/cmd_vel`.
-- FunASR `fsmn-vad` replaces RMS recording cutoff. Keep its model and the
-  faster-whisper model pre-downloaded on Orin; use an Orin-specific virtual
-  environment with a JetPack-compatible PyTorch build.
+- FunASR `fsmn-vad` replaces RMS recording cutoff. Production defaults to
+  Volcano bidirectional streaming ASR while 20 ms PCM capture also feeds FunVAD;
+  `PROJECT_LINK_ASR_PROVIDER=faster_whisper` is an explicit manual fallback only.
+  Keep both optional local models pre-downloaded on Orin and use a JetPack-compatible
+  PyTorch build for FunASR.
 - Voice motion is LLM-selected but Python-executed: ASR text goes to the
   official DeepSeek API for Tool Calling, the LLM chooses only whitelisted tools, and Python validates
   named map waypoints plus SLAM/TF readiness before creating a pending task.
@@ -593,12 +622,23 @@ priority, update:
   such as `停止`, `取消`, `退出`, `退下`, and `休息` bypass the LLM, cancel active
   motion/grasp/demo work, speak the same fixed reply, and end the session. A
   silence-only session timeout must not cancel an already running robot task.
+- Stable voice USB identity is mandatory: udev maps WCH serial `0004` from
+  `/dev/serial/by-id/usb-WCH.CN_USB_Single_Serial_0004-if00` to
+  `/dev/project_link_wakeup`; PyAudio matches the iFlytek microphone by
+  `XFM-DP-V0.0.18`; pygame uses PulseAudio sink
+  `alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo`.
+  Do not restore ttyACM, PyAudio-index, or ALSA-card-number defaults.
 - Voice interactions use one `trace_id` across VAD, ASR, DeepSeek Tool Calling,
   Python tool execution, and Volcano TTS. Keep ordinary debug events in
   `~/.ros/project_link_voice/voice_debug.jsonl` and timing-only events in
   `voice_timing.jsonl`; new files are private mode `0600`. Timing console lines
   use `[VOICE_TIMING]`. Disable ordinary debug logging when recognized-text
   previews must not be persisted, without disabling timing diagnostics.
+- DeepSeek requests force `thinking.type=disabled`. LLM text streams into the
+  Volcano bidirectional TTS session; first PCM plays immediately, stale TTS
+  generations are discarded, a cached `好的。` may play after 500 ms if the
+  formal answer has not produced audio, and cache lookup is exact normalized
+  text only. Do not merge or depend on the independent S2S branch.
 - API secrets live only in `/home/wte/.config/project_link/voice_api.env`, which
   must be sourced before launch. Do not commit `DEEPSEEK_API_KEY`,
   `SILICONFLOW_API_KEY`,
@@ -651,6 +691,193 @@ priority, update:
 - Runtime GUI tuning and recorded poses live under
   `~/.config/project_link/visual_grasp/` on Orin. Do not write runtime changes
   into Git-tracked YAML files on the robot.
+- End-effector ToF uses `project_link_vl53l0x` and
+  `/visual_grasp/tof_range`. The Windows bench GUI and ROS node must never own
+  the ESP32 serial port at the same time.
+- `tof_enabled` and `tof_control_enabled` default false. Validate shadow mode
+  first; enable control only after the mounted sensor's grasp distance is
+  measured and `tof_calibrated=true` is explicitly set. In control mode stale/invalid range must hold approach motion and
+  must not fall back to bounding-box-area closure.
+- The moving SO-101 sensor is not a fixed child of the chassis xacro. Do not add
+  a fake static TF; publish `so101_tof_link` until a real arm URDF/joint-state
+  chain exists. Never add this end-effector Range topic to Nav2 costmaps.
+- `tools/windows_visual_grasp_lab` is the non-ROS Windows hardware console. It
+  directly owns the camera, SO-101 COM port, and ESP32 COM port during bench
+  tests. Never run it concurrently with the old VisualTracker, the standalone
+  VL53L0X Monitor, or the Orin ROS hardware nodes.
+- The Windows console must remain fail-safe on startup: no automatic arm
+  connection, no automatic torque, and no ToF control until calibration is
+  explicitly confirmed. Keep the visible emergency stop/torque-off command.
+- The Windows console is a supported direct-hardware mode, not only a temporary
+  bench preview. Its refresh control and arm-torque control must remain in a
+  vertical non-overlapping layout, and the joint page must remain scrollable.
+- Windows SO-101 calibration must use the shared non-interactive sequence:
+  start and disable torque, record the middle, sample every joint and gripper
+  through the full safe range, finish/save, or cancel. Never call LeRobot's
+  terminal-driven `robot.calibrate()` from the Qt process.
+- During Windows calibration, disable normal connection, torque, gripper,
+  presets, demonstration and automatic grasp controls. Keep the Windows field
+  tutorial synchronized at
+  `docs/WINDOWS_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md`.
+- Windows torque-off demonstration for visual-approach fitting must keep the
+  selected YOLO target active and record flat time-series columns for frame
+  size, expected center, bbox position/center/area, normalized errors,
+  trusted/sequence state, ToF, and all six joints. Do not redesign the learned
+  approach trajectory until the operator supplies a real visual demo CSV.
+- LeRobot `SO101Follower.connect()` runs `configure()`, whose torque-disabled
+  context re-enables torque on exit. The shared wrapper must immediately issue
+  its own torque-off after connect and must not report a safe disconnected state
+  until that step has been attempted.
+- Feetech overheat/status errors must not stop the torque-off loop at the first
+  motor. Retry each motor, send a no-response sync write of `Torque_Enable=0`,
+  then read back the register when possible. A hardware-fault latch blocks
+  torque enable and calibration until power-off, cooling and a clean reconnect.
+- Serial shutdown must close the bus with `disable_torque=False` after the
+  wrapper's own torque-off attempt. Never call the LeRobot disconnect path in a
+  way that can skip `closePort()` because a motor status packet raised first.
+- All SO-101 bus operations shared by Qt workers, status timers and control
+  callbacks must use the wrapper's reentrant I/O lock. Read-only joint polling
+  must be non-blocking and skip a cycle while another thread owns the bus.
+- A simultaneous `Port is in use` result from every motor can be the Feetech
+  SDK's in-process `port_handler.is_using` guard, not an external Windows COM
+  owner. Only while holding the wrapper I/O lock, clear a stale true flag and
+  retry torque-off once before escalating to physical power-off.
+- A present LeRobot calibration file with mismatched motor EEPROM values is not
+  automatically a request for a new physical calibration. With torque confirmed
+  off, reapply the loaded file once and read it back. Enter `REQUIRED` only when
+  no file exists or restore verification still fails, and report field-level
+  offset/range differences.
+- Calibration completion must write the motors, run configuration, restore
+  torque-off, verify `is_calibrated`, and only then save/report `READY`.
+- STS3215 `Present_Position` may use bit 15 as sign-magnitude when a homed joint
+  crosses zero. Calibration sampling must decode that representation before
+  tracking extrema. Recenter the completed range by adjusting the homing offset
+  so every saved limit is within the model's `0..resolution-1` register range.
+- Reject legacy or newly generated calibration files whose min/max limits fall
+  outside the motor resolution. Values such as `32774` or `32952` are wrapped
+  negative positions, not valid 12-bit limits, and cannot be silently clamped.
+- Keep Windows preset permissions separate: recording requires connected,
+  calibrated and confirmed torque-off; executing presets/manual arm commands
+  requires connected, calibrated and torque-on. Never use one shared UI-ready
+  predicate for both groups.
+- Preset arrival feedback takes precedence over the timeout boundary. A true
+  timeout must report per-joint remaining error in the Windows runtime log;
+  controller `ERROR` transitions must never remain visible only in the status
+  label. Automatic grasp must reject a pregrasp pose outside the visual-servo
+  soft limit before commanding motion.
+- A complete five-joint action must be written without a redundant pre-write
+  observation. Read feedback only to fill genuinely partial commands and in the
+  separate arrival-confirmation path; a transient final feedback failure must
+  retry rather than convert an already completed move into `ERROR`.
+- Presets must remain inside `preset_joint_limit`, default `+/-95` normalized.
+  Values near `+/-100` are calibrated travel endpoints, not reliable operating
+  poses. Reject them during recording and before motion instead of relaxing
+  arrival tolerance enough to hide a physically unreachable joint target.
+- Standby is the deliberate exception because it is an unloaded, supervised
+  storage/initial pose. It may use `standby_joint_limit=99.5`; pregrasp and
+  placement must continue using the stricter operational preset limit. Never
+  generalize the standby exception to automatic visual-servo poses.
+- Keep the general preset arrival tolerance strict at `2.0`, but allow the
+  gravity-loaded elbow its separate default `elbow_arrive_threshold=5.0`.
+  Expose both values in the Windows parameter panel; do not widen every joint
+  merely to accommodate normal elbow compliance.
+- LeRobot `SO101Follower.send_action()` is non-blocking and provides no arrival
+  event. Preset completion must combine strict consecutive position checks with
+  a bounded stable-near-target hysteresis; never treat a single `2.03 > 2.00`
+  sample as proof of failure, and never use hysteresis to accept endpoint-scale
+  errors.
+- Keep the Windows JSONL debug mode available and enabled by default during
+  field diagnosis. It must log config, presets, calibration, per-tick desired
+  and normalized feedback, completion mode, and an error-time raw Feetech
+  register snapshot. It must not record camera frames or model assets.
+- Centering corrections may saturate at `joint_command_limit` without an
+  immediate controller error. Clamp the command, log requested versus sent,
+  and allow bounded target response time measured in fresh detector results.
+  Abort only after the configured consecutive limit-hold cycles; approach
+  motion remains fail-closed.
+- The Windows console must keep one-click servo-center calibration. Map clicks
+  from the scaled, letterboxed QLabel back into original frame pixels before
+  deriving `center_offset_x/y`; save immediately and log the selected point.
+- Visual-servo inputs must reject implausible YOLO center/area jumps and prefer
+  association with the previous box. A detector result may drive at most one
+  servo command; never let the faster GUI timer repeatedly command from a stale
+  box. Centering must use a short robust error window, adaptive coarse/fine step
+  limits, and consecutive centered confirmation. The current camera mount uses
+  `tilt_direction=-1`. Do not restore frame-by-frame reactions to raw
+  highest-confidence boxes.
+- Visual-servo increments may need to accumulate to overcome SO-101 gravity and
+  static friction. Keep the accumulated target bounded relative to current
+  feedback through `centering_max_command_lead`; never repeatedly send the same
+  ineffective tiny target, and never allow unbounded open-loop accumulation.
+- Apply the same bounded-target rule to approach through
+  `approach_max_command_lead`. ToF invalidity, joint limits, and total grasp
+  timeout must still take precedence over accumulated motion.
+- The first close-range handoff uses `FINAL_APPROACH`. Before handoff, YOLO is
+  mandatory; after a bbox-size plus ToF near-field gate, YOLO loss is expected
+  and final motion may use only valid ToF plus the bounded taught
+  shoulder/elbow/wrist profile.
+  Invalid ToF, final timeout, blind-travel limit, or joint soft limits must stop
+  fail-closed. A large bbox alone must never authorize blind motion at far ToF.
+  The current operator-selected final close threshold is
+  `final_grasp_tof_m=0.090`; do not increase travel limits merely to reach it.
+  After commanding the saved endpoint, allow only the bounded
+  `final_approach_endpoint_settle_sec` feedback window before failing.
+- Default centering must not use shoulder lift as a vertical image correction;
+  that physical extension was mistaken for approach and drove the object out of
+  frame. When tilt motion is disabled, use horizontal centering as the motion
+  gate and treat the lower vertical target as a guide for the taught approach.
+- `auto_lock_vertical_center_on_pregrasp` defaults false. A manual preview click
+  must disable it immediately, clear any per-run lock, and persist the selected
+  `center_offset_x/y`. If the operator explicitly enables auto lock, the first
+  trusted bbox may define a temporary vertical reference plus the configurable
+  lower `auto_lock_vertical_center_offset_ratio`.
+  Repeated detector sequence numbers must not overwrite the last meaningful
+  controller status. If visual handoff is enabled, reject grasp startup unless
+  ToF enabled/control/calibrated gates are all true.
+- Keep the Windows parameter pane vertically scrollable. Parameter spin boxes
+  must ignore mouse-wheel changes so page scrolling cannot silently retune the
+  arm. Preserve one-click restore-saved and recommended-profile controls; a
+  recommended reset must not overwrite ports, model path, or servo-center offsets.
+- Detection tracking is camera-only and must not move the arm. Automatic grasp
+  owns the explicit sequence open gripper -> pregrasp -> centering -> approach
+  -> grasp. Standby and placement remain explicit operator/orchestrator steps.
+- Controller stop defaults to `IDLE`; only a deliberate motion-stop request may
+  preserve the non-moving `TRACKING` state while the detector remains active.
+  A normal stop must first send a complete current-joint hold command. Emergency
+  stop skips that hold and disables torque immediately.
+- Never restore the old fixed elbow polynomial used by visual approach. On the
+  current calibration it converted a shoulder lift near `-80` into an elbow
+  goal near `+83`, causing a dangerous downward strike. The current profile is
+  targets the saved pregrasp shoulder endpoint plus the supervised demo deltas
+  `lift +34`, `elbow +12.3`, `wrist -54`, while interpolating from actual
+  feedback and enforcing a per-command jump gate. Do not shorten the endpoint
+  merely because stable-near preset arrival stopped a few units early.
+- Vertical click coordinates remain a visual/taught reference while shoulder
+  tilt correction is disabled. Physical final-height tuning uses only the
+  bounded `approach_profile_wrist_trim` in `-10..+10`; never silently map a
+  large pixel Y error back onto shoulder lift.
+- Preset motion must use a coordinated time-based trajectory for all five arm
+  joints. Do not restore the old feedback-increment algorithm or defer pan until
+  every other joint has extended; that causes visible jitter and unsafe shape
+  changes before rotation.
+- Visual centering deltas must be bounded per cycle. Approach must fail closed
+  at the configured normalized joint soft limit or grasp timeout instead of
+  continuing toward the mechanical endpoint when box/ToF closure never occurs.
+- Successful recalibration invalidates all recorded presets. Clear runtime poses
+  and require standby/pregrasp/placement to be recorded again under the new
+  normalization.
+- The current legacy VisualTracker venv may point to an uninstalled Python 3.12
+  runtime. The Windows launcher must test candidate interpreters before use and
+  skip broken environments. Rebuild the repository `.venv` before claiming the
+  offscreen GUI or real hardware has been validated on Windows.
 - Before torque, manual approach, or `TrackAndGrasp` action tests, verify a clear
   workspace and physical E-stop/power-cut procedure. The scheduler action is
   only valid after navigation reaches a safe manipulation pose.
+- SO-101 connection must use `connect(calibrate=False)` and fail clearly when
+  calibration is missing. Never let the headless Orin node block on LeRobot's
+  interactive `input()` calibration. Remote calibration is a four-step ROS
+  flow: start/disable torque, record middle, record full ranges, finish/save.
+- During calibration, support the arm by hand, do not issue grasp/preset
+  commands, and require every joint including the gripper to move through a
+  safe nonzero range. The field runbook is
+  `docs/SO101_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md`.

@@ -22,7 +22,7 @@ another `/cmd_vel` publisher.
 
 ## Current Status
 
-- Date: 2026-08-04.
+- Date: 2026-08-10.
 - Main onboard computer: Jetson Orin Nano.
 - Orin workspace: `/home/wte/wheeltec_robot`.
 - Old Orin workspace backup: `/home/wte/wheeltec_robot_backup_20260627_1250`.
@@ -45,6 +45,11 @@ another `/cmd_vel` publisher.
   reflash is needed. Orin also parsed 288/288 valid frames from native USB
   `/dev/ttyACM1` in 10 seconds (`28.8 Hz`); the next gate is installing the stable
   alias through the GitHub update flow and running ROS shadow validation.
+- The ESP32-C3 + VL53L0X USB bridge firmware and Windows GUI are bench-verified.
+  A valid 43 mm sample with status 0 was captured. The repository now includes
+  the headless `project_link_vl53l0x` sensor_msgs/Range serial node; Orin build
+  and mounted-sensor field validation remain pending. The bench GUI and ROS node
+  must never own the same USB serial port simultaneously.
 
 ## Repository Layout
 
@@ -68,6 +73,7 @@ docs/C63A_BASE_AND_SLAM_HANDOFF.md
 docs/SITE_VOICE_MOBILE_MANIPULATION_RUNBOOK.md
 docs/NAVIGATION_TWO_HANDOFF.md
 docs/UWB_SUMMON_AND_FOLLOW_HANDOFF.md
+docs/ESP32_C3_VL53L0X_USB_ROS2_HANDOFF.md
 ```
 
 Important ROS 2 packages:
@@ -742,6 +748,7 @@ The voice node never publishes production `/cmd_vel` in Nav2 mode. A named
 waypoint task requires `确认开始`; `停止` or `取消` bypasses the LLM and cancels the
 active Nav2 and grasp goals. The wake response is cached locally at
 `~/.cache/project_link_voice/wakeup_ack.mp3` and finishes before recording.
+
 One wake event now starts a bounded continuous conversation. After every reply
 finishes playing, the microphone automatically opens for the next turn; 8
 seconds of follow-up silence returns to wake wait. `停止`, `取消`, `退出`, `退下`,
@@ -796,18 +803,25 @@ the OS default audio output; Volcano TTS uses the default pygame output device.
 Every microphone or `/voice_demo/text_input` request has a `trace_id`.
 Per-stage timing is printed with `[VOICE_TIMING]` and persisted to
 `~/.ros/project_link_voice/voice_timing.jsonl`; ordinary state/debug events go
-to `~/.ros/project_link_voice/voice_debug.jsonl`. The measured phases include
-FunVAD recording, faster-whisper ASR, DeepSeek API/response parsing, Python tool
-execution, TTS dispatch, first audio, synthesis completion, and total latency.
+to `~/.ros/project_link_voice/voice_debug.jsonl`. The measured boundaries include
+speech-end to FunVAD endpoint, VAD to ASR final, ASR to DeepSeek send, Tool Call,
+Python execution, TTS first PCM, and first actual playback. Summarize recent
+samples with:
+
+```bash
+python3 src/project_link_voice/tools/summarize_voice_timing.py --last 20
+```
 
 The path is:
 
 ```text
-serial wake event -> FunASR fsmn-vad endpointing -> faster-whisper
+serial wake event -> 20 ms PCM capture
+-> FunASR fsmn-vad endpointing + Volcano bidirectional streaming ASR in parallel
 -> DeepSeek official LLM Tool Calling
 -> Python safety validation and spoken confirmation
 -> Nav2 /navigate_to_pose in production, or /voice/drive_to_point as fallback
 -> optional /visual_grasp/track_and_grasp after arrival
+-> Volcano bidirectional streaming TTS, first PCM played immediately
 ```
 
 Safety rules:
@@ -851,6 +865,10 @@ chmod 600 /home/wte/.config/project_link/voice_api.env
 Required values:
 
 ```bash
+export PROJECT_LINK_ASR_PROVIDER=volcano
+export VOLCANO_ASR_API_KEY=...
+export VOLCANO_ASR_RESOURCE_ID=volc.seedasr.sauc.duration
+export VOLCANO_ASR_ENDPOINT=wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async
 export DEEPSEEK_API_KEY=...
 export VOLCANO_APP_ID=...
 export VOLCANO_ACCESS_TOKEN=...
@@ -859,13 +877,50 @@ export VOLCANO_SPEAKER=...
 export QWEATHER_API_KEY=...   # optional; weather tool only
 ```
 
+`PROJECT_LINK_ASR_PROVIDER=volcano` is the production default. To make an
+explicit offline test with the retained local recognizer, set:
+
+```bash
+export PROJECT_LINK_ASR_PROVIDER=faster_whisper
+export PROJECT_LINK_WHISPER_MODEL=/home/wte/.cache/project_link/models/faster-whisper-small
+```
+
+There is no automatic cloud-to-Whisper fallback and the Whisper model is not
+prewarmed in Volcano mode. DeepSeek requests force
+`thinking: {type: disabled}`. LLM text is streamed into the Volcano bidirectional
+TTS session; the first PCM packet is queued immediately and later audio is
+aggregated in 60 ms chunks. The pygame mixer uses a 512-sample buffer by default.
+If no formal TTS first packet exists 500 ms after
+FunVAD ends, the local cached `好的。` prompt is played only while the speaker is
+idle. Fixed phrases use persistent metadata-checked MP3 cache; repeated dynamic
+full-text replies use bounded TTL/LRU PCM cache.
+
+The one-command launchers fail before starting ROS nodes if Volcano is selected
+but no ASR credential is present. TTS `VOLCANO_APP_ID` / `VOLCANO_ACCESS_TOKEN`
+must not be assumed to have ASR entitlement; use the dedicated
+`VOLCANO_ASR_API_KEY` from the Speech API Key page unless a legacy ASR app/token
+pair is known to be authorized.
+
 Source it before launching voice:
 
 ```bash
 source /home/wte/wheeltec_robot/scripts/project_link_env.sh
 source /home/wte/.config/project_link/voice_api.env
+source /home/wte/wheeltec_robot/scripts/project_link_voice_io.sh
 source /home/wte/wheeltec_robot/install/setup.bash
 ```
+
+Install the stable USB bindings once:
+
+```bash
+cd /home/wte/wheeltec_robot
+bash scripts/install_project_link_voice_io_aliases.sh
+```
+
+The wake board is fixed at `/dev/project_link_wakeup` from USB serial `0004`.
+The iFlytek microphone is selected by name and the C-Media USB speaker is bound
+through its stable Pulse sink, so USB replug order no longer changes capture or
+playback devices.
 
 Pre-download models while the Orin has network access, then preserve the model
 cache for offline operation:
@@ -1000,6 +1055,9 @@ ros2 launch project_link_fall_response fall_response.launch.py camera_device:=/d
 cd /home/wte/wheeltec_robot
 ./scripts/start_visual_grasp_tmux.sh --restart
 
+# 加载末端 VL53L0X 影子监看或距离闭环时
+./scripts/start_visual_grasp_tmux.sh --restart --with-tof
+
 # Ubuntu GUI（与 Orin 使用相同 ROS_DOMAIN_ID=42）
 ros2 run project_link_visual_grasp_gui visual_grasp_gui
 ```
@@ -1008,3 +1066,160 @@ ros2 run project_link_visual_grasp_gui visual_grasp_gui
 `~/.config/project_link/visual_grasp/`，不会改写仓库配置。接口、调度 action 与部署
 检查见 `docs/VISUAL_GRASP_INTERFACE.md` 和 `docs/VISUAL_GRASP_ORIN_SETUP.md`。先确认
 机械臂空间安全并保留物理急停，再连接、启用扭矩或开始抓取。
+
+第一次装机或校准文件失配时，使用 GUI 的四步 LeRobot 校准面板，不要依赖 Orin
+后台终端输入。完整现场流程见
+`docs/SO101_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md`。
+
+末端测距由独立 `project_link_vl53l0x` 节点拥有串口并发布
+`/visual_grasp/tof_range`。默认 `tof_enabled=false`；先启用影子模式验证距离和
+`WOULD_GRASP` 决策，再经现场标定后启用 `tof_control_enabled=true`。控制模式下，
+ToF 数据过期或不足会让机械臂保持停止，不会退回目标框面积自动夹取。
+抓取入口还要求显式设置 `tof_calibrated=true`，避免把仓库中的占位距离当成实测阈值。
+
+### Windows 一体化测试台
+
+现场上 Orin 前，或需要完全在 Windows 上运行时，可直接测试摄像头、YOLO-World、
+SO-101 六关节、夹爪、三组预设姿态、卸力示教、VL53L0X、影子判断和完整自动抓取。
+Windows GUI 还提供非交互式 LeRobot 中位与全行程校准，不需要在终端按 Enter。该工具
+不依赖 ROS 2，默认不连接机械臂、不启用扭矩、不启用 ToF 控制：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_windows_visual_grasp_lab.ps1
+```
+
+启动脚本会自动寻找原 `VisualTracker` 虚拟环境并加载其本地 LeRobot 源码。运行前必须
+关闭旧 VisualTracker、VL53L0X Monitor、Orin 视觉抓取节点和其他占用相同 COM 口或
+摄像头的程序。GUI 的刷新串口和机械臂扭矩控制使用上下独立布局，小窗口下也不会占用
+同一位置。完整初始化、校准、参数和第一次抓取流程见
+`docs/WINDOWS_VISUAL_GRASP_INITIALIZATION_TUTORIAL.md`；快速入口见
+`tools/windows_visual_grasp_lab/README.md`。
+
+如果脚本提示旧 VisualTracker venv 无法启动，它会自动跳过该环境。当前电脑上的旧 venv
+可能仍指向已卸载的 Python 3.12；按 Windows 完整教程在仓库创建新的 `.venv`，安装依赖
+后再运行 `-CheckOnly` 和 `-SmokeTest`。
+
+Windows 机械臂连接后会立即再次关闭 LeRobot `configure()` 临时启用的扭矩。若单个
+Feetech 电机因过热拒绝普通写入，程序会逐电机重试、同步广播断扭矩并读取确认；断开时
+无论断扭矩结果如何都会继续释放 COM 口。任何 `Overheat error` 都必须物理断电冷却，
+禁止继续校准或重新启用扭矩。
+
+Windows GUI 的连接、校准、关节读取和运动命令共享同一个可重入总线锁。连接或校准
+工作线程运行时，500 ms 状态刷新不会再并发读取关节；若 Feetech SDK 因此前异常遗留
+内部 `Port is in use` 标志，断扭矩路径会在独占总线后清除该标志并重试。
+
+LeRobot 校准文件使用固定 ID `so101_slave`。连接时若文件已经加载但电机 EEPROM 与
+文件不一致，Windows 控制台会在扭矩关闭状态下自动重写已保存校准并读回验证；只有
+自动恢复仍失败时才进入 `REQUIRED`，同时报告每个关节的 offset/min/max 差异。
+
+Windows 校准采样会把 STS3215 的 16 位 sign-magnitude 负位置解码为有符号值，再根据
+实测完整行程调整 homing，使最终 min/max 落入硬件合法的 `0..4095`。旧文件若包含
+`327xx/329xx` 范围值会被判为不可恢复，必须用新版重新校准一次，禁止继续把它写入
+12 位位置限位寄存器。
+
+Windows 预设姿态权限已按扭矩状态拆分：扭矩关闭时录制，扭矩开启时前往。目标跟踪是
+纯视觉状态，不会自动移动机械臂；自动抓取固定执行
+`打开夹爪 → pregrasp → CENTERING → APPROACHING → GRASPED`。`standby` 用于任务前后
+收拢，`placement` 在抓取成功后由操作员或任务中枢明确调用。
+
+预设位执行改为五关节同步平滑插值，不再使用“按当前反馈追一步、最后才转底座”的分段
+算法。视觉居中修正受单周期步长限制，逼近受 `joint_command_limit` 和
+`grasp_timeout_sec` 保护；没有满足检测框或 ToF 夹取条件时会在软限位前停止。重新校准
+会清除旧预设，要求现场重新录制。
+
+Windows 控制器状态变化现在会写入“参数与日志”页。预设轨迹到达超时边界时先读取反馈，
+只要关节已经处于 `arrive_threshold` 内就按到位处理；真正未到位的超时会列出各关节剩余
+误差。自动抓取在移动前还会检查 `pregrasp` 是否超出 `joint_command_limit`，避免到位后
+刚进入视觉伺服就立即显示 `ERROR`。
+
+完整五关节轨迹命令不再在每次串口写入前执行一次冗余反馈读取。此前这次读取若在轨迹
+末尾偶发失败，会出现机械臂已经到位、控制器却立即进入 `ERROR` 的假故障。现在写命令和
+到位反馈确认相互独立，短暂反馈失败只会等待下一次确认。
+
+预设位还受 `preset_joint_limit` 保护，默认要求五个关节处于归一化 `+/-95` 以内。接近
+`+/-100` 的值代表校准行程端点，机械臂在负载、摩擦或机械限位影响下通常无法稳定达到；
+录制和执行都会拒绝这种预设，而不是等待超时或把较大的实际误差伪装成到位。
+
+待机位是例外：它是无抓取负载、由操作员监督执行的收拢/初始姿态，可以使用独立的
+`standby_joint_limit=99.5`。因此待机位可保存到比抓取位和放置位更靠近校准端点的位置；
+`pregrasp` 和 `placement` 仍保持 `preset_joint_limit=95`，避免操作姿态顶住机械限位。
+
+预设到位默认对普通关节使用 `arrive_threshold=2.0`，对承受较大重力和齿隙影响的肘关节
+单独使用 `elbow_arrive_threshold=5.0`。Windows 参数页显示这两个值；不要为了肘关节
+残差而把所有关节的统一容差一起放宽。
+
+对 `2.03` 对 `2.00` 这类硬阈值边缘误差，控制器还会在
+`arrive_stable_margin=0.75` 范围内检查反馈是否连续稳定，而不是直接等到超时报错。
+Windows 测试台默认生成
+`%APPDATA%\ProjectLINK\visual_grasp_lab\logs\visual_grasp_debug_*.jsonl`，记录逐周期目标、
+反馈、校准数据和错误瞬间的 Feetech 诊断寄存器，现场复现后可直接提交该文件排查。
+
+视觉居中如果单帧修正略微超过 `joint_command_limit`，现在会把该关节安全钳位在软限位
+并继续观察目标响应，不再第一帧直接进入 `ERROR`。只有连续
+`centering_limit_hold_cycles=3` 个新 YOLO 结果仍顶住软限位且无法居中，才会停止并要求重新录制
+离限位更远的待抓取位或调整画面中心偏移。
+
+Windows 视频画面会以黄色十字显示 `center_offset_x/y` 对应的视觉伺服期望中心，以绿色
+圆点显示检测框中心，并用连线显示误差方向。更换摄像头位置或重新校准机械臂后，应先将
+偏移归零观察，再小步调整，不能直接沿用旧相机安装产生的较大偏移值。
+
+Windows 视频下方提供“点击画面设置视觉抓取中心”。开启后在实际视频内容上点击一次，
+程序会正确处理画面缩放和黑边，将点击坐标换算为原始摄像头像素，立即更新并保存
+`center_offset_x/y`。该点是视觉伺服希望检测框中心对齐的位置，不是三维机械臂位姿。
+界面同时提供“使用当前绿色圆点”，可直接把当前检测框中心设为对齐位置。不要把按钮理解
+为选择瓶身的夹爪接触点。当前 `centering_tilt_motion_enabled=false` 时，点击点的 X 坐标用于
+真实水平居中，Y 坐标作为画面和试教轨迹参考；需要改变实际抓取高度时应微调并重新录制
+pregrasp，而不是让 shoulder lift 在居中阶段追逐画面 Y 误差。每次手动点击都会自动关闭
+`auto_lock_vertical_center_on_pregrasp`，因此自动抓取不会再覆盖刚保存的点位。
+
+实际抓取高度另由 `approach_profile_wrist_trim` 微调。它只改变最终 wrist flex 数值，不改变
+肩关节总行程、ToF 阈值或其它关节轨迹，并在核心中强制限制为 `-10..+10`。现场发现夹爪
+偏低时先试 `+2`；如果实际方向相反，立即恢复 `0` 后再试 `-2`，每次只改 2 个单位。
+
+为抑制 YOLO 框偶发抽动，跟踪器会优先关联上一稳定框，拒绝中心瞬移或面积突变的候选，
+并短暂保持上一稳定框。每个新 YOLO 推理结果最多只允许下发一次视觉伺服命令，旧框不会
+被 GUI 定时器重复使用。视觉居中使用最近 3 个新结果的中值，至少观察 2 个新结果，
+大偏差最多修正 `1.5`，进入 `centering_slow_zone=0.12` 后自动减速，并连续 2 次确认居中
+后才进入逼近。当前相机安装的纵向方向为 `tilt_direction=-1`；若方向设反，框会越调越远。
+若受重力或静摩擦影响，单个 `1.5` 目标不足以让肩关节启动，控制器会逐个新检测结果累计
+命令目标，但相对实际反馈最多领先 `centering_max_command_lead=4.0`，避免永远重复同一个
+小目标，也避免无边界地把命令推向关节端点。
+逼近阶段使用相同的有界累计策略，默认 `approach_max_command_lead=4.0`；到达软限位、
+抓取超时或 ToF 数据失效时仍然立即停止或保持，不会因为累计目标绕过安全保护。
+被拒绝的跳变帧会以橙色 `HELD` 框显示；这些帧只用于提示，视觉伺服完全停止发命令，
+直到重新得到可信检测框。
+
+Windows “参数与日志”页的参数区域可独立上下滚动，数值框已禁用鼠标滚轮修改，避免滚动
+页面时误改参数。顶部提供“撤销修改（恢复已保存）”和“一键恢复推荐参数”；推荐参数复位
+会保留摄像头、串口、模型路径和已经选好的画面对齐位置。
+
+Windows 卸力示教现在保持 YOLO 目标跟踪，并将每个样本平铺记录到
+`%APPDATA%\ProjectLINK\visual_grasp_lab\demos\visual_demo_*.csv`。字段包括六关节、bbox
+坐标/中心/面积比例、目标中心误差、检测可信状态与序号、画面尺寸和 ToF。该数据用于现场
+人工示教正确的“居中后水平逼近”视角。当前已使用 `visual_demo_20260810_190054.csv`
+提取相对轨迹：肩关节约 `+34`、肘关节约 `+12.3`、腕关节约 `-54`。
+
+旧版逼近中的固定肘关节多项式已经删除。现场日志证明，当 shoulder lift 约为 `-80` 时，
+旧公式会直接生成约 `+83` 的 elbow flex 目标，造成末端向地面快速下压。新版所有逼近命令
+从真实关节反馈开始插值，但 shoulder lift 终点固定为“保存的 pregrasp +34”，避免预设位以
+`stable_near` 少到位约 2–3 个单位后又把整条抓取轨迹截短。系统通过
+`visual_servo_max_joint_step=6` 在发送前拒绝任何单次大跳变。普通“停止运动”会立即读取并
+保持当前五关节位置，避免电机继续追逐上一条目标；红色紧急停止仍优先直接关闭扭矩。
+
+第一版近距离抓取采用显式视觉交接。`CENTERING` 默认设置
+`centering_tilt_motion_enabled=false`，只允许肩部水平旋转，不再通过 shoulder lift 伸臂
+修正纵向误差。进入 `APPROACHING` 后，当 bbox 高度达到画面 `85%`、面积达到 `18%`，或
+ToF 小于 `0.19 m`，并且 ToF 不超过 `0.21 m` 的近场门时，状态切换为
+`FINAL_APPROACH`。该阶段允许 YOLO 因遮挡或画面裁切而消失，只使用有效 ToF 和有界的
+试教 shoulder-lift/elbow/wrist 水平轨迹；ToF 无效时保持，超过 `6 s`、盲走肩关节 `20`
+个归一化单位或到达保存的 pregrasp `+34` 终点时失败关闭。按当前现场要求，最终闭合阈值为
+`final_grasp_tof_m=0.090`。终点命令下发后仅等待
+`final_approach_endpoint_settle_sec=0.75` 让关节反馈和 ToF 更新；该调整不会自动放宽超时、
+盲走或关节行程上限。
+Windows 默认关闭 `auto_lock_vertical_center_on_pregrasp`，自动抓取使用并保留用户点击保存
+的 `center_offset_x/y`。只有明确开启自动锁定时，第一帧可信绿色框才会建立临时纵向参考，
+并通过 `auto_lock_vertical_center_offset_ratio=0.10` 将黄色目标点向下移动框高 `10%`。
+关闭纵向关节修正时，进入逼近只要求水平居中。重复显示的同一 YOLO 结果不再覆盖控制器
+消息，因此界面不会在“纵向
+未对齐”和“等待新帧”之间闪烁。视觉交接开启时，自动抓取启动前强制要求
+`tof_enabled`、`tof_control_enabled`、`tof_calibrated` 全部开启。
