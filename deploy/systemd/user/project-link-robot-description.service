@@ -1,6 +1,6 @@
 [Unit]
 Description=Project LINK robot description and sensor transforms
-PartOf=project-link-mapping.target project-link-rf2o-fallback.target
+PartOf=project-link-platform.target
 
 [Service]
 Type=simple

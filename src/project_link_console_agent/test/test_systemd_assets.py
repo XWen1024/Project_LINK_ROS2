@@ -33,3 +33,16 @@ def test_targets_preserve_mapping_when_navigation_stops():
     assert f"Requires={UNITS['mapping_target']} {UNITS['nav2']}" in navigation
     assert f"PartOf={UNITS['navigation_target']}" in nav2
     assert f"PartOf={UNITS['navigation_target']}" not in mapping
+
+
+def test_mutually_exclusive_modes_share_a_neutral_platform_target():
+    unit_dir = DEPLOY_ROOT / "user"
+    mapping = (unit_dir / UNITS["mapping_target"]).read_text(encoding="utf-8")
+    rf2o = (unit_dir / UNITS["rf2o_target"]).read_text(encoding="utf-8")
+    assert UNITS["platform_target"] in mapping
+    assert UNITS["platform_target"] in rf2o
+    for key in ("base", "lidar", "robot_description", "scan"):
+        source = (unit_dir / UNITS[key]).read_text(encoding="utf-8")
+        assert f"PartOf={UNITS['platform_target']}" in source
+        assert f"PartOf={UNITS['mapping_target']}" not in source
+        assert f"PartOf={UNITS['rf2o_target']}" not in source

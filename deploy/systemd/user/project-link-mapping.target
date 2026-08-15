@@ -1,5 +1,5 @@
 [Unit]
 Description=Project LINK Point-LIO mapping mode
-Requires=project-link-base.service project-link-lidar.service project-link-robot-description.service project-link-scan.service project-link-point-lio-map.service
-After=project-link-base.service project-link-lidar.service project-link-robot-description.service project-link-scan.service project-link-point-lio-map.service
+Requires=project-link-platform.target project-link-point-lio-map.service
+After=project-link-platform.target project-link-point-lio-map.service
 Conflicts=project-link-rf2o-fallback.target

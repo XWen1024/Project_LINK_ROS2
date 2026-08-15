@@ -65,10 +65,13 @@ are evidence snapshots, not current operating instructions.
 - Recurring PowerShell SSH rule: avoid a double-quoted remote command containing
   Bash `$variables`, nested quotes or command substitutions. Use a simple direct
   form for one command, such as `ssh orin hostname`. For a multi-line or quote-heavy
-  Linux check, send a PowerShell single-quoted here-string to `ssh <alias> bash -s`;
-  this prevents PowerShell from expanding Bash syntax and avoids the recurring
-  unmatched-quote/unexpected-EOF failure. Do not use a here-string prefix approval;
-  request the individual system-level SSH execution when approval is required.
+  Linux check, create a PowerShell single-quoted here-string, remove `\r`, encode
+  its UTF-8 bytes with `[Convert]::ToBase64String(...)`, then run
+  `ssh <alias> "echo <encoded> | base64 -d | bash"`. Directly piping a PowerShell
+  string to `ssh ... bash -s` is not reliable because Windows may reinsert CRLF and
+  give Linux tools arguments such as `1\r`. The Base64 single-line transport avoids
+  both unmatched-quote/unexpected-EOF and CRLF corruption. Request each system-level
+  SSH execution individually when approval is required.
 - Level 2 — safe remote/environment failures: continue with read-only diagnosis,
   then retry a bounded number of materially different, non-destructive fixes. This
   includes a missing workspace setup, stale Git checkout, inactive user service,

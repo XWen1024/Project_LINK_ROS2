@@ -21,6 +21,7 @@ UNITS = {
     "voice_classic": "project-link-voice-classic.service",
     "voice_qwen": "project-link-voice-qwen.service",
     "uwb_shadow": "project-link-uwb-shadow.service",
+    "platform_target": "project-link-platform.target",
     "mapping_target": "project-link-mapping.target",
     "navigation_target": "project-link-navigation.target",
     "rf2o_target": "project-link-rf2o-fallback.target",

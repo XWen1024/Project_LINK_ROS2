@@ -1,0 +1,4 @@
+[Unit]
+Description=Project LINK shared base, lidar and robot-description platform
+Requires=project-link-base.service project-link-lidar.service project-link-robot-description.service project-link-scan.service
+After=project-link-base.service project-link-lidar.service project-link-robot-description.service project-link-scan.service

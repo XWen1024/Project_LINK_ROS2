@@ -21,6 +21,7 @@ systemctl --user start project-link-mapping.target
 systemctl --user start project-link-navigation.target
 systemctl --user stop project-link-navigation.target
 systemctl --user stop project-link-mapping.target
+systemctl --user stop project-link-platform.target
 systemctl --user start project-link-rf2o-fallback.target
 ```
 
@@ -28,6 +29,11 @@ Copy `console.env.example` to `~/.config/project_link/console.env` for non-secre
 path and tuning overrides. Classic voice secrets remain in `voice_api.env`, Qwen
 secrets in `qwen_realtime.env`, and the private UWB tag address in `uwb.env`.
 Keep all three module files mode `0600`; never commit them.
+
+`project-link-platform.target` owns the shared base, lidar, robot-description and
+scan services. Mapping and rf2o targets reuse that platform without sharing
+`PartOf` relationships across mutually exclusive modes. The console agent stops
+the platform last during an explicit stop-all operation.
 
 The first deployment is not production-accepted until mapping and navigation each
 pass two complete supervised field cycles. Until then use the repository scripts

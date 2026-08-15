@@ -1,6 +1,6 @@
 [Unit]
 Description=Project LINK Unitree L1 lidar driver
-PartOf=project-link-mapping.target project-link-rf2o-fallback.target
+PartOf=project-link-platform.target
 
 [Service]
 Type=simple

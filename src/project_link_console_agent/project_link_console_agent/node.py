@@ -278,6 +278,7 @@ class ConsoleAgent(Node):
                 self._systemd.stop(UNITS["navigation_target"])
                 self._systemd.stop(UNITS["mapping_target"])
                 self._systemd.stop(UNITS["rf2o_target"])
+                self._systemd.stop(UNITS["platform_target"])
             else:
                 raise ValueError("unsupported_stack_operation")
         except Exception as exc:

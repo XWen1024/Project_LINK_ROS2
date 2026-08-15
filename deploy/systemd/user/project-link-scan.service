@@ -2,7 +2,7 @@
 Description=Project LINK 2D scan projection and rolling accumulation
 Requires=project-link-lidar.service project-link-robot-description.service
 After=project-link-lidar.service project-link-robot-description.service
-PartOf=project-link-mapping.target project-link-rf2o-fallback.target
+PartOf=project-link-platform.target
 
 [Service]
 Type=simple

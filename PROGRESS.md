@@ -36,8 +36,8 @@ Archive tags:
 - PowerShell parsing passed for the Windows visual-grasp launcher.
 - Qwen and classic voice are both present on `main` but remain mutually exclusive at runtime.
 - Console-agent pure logic and deployment-contract tests: 11 passed.
-- The versioned systemd graph contains 13 services and 3 mode targets with no
-  missing Project LINK unit references.
+- The versioned systemd graph contains 13 services, 3 mode targets and 1 shared
+  platform target with no missing Project LINK unit references.
 - Console GUI pure model and safety-contract tests: 5 passed. Python syntax and
   package XML pass; PySide6 rendering remains an Ubuntu validation item.
 
