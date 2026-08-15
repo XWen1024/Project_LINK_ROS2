@@ -39,6 +39,22 @@ are evidence snapshots, not current operating instructions.
 - Both computers use ROS 2 Humble, `ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=0`.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
 
+## Linux Validation And SSH Rules
+
+- The Windows development machine is for editing, Git work and platform-neutral
+  tests only. Do not install or run PySide6 there, do not use WSL as a substitute,
+  and do not attempt real Qt/RViz window rendering on Windows.
+- Run Linux-only checks such as PySide6 rendering, ROS 2 builds, Bash validation,
+  `systemd-analyze --user verify` and user-unit tests directly on the target Linux
+  machines over SSH.
+- Tell the user before initiating any SSH connection and identify the target.
+  The Orin is normally powered on during coding sessions. The Ubuntu laptop may
+  be off, so ask the user to power it on before a validation step that requires it.
+- Prefer a system-level/escalated SSH command instead of sandboxed SSH. The
+  sandbox may not see the user's SSH aliases, keys or agent state reliably.
+- Use `wte@orin` for the Orin. Do not invent an Ubuntu hostname or address; use
+  the user-provided SSH target when the Ubuntu laptop is needed.
+
 ## Active ROS Packages
 
 - Console: `project_link_console_interfaces`, `project_link_console_agent`,
