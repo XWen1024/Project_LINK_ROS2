@@ -306,7 +306,20 @@ class FallResponsePage(QWidget):
         self.mode_badge.setText(
             "真实 Nav2 分段旋转" if mode == "nav2_spin" else "静态无运动模式"
         )
+        nav_only = {
+            "nav2_action_ready",
+            "tf_ready",
+            "odom_ready",
+            "costmap_ready",
+            "rotation_clear",
+            "cmd_vel_clear",
+            "arm_safe",
+        }
         for key, label in self._status_labels.items():
+            if mode == "static" and key in nav_only:
+                label.setText("静态模式不需要")
+                label.setStyleSheet("color: #8e98a5;")
+                continue
             ready = bool(status.get(key, False))
             label.setText("就绪" if ready else "未就绪")
             label.setStyleSheet("color: #81c784;" if ready else "color: #ef9a9a;")
@@ -315,10 +328,14 @@ class FallResponsePage(QWidget):
         self.progress.setValue(min(total, int(status.get("scan_step", 0))))
         event_id = str(status.get("active_event_id", ""))
         if status.get("event_active"):
+            heading = (
+                f"\n方向：{status.get('current_heading_deg', 0):.1f}° → "
+                f"{status.get('target_heading_deg', 0):.1f}°"
+                if mode == "nav2_spin"
+                else ""
+            )
             self.event_label.setText(
-                f"事件 {event_id}\n阶段：{status.get('stage', '')}　"
-                f"方向：{status.get('current_heading_deg', 0):.1f}° → "
-                f"{status.get('target_heading_deg', 0):.1f}°\n"
+                f"事件 {event_id}\n阶段：{status.get('stage', '')}{heading}\n"
                 f"本地置信度 {status.get('local_confidence', 0):.2f} / "
                 f"VLM {status.get('vlm_confidence', 0):.2f}"
             )

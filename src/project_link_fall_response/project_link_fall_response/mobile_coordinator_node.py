@@ -243,8 +243,16 @@ class MobileFallCoordinator(Node):
         )
         message.scan_step = int(self._active_step if event is not None else 0)
         message.scan_total = int(self._active_total)
-        message.current_heading_deg = float(self._nav2.current_heading_deg)
-        message.target_heading_deg = float(self._nav2.target_heading_deg)
+        message.current_heading_deg = (
+            float(self._nav2.current_heading_deg)
+            if self._scan_mode == "nav2_spin"
+            else 0.0
+        )
+        message.target_heading_deg = (
+            float(self._nav2.target_heading_deg)
+            if self._scan_mode == "nav2_spin"
+            else 0.0
+        )
         message.local_confidence = float(
             self._active_local_confidence if event is not None else 0.0
         )
@@ -267,8 +275,10 @@ class MobileFallCoordinator(Node):
         message.rotation_clear = bool(preflight.rotation_clear)
         message.cmd_vel_clear = bool(preflight.cmd_vel_clear)
         message.arm_safe = bool(preflight.arm_safe)
-        message.message = (
-            self._active_message if event is not None else preflight.message
+        message.message = self._active_message if event is not None else (
+            "static mode ready; no motion preflight is required"
+            if self._scan_mode == "static"
+            else preflight.message
         )
         self._status_pub.publish(message)
 
