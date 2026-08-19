@@ -1,7 +1,7 @@
 # Project LINK System Overview
 
 Status: current architecture summary
-Last reviewed: 2026-08-15
+Last reviewed: 2026-08-19
 Canonical branch: `main`
 
 Project LINK is a ROS 2 eldercare mobile-manipulation prototype. The Jetson Orin
@@ -9,12 +9,15 @@ Nano owns hardware access and robot control. The Ubuntu 22.04 laptop owns all
 operator rendering and GUI interaction.
 
 ```text
-Ubuntu laptop
-  PySide6 console, 2D map rendering, front/arm video rendering, RViz2 diagnostics
+Ubuntu laptop: PySide6 console and ROS domain 142
         |
-        | ROS_DOMAIN_ID=42, ROS_LOCALHOST_ONLY=0
+Ubuntu DDS Router -> TCP 127.0.0.1:11666
+        |
+SSH LocalForward (authentication, encryption, reconnect)
+        |
+Orin DDS Router <- TCP 127.0.0.1:11666
         v
-Jetson Orin Nano
+Jetson Orin Nano: ROS domain 42
   base + lidar + Point-LIO + slam_toolbox + Nav2
   voice backend (classic or Qwen, never both)
   YOLO World + SO-101 + VL53L0X
@@ -27,6 +30,10 @@ chassis, Unitree L1, front camera, arm camera, audio, SO-101, BU04, ESP32-C3
 Orin publishes the chassis-front camera as `/front_camera/image/compressed` and
 the independent arm camera as `/visual_grasp/image/compressed`. Ubuntu only
 decodes and renders these streams; it never opens either V4L2 device.
+
+Router participants are restricted with `whitelist-interfaces` to loopback. The
+Orin listener was verified as `127.0.0.1:11666`, not `0.0.0.0`. UWB and raw
+high-bandwidth Point-LIO/lidar streams are excluded from the MVP allowlist.
 
 ## Operator Access
 

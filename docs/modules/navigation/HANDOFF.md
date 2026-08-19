@@ -1,5 +1,9 @@
 # Navigation Two 交接文档
 
+Status: current; transport and hardware-alias field gates pending  
+Last verified: 2026-08-19  
+Verified code: `main@c37bdfc`
+
 本文档是 Project LINK 当前 Point-LIO + slam_toolbox + Navigation2 路线的
 长期调试入口。内容从 `AGENTS.md`、`PROGRESS.md` 和已完成的 Orin 实机验证中
 提取。后续修改导航架构、TF、代价地图、控制器或启动流程时，应同步更新本文档。

@@ -23,6 +23,9 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
   The window is desktop-bounded, the sidebar can
   collapse to icons, and real mode is single-instance to avoid duplicate ROS
   nodes. Live hardware loops remain supervised field items.
+- Transport: DDS Router v2.2.0 is source-locked and verified on Orin ARM64. The
+  loopback-only Orin listener and Ubuntu-to-Orin SSH tunnel are working; Ubuntu
+  x86_64 Router build and full domain-142 cutover remain.
 
 See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware gates.
 

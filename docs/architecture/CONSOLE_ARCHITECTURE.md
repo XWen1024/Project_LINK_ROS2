@@ -1,7 +1,7 @@
 # Ubuntu Control Console Architecture
 
 Status: accepted implementation architecture
-Last reviewed: 2026-08-15
+Last reviewed: 2026-08-19
 Target: Ubuntu 22.04 + ROS 2 Humble
 
 ## Boundary
@@ -30,8 +30,9 @@ Ubuntu validation uses `/home/xwen/wheeltec_robot` and pinned user-local PySide6
 from `src/project_link_console_gui/requirements-ubuntu.txt`. ROS 2 Humble remains
 system-installed; the GUI dependency is not represented as a Jammy apt rosdep key.
 
-The GUI subscribes directly to ROS maps, costmaps, scans, paths, images and
-module status. Process lifecycle is requested through the console agent, which
+The GUI subscribes to ROS maps, costmaps, scans, paths, images and module status
+on local domain 142. DDS Router forwards an allowlisted set through an SSH
+loopback tunnel to Orin domain 42. Process lifecycle is requested through the console agent, which
 controls an allowlisted set of `systemd --user` units. Secrets are edited through
 an SSH-invoked allowlisted configuration helper and are never transported as ROS
 messages.
@@ -69,3 +70,8 @@ The Ubuntu GUI never publishes `/cmd_vel` directly. It sends bounded teleop
 requests to the Orin agent. The agent publishes only in mapping mode and stops
 within 250 ms when the dead-man key, GUI focus, heartbeat, ROS connection or
 mode gate is lost. Starting Nav2 disables teleoperation before activation.
+
+The Ubuntu sidebar reports tunnel/router state separately from the Orin ROS
+heartbeat. `deploy/dds-router/bin/project-link-console` starts only the local
+transport services, sets domain 142 and launches the GUI. The tunnel
+idempotently starts the Orin loopback Router over SSH; it starts no hardware.
