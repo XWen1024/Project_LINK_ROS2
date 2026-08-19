@@ -24,6 +24,15 @@ Jetson Orin Nano
 chassis, Unitree L1, cameras, audio, SO-101, BU04, ESP32-C3
 ```
 
+## Operator Access
+
+Interactive access uses the stable aliases `ssh orin` and `ssh seewo`, while each
+alias points to the currently verified numeric DHCP address. On 2026-08-19 the
+addresses are Orin `10.255.176.119` and Ubuntu `10.255.176.106`. If an alias stops
+connecting after a network change, scan the current bounded subnet and use mDNS
+only for candidate discovery. Revalidate hostname, machine-id and the SSH host-key
+fingerprint before updating the alias IP; do not depend on a permanent mDNS proxy.
+
 Production motion has one authority chain: an operator or approved module sends
 a Nav2 Action goal, and Nav2 owns `/cmd_vel`. Direct-drive and teleoperation are
 explicit supervised modes and must not overlap Nav2. The LLM never owns a ROS

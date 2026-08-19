@@ -60,8 +60,22 @@ are evidence snapshots, not current operating instructions.
   be off, so ask the user to power it on before a validation step that requires it.
 - Prefer a system-level/escalated SSH command instead of sandboxed SSH. The
   sandbox may not see the user's SSH aliases, keys or agent state reliably.
-- Use the system SSH aliases `ssh orin` for the Orin Nano (`wte@orin`) and
-  `ssh seewo` for the Ubuntu laptop. Do not replace them with guessed IP addresses.
+- Use the system SSH aliases `ssh orin` for the Orin Nano and `ssh seewo` for the
+  Ubuntu laptop, with users `wte` and `xwen` respectively. The aliases intentionally
+  point to the currently verified numeric DHCP addresses instead of relying on a
+  permanent mDNS `ProxyCommand`. As of 2026-08-19 they are Orin `10.255.176.119`
+  and Ubuntu `10.255.176.106`.
+- Treat an SSH alias failure as a likely network/DHCP change before spending time
+  debugging the old address. Autonomously inspect the active Windows subnet, scan
+  that bounded subnet for SSH hosts, and use mDNS only to discover candidates
+  (`ubuntu.local` for Orin and `XWen-P1430.local` for the laptop). Confirm the
+  candidate using `hostname`, `/etc/machine-id` and the ED25519 host-key fingerprint,
+  then update the alias `HostName` to the newly verified numeric IP and retry.
+  Preserve the stable `HostKeyAlias` entries, do not install a permanent mDNS
+  proxy/mapping, and do not keep diagnosing an obsolete IP after the verified host
+  has moved. This discovery and SSH-config refresh is a Level 2 agent-owned action.
+  Ask the user only when neither device can be found, the laptop may be powered off,
+  or identity verification does not match.
 - The Ubuntu GUI configuration channel is a separate Ubuntu-to-Orin SSH
   connection; Windows aliases and keys are not automatically available there.
   Never copy a Windows private key to the laptop. If BatchMode reports
