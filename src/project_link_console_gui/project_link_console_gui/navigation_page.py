@@ -270,7 +270,9 @@ class NavigationPage(QWidget):
         self.map_view.set_robot(pose)
 
     def update_front_camera(self, jpeg_data: bytes) -> None:
-        image = QImage.fromData(jpeg_data, b"JPG")
+        # PySide6 6.11 rejects the explicit format overload for Python bytes on
+        # the Ubuntu runtime. Qt reliably auto-detects the JPEG signature.
+        image = QImage.fromData(jpeg_data)
         if image.isNull():
             self.front_camera_status.setText("车头摄像头图像解码失败")
             return

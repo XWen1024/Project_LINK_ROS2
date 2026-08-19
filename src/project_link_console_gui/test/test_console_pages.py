@@ -27,6 +27,8 @@ def test_navigation_page_has_separate_front_camera_preview():
     assert 'QGroupBox("车头摄像头")' in page
     assert '"/front_camera/image/compressed"' in bridge
     assert "front_camera_image" in bridge
+    assert "QImage.fromData(jpeg_data)" in page
+    assert 'QImage.fromData(jpeg_data, b"JPG")' not in page
     assert '"/visual_grasp/image/compressed"' not in bridge
 
 
