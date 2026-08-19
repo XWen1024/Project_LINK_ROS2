@@ -1,0 +1,14 @@
+[Unit]
+Description=Project LINK Orin front camera preview
+PartOf=project-link-platform.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/console.env
+ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component front-camera
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /front_camera/image/compressed 20
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGINT
+TimeoutStopSec=10

@@ -56,6 +56,11 @@ Simple mode keeps raw Orin parameters hidden; advanced mode reveals the full
 parameter editor. The embedded page creates only a ROS client and does not start
 the Orin visual-grasp, arm or ToF services.
 
+The navigation page renders `/front_camera/image/compressed` in a small side
+preview that does not cover the map. The stream comes from the Orin-owned
+`/dev/project_link_front_camera`; the manipulation page continues to use the
+separate `/dev/project_link_arm_camera` stream.
+
 The remaining pages are implemented as follows:
 
 - Voice control: automatic plus manual Orin control-Action detection, mutually
@@ -63,9 +68,10 @@ The remaining pages are implemented as follows:
   wake/session/task state and sanitized per-stage timing from the Orin agent.
 - Voice configuration: common VAD/audio values, separate system prompts and an
   editable registry limited to built-in Python tool executors.
-- UWB: shadow-only start/stop, distance/angle view, distance/residual chart,
-  common tuning and four-direction `proposed` calibration capture.
-- Global settings: device/network values and masked classic/Qwen/UWB secrets.
+- UWB: implementation is preserved but hidden unless
+  `PROJECT_LINK_SHOW_UWB_PAGE=1`; it is outside the current MVP.
+- Global settings: device/network values and masked classic/Qwen secrets. UWB
+  settings are hidden with the UWB page.
 
 Secrets use the fixed allowlisted helper over SSH stdin; they never travel over
 ROS and are never read back in plaintext. Before using Read/Save on the laptop,

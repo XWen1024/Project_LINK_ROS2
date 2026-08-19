@@ -9,11 +9,12 @@ context belongs in `docs/modules/`; historical context belongs in `docs/archive/
   production lifecycle management from tmux to `systemd --user`.
 - Immediate order:
   1. Build and verify the console interfaces, agent and GUI on Ubuntu/Orin.
-  2. Install and validate the versioned systemd user units without auto-starting hardware.
-  3. Validate the navigation/mapping page, goal control and dead-man teleoperation.
-  4. Integrate the existing Ubuntu visual-grasp client.
-  5. Add classic/Qwen voice switching, timing events and configuration editing.
-  6. Add UWB shadow visualization and calibration capture.
+  2. Install precise production hardware aliases and validate every connected device without motion.
+  3. Add the Orin-owned front-camera stream to the navigation page.
+  4. Replace direct cross-machine Wi-Fi DDS with DDS Router over an SSH tunnel.
+  5. Complete one repeatable Qwen Realtime to Nav2 field loop.
+- UWB is outside the current MVP. Keep its code and archived evidence, but hide
+  the console page by default and do not spend MVP validation time on it.
 - Keep existing scripts as fallback until systemd passes two complete supervised
   field-validation cycles.
 
@@ -46,6 +47,16 @@ are evidence snapshots, not current operating instructions.
   not reintroduce a newer-distro import without verifying it on `ssh seewo`.
 - Both computers use ROS 2 Humble, `ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=0`.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
+- The production cameras have separate roles: `/dev/project_link_front_camera`
+  is the chassis-front preview and `/dev/project_link_arm_camera` is the
+  manipulator/visual-grasp camera. Never use `/dev/videoN` in production config.
+- Production serial aliases are `/dev/project_link_chassis`,
+  `/dev/project_link_lidar`, `/dev/project_link_so101` and
+  `/dev/project_link_wakeup`. Exact USB identities and host MAC addresses are
+  recorded in `configs/hardware/orin-production.yaml`.
+- Udev must match exact USB serials. A VID/PID-only chassis rule is forbidden:
+  the voice wake board shares `1a86:55d4` and can otherwise be misidentified as
+  the motor controller.
 
 ## Linux Validation And SSH Rules
 
@@ -159,9 +170,9 @@ are evidence snapshots, not current operating instructions.
   microphone, speaker and robot tools.
 - LLMs choose registered tools only. Python owns confirmation, validation,
   ROS Actions, cancellation and all robot execution.
-- UWB defaults to shadow. Live motion requires approved calibration and the
-  existing guarded Nav2 safety gates.
-- Orin exclusively owns the SO-101, RGB camera and VL53L0X serial ports.
+- UWB remains code-preserved and shadow-only when explicitly enabled, but it is
+  hidden and excluded from the current MVP.
+- Orin exclusively owns the SO-101, both RGB cameras and VL53L0X serial ports.
 - Never use increased joint limits, blind travel or timeouts to conceal a grasp failure.
 
 ## Console Architecture Rules

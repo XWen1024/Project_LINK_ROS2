@@ -1,0 +1,30 @@
+version: v4.0
+
+# DDS names use the ROS 2 wire prefixes rt/ (topic), rq/ and rr/ (request/reply).
+# Wildcard types preserve ROS-generated type names while keeping the topic set bounded.
+allowlist:
+  - {name: "rt/project_link/console/*", type: "*"}
+  - {name: "rq/project_link/console/*", type: "*"}
+  - {name: "rr/project_link/console/*", type: "*"}
+  - {name: "rt/voice/status", type: "*"}
+  - {name: "rt/map", type: "*"}
+  - {name: "rt/global_costmap/costmap", type: "*"}
+  - {name: "rt/local_costmap/costmap", type: "*"}
+  - {name: "rt/scan", type: "*"}
+  - {name: "rt/plan", type: "*"}
+  - {name: "rt/tf", type: "*"}
+  - {name: "rt/tf_static", type: "*"}
+  - {name: "rt/front_camera/*", type: "*"}
+  - {name: "*navigate_to_pose*", type: "*"}
+  - {name: "*visual_grasp*", type: "*"}
+
+participants:
+  - name: orin_domain_42
+    kind: local
+    domain: 42
+  - name: ssh_loopback_server
+    kind: wan
+    listening-addresses:
+      - ip: 127.0.0.1
+        port: 11666
+        transport: tcp

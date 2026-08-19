@@ -19,6 +19,7 @@ setup(
     entry_points={
         "console_scripts": [
             "console_agent = project_link_console_agent.node:main",
+            "front_camera = project_link_console_agent.front_camera:main",
         ],
     },
 )

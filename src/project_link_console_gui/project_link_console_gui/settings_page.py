@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
@@ -53,6 +55,7 @@ class SettingsPage(QWidget):
         self._fields: dict[tuple[str, str], QLineEdit] = {}
         self._advanced_rows: list[tuple[QLabel, QLineEdit]] = []
         self._loaded = False
+        self._show_uwb = os.environ.get("PROJECT_LINK_SHOW_UWB_PAGE", "0") == "1"
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 18, 20, 18)
@@ -115,8 +118,10 @@ class SettingsPage(QWidget):
                 label_widget.setVisible(False)
                 widget.setVisible(False)
                 self._advanced_rows.append((label_widget, widget))
-        for name in ("console", "voice_api", "qwen", "uwb"):
+        for name in ("console", "voice_api", "qwen"):
             layout.addWidget(groups[name])
+        if self._show_uwb:
+            layout.addWidget(groups["uwb"])
         layout.addStretch()
         scroll.setWidget(body)
         root.addWidget(scroll, 1)

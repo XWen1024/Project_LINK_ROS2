@@ -19,8 +19,9 @@ Target: Ubuntu 22.04 + ROS 2 Humble
 - `project_link_console_gui`: Ubuntu PySide6 application.
 - `deploy/systemd/user`: versioned user services and mapping/navigation targets.
 
-The interface, agent, systemd foundation and all six planned PySide6 pages are
-implemented in the repository. The GUI includes a hardware-free demo mode and a
+The interface, agent, systemd foundation and all planned PySide6 pages are
+implemented in the repository. UWB remains available behind an explicit opt-in
+environment flag but is hidden for the current MVP. The GUI includes a hardware-free demo mode and a
 repository-owned RViz2 profile. The user-unit graph is documented in
 `deploy/systemd/README.md`; it remains behind the existing script fallback until
 two supervised Orin validation cycles pass.
@@ -45,13 +46,12 @@ Ubuntu needs its own authorized SSH key; Windows private keys must not be copied
 
 1. Navigation and mapping: system mode, 2D layers, goals, map saving, health and
    supervised dead-man teleoperation.
-2. Manipulation: remote video, target tracking, SO-101, presets, calibration,
+2. Manipulation: independent arm-camera video, target tracking, SO-101, presets, calibration,
    ToF and visual grasp.
 3. Voice: classic/Qwen exclusive selection, session state, simplified events and
    per-stage timing.
 4. Voice configuration: common parameters, prompt profiles and registered tools.
-5. UWB: shadow observations, relative plot, distance/residual history and
-   proposed calibration capture.
+5. UWB: code-preserved shadow tooling, hidden by default and outside the current MVP.
 6. Global settings: devices, paths, ROS networking and masked API credentials.
 
 Simple mode exposes only common operator controls. Advanced mode exposes the

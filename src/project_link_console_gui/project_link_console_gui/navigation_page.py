@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -92,6 +93,24 @@ class NavigationPage(QWidget):
         side_layout = QVBoxLayout(side)
         side_layout.setContentsMargins(4, 0, 0, 0)
 
+        camera_group = QGroupBox("车头摄像头")
+        camera_layout = QVBoxLayout(camera_group)
+        self.front_camera_preview = QLabel("等待 Orin 车头摄像头画面")
+        self.front_camera_preview.setAlignment(Qt.AlignCenter)
+        self.front_camera_preview.setMinimumSize(280, 120)
+        self.front_camera_preview.setMaximumHeight(180)
+        self.front_camera_preview.setStyleSheet(
+            "background: #090b0e; border: 1px solid #343b45; color: #7f8995;"
+        )
+        self.front_camera_preview.setToolTip(
+            "Orin 独占 /dev/project_link_front_camera，Ubuntu 仅渲染压缩 ROS 图像"
+        )
+        self.front_camera_status = QLabel("未收到 /front_camera/image/compressed")
+        self.front_camera_status.setStyleSheet("color: #8e98a5;")
+        camera_layout.addWidget(self.front_camera_preview)
+        camera_layout.addWidget(self.front_camera_status)
+        side_layout.addWidget(camera_group)
+
         layer_group = QGroupBox("显示图层")
         layer_layout = QGridLayout(layer_group)
         layers = [
@@ -137,7 +156,11 @@ class NavigationPage(QWidget):
         side_layout.addWidget(goal_group)
 
         self.teleop = TeleopPad()
+        self.teleop.setToolTip(
+            "备选 GUI 遥控；日常人工驾驶优先使用 STM32 原生手柄"
+        )
         self.teleop.command_requested.connect(bridge.send_teleop)
+        self.teleop.setVisible(False)
         side_layout.addWidget(self.teleop)
 
         self.advanced_group = QGroupBox("高级参数")
@@ -182,6 +205,7 @@ class NavigationPage(QWidget):
 
     def set_advanced(self, enabled: bool) -> None:
         self._advanced = bool(enabled)
+        self.teleop.setVisible(self._advanced)
         self.advanced_group.setVisible(self._advanced)
 
     def update_system_state(self, state: dict) -> None:
@@ -244,6 +268,21 @@ class NavigationPage(QWidget):
 
     def update_robot(self, pose: Pose2D) -> None:
         self.map_view.set_robot(pose)
+
+    def update_front_camera(self, jpeg_data: bytes) -> None:
+        image = QImage.fromData(jpeg_data, b"JPG")
+        if image.isNull():
+            self.front_camera_status.setText("车头摄像头图像解码失败")
+            return
+        pixmap = QPixmap.fromImage(image)
+        self.front_camera_preview.setPixmap(
+            pixmap.scaled(
+                self.front_camera_preview.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+        self.front_camera_status.setText(f"已连接 · {image.width()}×{image.height()}")
 
     def _goal_selected(self, x: float, y: float) -> None:
         self._pending_goal = Pose2D(x, y, math.radians(self.goal_yaw.value()))

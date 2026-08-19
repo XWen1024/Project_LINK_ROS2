@@ -17,6 +17,7 @@ class DemoBridge(QObject):
     cloud_updated = Signal(object)
     path_updated = Signal(object)
     robot_updated = Signal(object)
+    front_camera_image = Signal(bytes)
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
     voice_status = Signal(dict)

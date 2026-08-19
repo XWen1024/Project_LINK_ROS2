@@ -1,0 +1,17 @@
+[Unit]
+Description=Project LINK DDS Router on Ubuntu console domain 142
+Requires=project-link-dds-tunnel.service
+After=project-link-dds-tunnel.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/xwen/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/dds-transport.env
+ExecStart=/home/xwen/wheeltec_robot/deploy/dds-router/bin/project-link-dds-router ubuntu
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

@@ -40,7 +40,13 @@ case "$component" in
     export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
     export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
     exec ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
-      -p port:="${UNILIDAR_PORT:-/dev/unilidar}"
+      -p port:="${UNILIDAR_PORT:-/dev/project_link_lidar}"
+    ;;
+  front-camera)
+    source_main
+    exec ros2 run project_link_console_agent front_camera --ros-args \
+      -p camera_device:="${FRONT_CAMERA_DEVICE:-/dev/project_link_front_camera}" \
+      -p rotation_degrees:="${FRONT_CAMERA_ROTATION_DEGREES:-90}"
     ;;
   robot-description)
     source_main

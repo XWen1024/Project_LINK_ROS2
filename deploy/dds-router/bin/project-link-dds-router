@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+role="${1:-}"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# shellcheck disable=SC1091
+source "$root/deploy/dds-router/versions.env"
+prefix="${DDS_ROUTER_PREFIX:-$HOME/$DDS_ROUTER_PREFIX_REL}"
+binary="$prefix/bin/ddsrouter"
+[[ -x "$binary" ]] || binary="$prefix/ddsrouter_tool/bin/ddsrouter"
+[[ -x "$binary" ]] || { echo "DDS Router is not built: $prefix" >&2; exit 1; }
+
+case "$role" in
+  orin) config="$root/deploy/dds-router/config/orin.yaml" ;;
+  ubuntu) config="$root/deploy/dds-router/config/ubuntu.yaml" ;;
+  *) echo "Usage: $0 orin|ubuntu" >&2; exit 2 ;;
+esac
+
+if [[ -f "$prefix/setup.bash" ]]; then
+  set +u
+  # shellcheck disable=SC1090
+  source "$prefix/setup.bash"
+  set -u
+fi
+exec "$binary" --config-path "$config"

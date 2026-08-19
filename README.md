@@ -15,11 +15,12 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
 - Manipulation: headless YOLO World + SO-101 + optional ToF with Ubuntu remote GUI.
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
   but must never run simultaneously.
-- UWB: shadow ingestion and guarded Nav2 bridge exist; calibration is invalid by default.
+- UWB: code is preserved, but the page is hidden and the module is outside the current MVP.
 - Console: typed interfaces, headless agent, versioned systemd user units and the
-  six PySide6 pages are implemented. The visible Ubuntu GUI includes navigation,
-  manipulation, voice switching/timing, voice profiles/tools, UWB shadow plots,
-  and masked global settings. The window is desktop-bounded, the sidebar can
+  PySide6 pages are implemented. The visible Ubuntu GUI includes navigation with
+  a distinct chassis-front camera preview, manipulation with its independent arm
+  camera, voice switching/timing, voice profiles/tools and masked global settings.
+  The window is desktop-bounded, the sidebar can
   collapse to icons, and real mode is single-instance to avoid duplicate ROS
   nodes. Live hardware loops remain supervised field items.
 

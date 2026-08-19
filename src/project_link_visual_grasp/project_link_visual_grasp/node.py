@@ -37,7 +37,7 @@ from .core import (
 
 PARAMETER_DEFAULTS: dict[str, Any] = {
     "robot_namespace": "/visual_grasp",
-    "camera_device": "/dev/RgbCam",
+    "camera_device": "/dev/project_link_arm_camera",
     "camera_width": 1280,
     "camera_height": 720,
     "camera_fps": 15.0,
@@ -52,7 +52,7 @@ PARAMETER_DEFAULTS: dict[str, Any] = {
     "yolo_max_area_change_ratio": 1.8,
     "yolo_outlier_hold_frames": 4,
     "yolo_track_iou_weight": 0.5,
-    "robot_port": "/dev/so101",
+    "robot_port": "/dev/project_link_so101",
     "robot_id": "so101_slave",
     "auto_connect_arm": False,
     "pan_gain": 25.0,

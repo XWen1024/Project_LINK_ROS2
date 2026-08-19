@@ -30,8 +30,9 @@ path and tuning overrides. Classic voice secrets remain in `voice_api.env`, Qwen
 secrets in `qwen_realtime.env`, and the private UWB tag address in `uwb.env`.
 Keep all three module files mode `0600`; never commit them.
 
-`project-link-platform.target` owns the shared base, lidar, robot-description and
-scan services. Mapping and rf2o targets reuse that platform without sharing
+`project-link-platform.target` requires the shared base, lidar, robot-description
+and scan services, and optionally starts the front-camera preview. Camera failure
+therefore remains visible but cannot block mapping or Nav2. Mapping and rf2o targets reuse that platform without sharing
 `PartOf` relationships across mutually exclusive modes. The console agent stops
 the platform last during an explicit stop-all operation.
 

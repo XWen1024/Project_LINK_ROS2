@@ -1,0 +1,55 @@
+schema_version: 1
+captured_at: "2026-08-19"
+host: orin
+network:
+  orin_wifi:
+    interface: wlP1p1s0
+    mac: "9c:c7:d3:f6:de:6d"
+  orin_ethernet:
+    interface: enP8p1s0
+    mac: "4c:bb:47:32:ea:4e"
+  ubuntu_wifi:
+    host: seewo
+    interface: wlo1
+    mac: "10:5f:ad:95:dc:dd"
+devices:
+  chassis:
+    alias: /dev/project_link_chassis
+    compatibility_alias: /dev/wheeltec_controller
+    usb: "1a86:55d4"
+    serial: "5B1F024697"
+    verified: "115200 baud C63A frames with 0x7b/0x7d boundaries"
+  lidar:
+    alias: /dev/project_link_lidar
+    compatibility_alias: /dev/unilidar
+    usb: "10c4:ea60"
+    serial: "02AF3DE8"
+  so101:
+    alias: /dev/project_link_so101
+    compatibility_alias: /dev/so101
+    usb: "1a86:55d3"
+    serial: "5B3E119094"
+  wakeup:
+    alias: /dev/project_link_wakeup
+    usb: "1a86:55d4"
+    serial: "0004"
+  front_camera:
+    alias: /dev/project_link_front_camera
+    compatibility_alias: /dev/FrontCam
+    usb: "2993:0858"
+    serial: "20240307110322"
+    v4l_index: 0
+    rotation_degrees: 90
+    role: chassis_front_preview
+  arm_camera:
+    alias: /dev/project_link_arm_camera
+    compatibility_alias: /dev/RgbCam
+    usb: "0bda:5844"
+    serial: "200901010001"
+    v4l_index: 0
+    role: visual_grasp
+unassigned_present_devices:
+  - usb: "1a86:55d2"
+    serial: "58B2005641"
+    interfaces: [/dev/ttyACM3, /dev/ttyACM4]
+    note: "Keep unassigned until its physical module and protocol are identified."

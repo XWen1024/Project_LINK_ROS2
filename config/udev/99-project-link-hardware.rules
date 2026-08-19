@@ -1,0 +1,20 @@
+# Project LINK production hardware identities captured on 2026-08-19.
+# Match exact USB serials. Never use ttyACM/video enumeration numbers as runtime identities.
+
+# C63A chassis controller. Compatibility alias retained for the Wheeltec launch file.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4", ATTRS{serial}=="5B1F024697", SYMLINK+="project_link_chassis", SYMLINK+="wheeltec_controller", GROUP="dialout", MODE="0660"
+
+# Unitree L1 CP2104 transport.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="02AF3DE8", SYMLINK+="project_link_lidar", SYMLINK+="unilidar", GROUP="dialout", MODE="0660"
+
+# SO-101 arm controller. RgbCam/so101 compatibility names remain available to older tools.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", ATTRS{serial}=="5B3E119094", SYMLINK+="project_link_so101", SYMLINK+="so101", SYMLINK+="so101_arm", GROUP="dialout", MODE="0660"
+
+# iFlytek/WCH wake board. It must never receive the wheeltec_controller alias.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4", ATTRS{serial}=="0004", SYMLINK+="project_link_wakeup", SYMLINK+="wheeltec_mic", GROUP="dialout", MODE="0660"
+
+# Front camera: icSpring, mounted at the front of the chassis. index 0 is video capture.
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="2993", ATTRS{idProduct}=="0858", ATTRS{serial}=="20240307110322", ATTR{index}=="0", SYMLINK+="project_link_front_camera", SYMLINK+="FrontCam", GROUP="video", MODE="0660"
+
+# Arm camera: Generic/Realtek camera mounted on the manipulator.
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5844", ATTRS{serial}=="200901010001", ATTR{index}=="0", SYMLINK+="project_link_arm_camera", SYMLINK+="ArmCam", SYMLINK+="RgbCam", GROUP="video", MODE="0660"

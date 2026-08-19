@@ -10,7 +10,7 @@ operator rendering and GUI interaction.
 
 ```text
 Ubuntu laptop
-  PySide6 console, 2D map rendering, video rendering, RViz2 diagnostics
+  PySide6 console, 2D map rendering, front/arm video rendering, RViz2 diagnostics
         |
         | ROS_DOMAIN_ID=42, ROS_LOCALHOST_ONLY=0
         v
@@ -21,8 +21,12 @@ Jetson Orin Nano
   UWB ingestion and guarded Nav2 bridge
         |
         v
-chassis, Unitree L1, cameras, audio, SO-101, BU04, ESP32-C3
+chassis, Unitree L1, front camera, arm camera, audio, SO-101, BU04, ESP32-C3
 ```
+
+Orin publishes the chassis-front camera as `/front_camera/image/compressed` and
+the independent arm camera as `/visual_grasp/image/compressed`. Ubuntu only
+decodes and renders these streams; it never opens either V4L2 device.
 
 ## Operator Access
 

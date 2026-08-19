@@ -64,6 +64,14 @@ def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():
     assert "enable_motion:=false" in component
 
 
+def test_front_camera_component_uses_the_stable_alias():
+    component = (REPOSITORY_ROOT / "deploy/systemd/bin/project-link-component").read_text(
+        encoding="utf-8"
+    )
+    assert 'FRONT_CAMERA_DEVICE:-/dev/project_link_front_camera' in component
+    assert 'UNILIDAR_PORT:-/dev/project_link_lidar' in component
+
+
 def test_console_agent_exposes_only_uwb_shadow_lifecycle_services():
     source = (
         REPOSITORY_ROOT

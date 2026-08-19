@@ -1,0 +1,153 @@
+"""Orin-owned front camera publisher for the Ubuntu operator console."""
+
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import String
+
+
+class FrontCameraNode(Node):
+    def __init__(self) -> None:
+        super().__init__("project_link_front_camera")
+        self.declare_parameter("camera_device", "/dev/project_link_front_camera")
+        self.declare_parameter("camera_width", 640)
+        self.declare_parameter("camera_height", 480)
+        self.declare_parameter("camera_fps", 15.0)
+        self.declare_parameter("preview_fps", 8.0)
+        self.declare_parameter("jpeg_quality", 65)
+        self.declare_parameter("rotation_degrees", 90)
+        self.declare_parameter("frame_id", "front_camera_optical_frame")
+        self.declare_parameter("reopen_interval_sec", 2.0)
+
+        self._cv2: Any = None
+        self._camera: Any = None
+        self._last_open_attempt = 0.0
+        self._last_status = ""
+        self._frames = 0
+        image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
+        self._image_pub = self.create_publisher(
+            CompressedImage,
+            "/front_camera/image/compressed",
+            image_qos,
+        )
+        self._status_pub = self.create_publisher(String, "/front_camera/status", 10)
+        period = 1.0 / max(1.0, float(self.get_parameter("preview_fps").value))
+        self.create_timer(period, self._capture)
+        self.create_timer(1.0, self._publish_periodic_status)
+        self._open_camera()
+
+    def _publish_status(self, state: str, detail: str = "") -> None:
+        payload = json.dumps(
+            {
+                "state": state,
+                "detail": detail,
+                "device": str(self.get_parameter("camera_device").value),
+                "frames": self._frames,
+            },
+            ensure_ascii=False,
+        )
+        if payload == self._last_status:
+            return
+        self._last_status = payload
+        message = String()
+        message.data = payload
+        self._status_pub.publish(message)
+
+    def _open_camera(self) -> bool:
+        self._last_open_attempt = time.monotonic()
+        try:
+            import cv2
+
+            self._cv2 = cv2
+            device = str(self.get_parameter("camera_device").value)
+            camera = cv2.VideoCapture(device, cv2.CAP_V4L2)
+            camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, int(self.get_parameter("camera_width").value))
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, int(self.get_parameter("camera_height").value))
+            camera.set(cv2.CAP_PROP_FPS, float(self.get_parameter("camera_fps").value))
+            if not camera.isOpened():
+                camera.release()
+                self._publish_status("unavailable", "camera_open_failed")
+                return False
+            self._camera = camera
+            self._publish_status("ready")
+            self.get_logger().info(f"Front camera ready on {device}")
+            return True
+        except Exception as exc:
+            self._camera = None
+            self._publish_status("fault", f"{type(exc).__name__}: {exc}")
+            self.get_logger().error(f"Unable to open front camera: {exc}")
+            return False
+
+    def _rotate(self, frame):
+        degrees = int(self.get_parameter("rotation_degrees").value) % 360
+        if degrees == 90:
+            return self._cv2.rotate(frame, self._cv2.ROTATE_90_CLOCKWISE)
+        if degrees == 180:
+            return self._cv2.rotate(frame, self._cv2.ROTATE_180)
+        if degrees == 270:
+            return self._cv2.rotate(frame, self._cv2.ROTATE_90_COUNTERCLOCKWISE)
+        return frame
+
+    def _capture(self) -> None:
+        if self._camera is None:
+            retry = float(self.get_parameter("reopen_interval_sec").value)
+            if time.monotonic() - self._last_open_attempt >= retry:
+                self._open_camera()
+            return
+        ok, frame = self._camera.read()
+        if not ok or frame is None:
+            self._camera.release()
+            self._camera = None
+            self._publish_status("unavailable", "frame_read_failed")
+            return
+        frame = self._rotate(frame)
+        quality = int(self.get_parameter("jpeg_quality").value)
+        encoded_ok, encoded = self._cv2.imencode(
+            ".jpg",
+            frame,
+            [int(self._cv2.IMWRITE_JPEG_QUALITY), max(35, min(90, quality))],
+        )
+        if not encoded_ok:
+            self._publish_status("fault", "jpeg_encode_failed")
+            return
+        message = CompressedImage()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.header.frame_id = str(self.get_parameter("frame_id").value)
+        message.format = "jpeg"
+        message.data = encoded.tobytes()
+        self._image_pub.publish(message)
+        self._frames += 1
+
+    def _publish_periodic_status(self) -> None:
+        self._last_status = ""
+        self._publish_status("streaming" if self._camera is not None else "unavailable")
+
+    def destroy_node(self):
+        if self._camera is not None:
+            self._camera.release()
+            self._camera = None
+        return super().destroy_node()
+
+
+def main() -> None:
+    rclpy.init()
+    node = FrontCameraNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

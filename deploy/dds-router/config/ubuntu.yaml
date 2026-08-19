@@ -1,0 +1,28 @@
+version: v4.0
+
+allowlist:
+  - {name: "rt/project_link/console/*", type: "*"}
+  - {name: "rq/project_link/console/*", type: "*"}
+  - {name: "rr/project_link/console/*", type: "*"}
+  - {name: "rt/voice/status", type: "*"}
+  - {name: "rt/map", type: "*"}
+  - {name: "rt/global_costmap/costmap", type: "*"}
+  - {name: "rt/local_costmap/costmap", type: "*"}
+  - {name: "rt/scan", type: "*"}
+  - {name: "rt/plan", type: "*"}
+  - {name: "rt/tf", type: "*"}
+  - {name: "rt/tf_static", type: "*"}
+  - {name: "rt/front_camera/*", type: "*"}
+  - {name: "*navigate_to_pose*", type: "*"}
+  - {name: "*visual_grasp*", type: "*"}
+
+participants:
+  - name: ubuntu_console_domain_142
+    kind: local
+    domain: 142
+  - name: ssh_loopback_client
+    kind: wan
+    connection-addresses:
+      - ip: 127.0.0.1
+        port: 11666
+        transport: tcp

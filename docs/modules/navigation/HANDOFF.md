@@ -17,6 +17,9 @@
 - 恢复动作只允许清代价地图、原地旋转和等待。
 - Point-LIO 长时间线性积压已经通过轻量化配置和有界队列补丁控制。
 - Nav2 定位使用 Point-LIO TF，速度反馈使用 C63A `/odom`。
+- 车头 icSpring 摄像头由 Orin 以 `/dev/project_link_front_camera` 独占，
+  发布 `/front_camera/image/compressed`；中控仅在地图侧边小框渲染。
+  摄像头故障不得阻断建图或 Nav2 的基本启动。
 
 ## 2. 一键脚本
 

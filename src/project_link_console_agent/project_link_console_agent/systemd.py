@@ -11,6 +11,7 @@ UNITS = {
     "agent": "project-link-console-agent.service",
     "base": "project-link-base.service",
     "lidar": "project-link-lidar.service",
+    "front_camera": "project-link-front-camera.service",
     "robot_description": "project-link-robot-description.service",
     "scan": "project-link-scan.service",
     "point_lio_map": "project-link-point-lio-map.service",

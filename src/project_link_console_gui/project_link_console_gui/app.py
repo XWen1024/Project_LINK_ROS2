@@ -143,14 +143,16 @@ class ConsoleWindow(QMainWindow):
         self.navigation = QListWidget()
         self.navigation.setIconSize(QSize(22, 22))
         self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._show_uwb_page = os.environ.get("PROJECT_LINK_SHOW_UWB_PAGE", "0") == "1"
         page_specs = [
             ("建图与导航", QStyle.StandardPixmap.SP_DriveNetIcon),
             ("机械臂", QStyle.StandardPixmap.SP_ComputerIcon),
             ("语音控制", QStyle.StandardPixmap.SP_MediaVolume),
             ("语音配置", QStyle.StandardPixmap.SP_FileDialogDetailedView),
-            ("远程召唤", QStyle.StandardPixmap.SP_DialogResetButton),
             ("全局设置", QStyle.StandardPixmap.SP_FileDialogContentsView),
         ]
+        if self._show_uwb_page:
+            page_specs.insert(-1, ("远程召唤", QStyle.StandardPixmap.SP_DialogResetButton))
         self._page_titles = [title for title, _icon in page_specs]
         for title, icon_name in page_specs:
             item = QListWidgetItem(self.style().standardIcon(icon_name), title)
@@ -174,11 +176,13 @@ class ConsoleWindow(QMainWindow):
         self.pages.addWidget(self.manipulation_page)
         self.voice_page = VoicePage(bridge)
         self.voice_config_page = VoiceConfigPage(self.config_client)
-        self.uwb_page = UwbPage(bridge, self.config_client)
+        self.uwb_page = None
         self.settings_page = SettingsPage(self.config_client)
         self.pages.addWidget(self.voice_page)
         self.pages.addWidget(self.voice_config_page)
-        self.pages.addWidget(self.uwb_page)
+        if self._show_uwb_page:
+            self.uwb_page = UwbPage(bridge, self.config_client)
+            self.pages.addWidget(self.uwb_page)
         self.pages.addWidget(self.settings_page)
         content_splitter.addWidget(self.pages)
         self.log = QPlainTextEdit()
@@ -200,20 +204,23 @@ class ConsoleWindow(QMainWindow):
         bridge.connection_changed.connect(self._connection_changed)
         bridge.system_state.connect(self.navigation_page.update_system_state)
         bridge.system_state.connect(self.voice_page.update_system_state)
-        bridge.system_state.connect(self.uwb_page.update_system_state)
+        if self.uwb_page is not None:
+            bridge.system_state.connect(self.uwb_page.update_system_state)
         bridge.grid_updated.connect(self.navigation_page.update_grid)
         bridge.scan_updated.connect(self.navigation_page.update_scan)
         bridge.cloud_updated.connect(self.navigation_page.update_cloud)
         bridge.path_updated.connect(self.navigation_page.update_path)
         bridge.robot_updated.connect(self.navigation_page.update_robot)
+        bridge.front_camera_image.connect(self.navigation_page.update_front_camera)
         bridge.operation_event.connect(self._append_log)
         bridge.console_event.connect(self._console_event)
         bridge.voice_status.connect(self.voice_page.update_voice_status)
         bridge.voice_control_available.connect(self.voice_page.set_voice_control_available)
         bridge.voice_operation.connect(self.voice_page.show_voice_operation)
-        bridge.uwb_observation.connect(self.uwb_page.update_observation)
-        bridge.uwb_status.connect(self.uwb_page.update_status)
-        bridge.uwb_goal.connect(self.uwb_page.update_goal)
+        if self.uwb_page is not None:
+            bridge.uwb_observation.connect(self.uwb_page.update_observation)
+            bridge.uwb_status.connect(self.uwb_page.update_status)
+            bridge.uwb_goal.connect(self.uwb_page.update_goal)
 
         if self.manipulation_page.initialization_error is not None:
             self._append_log(
@@ -284,7 +291,8 @@ class ConsoleWindow(QMainWindow):
         self.connection_label.setStyleSheet(f"color: {color}; padding: 8px;")
         self.navigation_page.set_connection_available(connected)
         self.voice_page.set_connection_available(connected)
-        self.uwb_page.set_connection_available(connected)
+        if self.uwb_page is not None:
+            self.uwb_page.set_connection_available(connected)
 
     def _console_event(self, event: dict) -> None:
         self.voice_page.append_event(event)

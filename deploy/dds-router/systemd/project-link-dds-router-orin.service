@@ -1,0 +1,17 @@
+[Unit]
+Description=Project LINK DDS Router on Orin domain 42
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/console.env
+ExecStart=/home/wte/wheeltec_robot/deploy/dds-router/bin/project-link-dds-router orin
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,6 +1,6 @@
 # Project LINK Progress
 
-Last updated: 2026-08-15
+Last updated: 2026-08-19
 Canonical branch: `main`
 
 ## Current Milestone
@@ -8,6 +8,10 @@ Canonical branch: `main`
 Build a single Ubuntu 22.04 control console that replaces routine startup scripts,
 renders navigation and module state on the laptop, and controls headless Orin
 services through typed ROS interfaces and `systemd --user`.
+
+The current MVP is reliable Ubuntu-to-Orin transport plus one repeatable Qwen
+Realtime to Nav2 loop. UWB is excluded. The STM32-native handset is the primary
+manual driving control; GUI teleop remains an advanced-mode backup.
 
 ## Repository Consolidation Completed
 
@@ -98,6 +102,15 @@ Archive tags:
 9. [x] Add prompt/tool profiles and masked global configuration management.
        Cross-machine SSH authentication still needs one user bootstrap step.
 10. [x] Add UWB shadow plots, tuning and proposed-calibration capture.
+11. [x] Identify the fixed production hardware set: C63A, Unitree L1, SO-101,
+        wake board, chassis-front icSpring camera and independent arm camera.
+        Versioned exact-serial udev rules and verification scripts are added;
+        sudo installation on Orin remains pending.
+12. [x] Hide UWB by default and add the Orin-owned front-camera preview path to
+        the navigation page. Linux build and live stream validation remain.
+13. [ ] Build the locked DDS Router dependency set on Orin ARM64 and Ubuntu x86_64,
+        then isolate domains 42/142 through an SSH loopback tunnel.
+14. [ ] Save a real named waypoint and complete three Qwen voice-navigation runs.
 
 ## Existing Hardware Gates
 

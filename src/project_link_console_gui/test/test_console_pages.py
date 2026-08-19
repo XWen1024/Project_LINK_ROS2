@@ -13,9 +13,21 @@ def test_all_planned_console_pages_are_real_widgets():
     app = _source("app.py")
     assert "VoicePage(bridge)" in app
     assert "VoiceConfigPage(self.config_client)" in app
-    assert "UwbPage(bridge, self.config_client)" in app
+    assert 'PROJECT_LINK_SHOW_UWB_PAGE", "0"' in app
+    assert "if self._show_uwb_page:" in app
+    bridge = _source("ros_bridge.py")
+    assert "if self._uwb_enabled:" in bridge
     assert "SettingsPage(self.config_client)" in app
     assert "PlaceholderPage(title, description)" not in app
+
+
+def test_navigation_page_has_separate_front_camera_preview():
+    page = _source("navigation_page.py")
+    bridge = _source("ros_bridge.py")
+    assert 'QGroupBox("车头摄像头")' in page
+    assert '"/front_camera/image/compressed"' in bridge
+    assert "front_camera_image" in bridge
+    assert '"/visual_grasp/image/compressed"' not in bridge
 
 
 def test_voice_page_uses_typed_switch_action_via_bridge():

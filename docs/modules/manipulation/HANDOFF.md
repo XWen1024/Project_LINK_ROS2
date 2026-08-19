@@ -12,6 +12,10 @@ VL53L0X near-field distance control. Orin exclusively owns the camera, SO-101
 serial bus, model inference and ToF serial port. Ubuntu is a ROS 2 remote client
 and must not install or directly use LeRobot hardware drivers.
 
+The manipulator camera is the Generic/Realtek USB camera with production alias
+`/dev/project_link_arm_camera`. It is distinct from the icSpring chassis-front
+camera and publishes only on `/visual_grasp/image/compressed`.
+
 It does not own Nav2, SLAM, chassis `/cmd_vel`, cloud VLM recognition or a 3D
 depth-grasp planner.
 

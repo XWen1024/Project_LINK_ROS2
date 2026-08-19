@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import queue
 import threading
 import time
@@ -29,6 +30,7 @@ class RosBridge(QObject):
     cloud_updated = Signal(object)
     path_updated = Signal(object)
     robot_updated = Signal(object)
+    front_camera_image = Signal(bytes)
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
     voice_status = Signal(dict)
@@ -53,6 +55,7 @@ class RosBridge(QObject):
         self._connected = False
         self._cloud_enabled = False
         self._voice_control_ready: bool | None = None
+        self._uwb_enabled = os.environ.get("PROJECT_LINK_SHOW_UWB_PAGE", "0") == "1"
 
     def start(self) -> None:
         import rclpy
@@ -61,13 +64,12 @@ class RosBridge(QObject):
         from nav_msgs.msg import OccupancyGrid, Path
         from project_link_console_interfaces.action import ManageStack, SwitchVoice
         from project_link_console_interfaces.msg import ConsoleEvent, SystemState, TeleopCommand
-        from project_link_uwb_interfaces.msg import UwbObservation
         from rclpy.action import ActionClient
         from rclpy.executors import MultiThreadedExecutor
         from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
         from rclpy.signals import SignalHandlerOptions
         from rclpy.time import Time
-        from sensor_msgs.msg import LaserScan, PointCloud2
+        from sensor_msgs.msg import CompressedImage, LaserScan, PointCloud2
         from sensor_msgs_py import point_cloud2
         from std_msgs.msg import String
         from std_srvs.srv import Trigger
@@ -97,12 +99,15 @@ class RosBridge(QObject):
         self._emergency_client = self._node.create_client(
             Trigger, "/project_link/console/emergency_stop"
         )
-        self._start_uwb_client = self._node.create_client(
-            Trigger, "/project_link/console/start_uwb_shadow"
-        )
-        self._stop_uwb_client = self._node.create_client(
-            Trigger, "/project_link/console/stop_uwb_shadow"
-        )
+        self._start_uwb_client = None
+        self._stop_uwb_client = None
+        if self._uwb_enabled:
+            self._start_uwb_client = self._node.create_client(
+                Trigger, "/project_link/console/start_uwb_shadow"
+            )
+            self._stop_uwb_client = self._node.create_client(
+                Trigger, "/project_link/console/stop_uwb_shadow"
+            )
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self._node)
         self._transform_exception = TransformException
@@ -114,16 +119,19 @@ class RosBridge(QObject):
             ConsoleEvent, "/project_link/console/events", self._on_console_event, 20
         )
         self._node.create_subscription(String, "/voice/status", self._on_voice_status, 10)
-        self._node.create_subscription(
-            UwbObservation, "/uwb/person_observation", self._on_uwb_observation, 20
-        )
-        self._node.create_subscription(String, "/uwb/status", self._on_uwb_status, 10)
-        self._node.create_subscription(
-            String, "/uwb_navigation/status", self._on_uwb_status, 10
-        )
-        self._node.create_subscription(
-            PoseStamped, "/uwb_navigation/proposed_goal", self._on_uwb_goal, 10
-        )
+        if self._uwb_enabled:
+            from project_link_uwb_interfaces.msg import UwbObservation
+
+            self._node.create_subscription(
+                UwbObservation, "/uwb/person_observation", self._on_uwb_observation, 20
+            )
+            self._node.create_subscription(String, "/uwb/status", self._on_uwb_status, 10)
+            self._node.create_subscription(
+                String, "/uwb_navigation/status", self._on_uwb_status, 10
+            )
+            self._node.create_subscription(
+                PoseStamped, "/uwb_navigation/proposed_goal", self._on_uwb_goal, 10
+            )
         map_qos = QoSProfile(depth=1)
         map_qos.reliability = ReliabilityPolicy.RELIABLE
         map_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
@@ -146,6 +154,12 @@ class RosBridge(QObject):
             5,
         )
         self._node.create_subscription(LaserScan, "/scan", self._on_scan, qos_profile_sensor_data)
+        self._node.create_subscription(
+            CompressedImage,
+            "/front_camera/image/compressed",
+            lambda message: self.front_camera_image.emit(bytes(message.data)),
+            qos_profile_sensor_data,
+        )
         self._node.create_subscription(
             PointCloud2,
             "/point_lio/cloud_registered",
@@ -309,6 +323,9 @@ class RosBridge(QObject):
             self._emit_voice_operation(f"语音切换结果读取失败：{exc}")
 
     def _set_uwb_shadow(self, enabled: bool) -> None:
+        if not self._uwb_enabled:
+            self.operation_event.emit("UWB 已从当前 MVP 隐藏")
+            return
         client = self._start_uwb_client if enabled else self._stop_uwb_client
         if not client.wait_for_service(timeout_sec=0.0):
             self.operation_event.emit("UWB shadow 管理服务尚未连接")
