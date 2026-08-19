@@ -23,6 +23,13 @@ def test_front_camera_is_orin_owned_and_uses_a_dedicated_topic():
     assert "def _capture_loop(self)" in source
     assert "def _publish_preview(self)" in source
     assert "period = 0.5 / max" in source
+    assert 'self.declare_parameter("prefer_native_mjpeg", True)' in source
+    assert 'self.declare_parameter("manual_exposure", True)' in source
+    assert 'self.declare_parameter("exposure_time_absolute", 300)' in source
+    assert 'self.declare_parameter("camera_gain", 32)' in source
+    assert '"--stream-to=-"' in source
+    assert '"native_mjpeg_zero_reencode"' in source
+    assert '"auto_exposure=1,exposure_time_absolute={exposure},gain={gain}"' in source
     assert "CompressedImage" in source
     assert '"/visual_grasp/image/compressed"' not in source
     assert '"/cmd_vel"' not in source

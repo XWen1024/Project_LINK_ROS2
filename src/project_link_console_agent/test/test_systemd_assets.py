@@ -88,6 +88,9 @@ def test_front_camera_component_uses_the_stable_alias():
     assert 'FRONT_CAMERA_DEVICE:-/dev/project_link_front_camera' in component
     assert 'UNILIDAR_PORT:-/dev/project_link_lidar' in component
     assert 'CHASSIS_DEVICE:-/dev/project_link_chassis' in component
+    assert 'FRONT_CAMERA_PREFER_NATIVE_MJPEG:-true' in component
+    assert 'FRONT_CAMERA_EXPOSURE_ABSOLUTE:-300' in component
+    assert 'FRONT_CAMERA_GAIN:-32' in component
 
 
 def test_lidar_component_sources_humble_overlays_without_nounset():
