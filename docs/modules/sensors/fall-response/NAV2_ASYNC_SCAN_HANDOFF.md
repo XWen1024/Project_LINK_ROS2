@@ -1,7 +1,7 @@
 # Fall Response Nav2 Spin Validation Handoff
 
 Verification date: 2026-08-20
-Implementation baseline: `main` worktree based on `73bda7c`; physical validation has not started
+Canonical implementation commit: `36c19c0`; physical validation has not started
 
 ## Implementation status
 
@@ -61,6 +61,11 @@ Keep `notification_enabled=false` for the first motion tests. In this mode the
 assessment finishes without contacting the bound person and the event ends as a
 clearly messaged `failed/notification_suppressed` terminal result; this preserves
 the Android public status enum and prevents accidental real alerts.
+
+The `static` deployment path is Linux-verified at `36c19c0`: Orin passed `86`
+focused tests, Ubuntu passed `44` console tests, typed DDS interfaces and event
+history were observed, and static preflight succeeded with zero `/cmd_vel`
+publishers. This does not validate any physical Spin behavior.
 
 ## Mandatory physical sequence
 

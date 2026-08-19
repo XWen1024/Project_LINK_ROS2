@@ -1,7 +1,7 @@
 # Fall Response Backend And Console Handoff
 
 Verification date: 2026-08-20
-Implementation baseline: `main` worktree based on `73bda7c`; Linux verification and canonical commit are pending
+Canonical implementation commit: `36c19c0`
 
 ## Current boundary
 
@@ -125,14 +125,24 @@ Any failed gate degrades to a visual-unconfirmed alert. Direct velocity fallback
 is forbidden. Cancellation always requests Spin cancellation, waits for Nav2
 acknowledgement and waits for stable zero angular velocity before completing.
 
+## Verified deployment state
+
+At `36c19c0`, normal Linux builds completed on both hosts. Orin focused tests
+passed `86` cases and Ubuntu console tests passed `44` cases. The new user units
+passed static verification, the typed status/evidence/event/configuration
+interfaces were discovered over domain 42, SQLite history queries succeeded and
+the Ubuntu page passed an offscreen simple/advanced-mode render check.
+
+The installed Orin runtime is active in `scan_mode=static`. It reports the front
+camera, both CUDA models, VLM and WeChat notifier ready; static preflight returns
+success without requiring Nav2. The validation created no event, sent no real
+notification, started no Nav2 stack and published no `/cmd_vel`.
+
 ## Remaining verification gates
 
-1. Build interfaces, backend, agent and GUI normally on Orin/Ubuntu.
-2. Run the focused Python tests and `systemd-analyze --user verify`.
-3. Render the page offscreen on Ubuntu and verify typed DDS state/event queries.
-4. Keep `scan_mode=static`; run a phone and console demo event with real-contact
+1. Keep `scan_mode=static`; run a phone and console demo event with real-contact
    notification disabled.
-5. Run the read-only Nav2 preflight while Nav2 is active.
-6. With the area clear, arm stowed/torque off and physical E-stop ready, follow
+2. Start the already-validated Nav2 stack and run the read-only Nav2 preflight.
+3. With the area clear, arm stowed/torque off and physical E-stop ready, follow
    `NAV2_ASYNC_SCAN_HANDOFF.md` for supervised motion gates.
-7. Keep `static` as the production default until two full supervised Spin cycles pass.
+4. Keep `static` as the production default until two full supervised Spin cycles pass.

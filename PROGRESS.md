@@ -45,8 +45,12 @@ Archive tags:
   fallback plus a newly implemented fail-closed Nav2 Spin adapter. The backend
   now enforces strict SQLite transitions, supports segment-interrupting CUDA
   results, typed status/event/timeline/evidence interfaces and a dedicated
-  console page. Models, VLM and real WeChat delivery were previously verified;
-  the new interfaces/Nav2 adapter still require Linux build and supervised gates.
+  console page. At `main@36c19c0`, Orin normal builds and `86` focused tests
+  passed; Ubuntu normal builds, `44` console tests and the offscreen page render
+  passed. Typed DDS interfaces, SQLite history and the active static runtime were
+  verified with camera, both models, VLM and WeChat ready. No event, notification,
+  Nav2 goal or motion was triggered; the Nav2 Spin adapter still requires the
+  supervised physical gates.
 - Orin direct pytest across console agent, classic voice and Qwen Realtime:
   79 passed after the new event/config integration.
 - The versioned systemd graph contains 13 services, 3 mode targets and 1 shared
@@ -175,9 +179,11 @@ Archive tags:
         horizontal servo in the visible Ubuntu GUI. Validate vertical servo separately.
 16. [ ] After the MVP loop, implement a typed allowlisted console bridge over SSH
         and validate reconnect/state resynchronization before replacing DDS Peer.
-17. [ ] Build and validate the dedicated fall-response page and typed interfaces
-        on Orin/Ubuntu in `static` mode, then execute the supervised 30°/cancel/
-        90°/180°/360° Nav2 Spin gate with real-contact notification disabled.
+17. [x] Build and validate the dedicated fall-response page and typed interfaces
+        on Orin/Ubuntu in `static` mode at `main@36c19c0`.
+18. [ ] Execute the supervised 30°/cancel/90°/180°/360° Nav2 Spin gate with
+        real-contact notification disabled, then pass two complete cycles before
+        changing the production default from `static`.
 
 ## Existing Hardware Gates
 
@@ -187,8 +193,9 @@ Archive tags:
 - Visual grasp needs a complete Orin-to-Ubuntu camera/SO-101/ToF field loop and more grasp demonstrations.
 - Classic voice still needs valid Volcano ASR credentials or an explicit documented fallback state.
 - Qwen Realtime still needs real Nav2, grasp and 20-cycle AEC/interruption validation.
-- Fall-response Nav2 Spin is implemented but remains blocked on Orin/Ubuntu build,
-  read-only preflight and the supervised physical sequence in its current handoff.
+- Fall-response static mode and its console are Linux-verified. Nav2 Spin remains
+  blocked on an active-stack read-only preflight and the supervised physical
+  sequence in its current handoff.
 
 ## Safety Acceptance For The Console
 
