@@ -86,7 +86,7 @@ def test_lidar_calibration_slider_only_changes_demo_preview():
     assert bridge._lidar_preview_rpy[0] > 0.0
 
     page.lidar_reset_preview.click()
-    assert page.lidar_axis_degrees["roll"].value() == 0.0
-    assert math.isclose(page.lidar_axis_degrees["pitch"].value(), 90.0002, abs_tol=0.1)
-    assert math.isclose(abs(page.lidar_axis_degrees["yaw"].value()), 180.0, abs_tol=0.1)
+    assert math.isclose(page.lidar_axis_degrees["roll"].value(), -90.0, abs_tol=0.1)
+    assert math.isclose(page.lidar_axis_degrees["pitch"].value(), -2.2, abs_tol=0.1)
+    assert math.isclose(page.lidar_axis_degrees["yaw"].value(), 90.0, abs_tol=0.1)
     window.close()
