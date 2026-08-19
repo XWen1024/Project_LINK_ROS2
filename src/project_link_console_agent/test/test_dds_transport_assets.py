@@ -24,6 +24,8 @@ def test_transport_is_loopback_tcp_domain_isolated_and_uwb_free():
     assert "domain: 42" in orin
     assert "domain: 142" in ubuntu
     assert "ip: 127.0.0.1" in orin
+    assert orin.count("whitelist-interfaces:") == 2
+    assert ubuntu.count("whitelist-interfaces:") == 2
     assert "transport: tcp" in orin and "transport: tcp" in ubuntu
     assert "-L 127.0.0.1:11666:127.0.0.1:11666" in tunnel
     assert "uwb" not in orin.lower()

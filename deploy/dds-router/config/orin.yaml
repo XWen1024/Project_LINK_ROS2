@@ -22,8 +22,12 @@ participants:
   - name: orin_domain_42
     kind: local
     domain: 42
+    whitelist-interfaces:
+      - 127.0.0.1
   - name: ssh_loopback_server
     kind: wan
+    whitelist-interfaces:
+      - 127.0.0.1
     listening-addresses:
       - ip: 127.0.0.1
         port: 11666

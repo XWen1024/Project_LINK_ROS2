@@ -20,8 +20,12 @@ participants:
   - name: ubuntu_console_domain_142
     kind: local
     domain: 142
+    whitelist-interfaces:
+      - 127.0.0.1
   - name: ssh_loopback_client
     kind: wan
+    whitelist-interfaces:
+      - 127.0.0.1
     connection-addresses:
       - ip: 127.0.0.1
         port: 11666
