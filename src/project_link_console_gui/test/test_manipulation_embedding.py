@@ -38,3 +38,17 @@ def test_console_manipulation_page_only_constructs_a_remote_client():
     assert "self.initialization_traceback" in source
     assert "start_visual_grasp" in source
     assert "不会启用扭矩" in source
+
+
+def test_visual_grasp_server_declares_every_gui_parameter_and_uses_rclpy_logging():
+    node = (
+        REPOSITORY_ROOT
+        / "src"
+        / "project_link_visual_grasp"
+        / "project_link_visual_grasp"
+        / "node.py"
+    ).read_text(encoding="utf-8")
+    assert '"grasp_timeout_sec": 20.0' in node
+    assert '"joint_command_limit": 95.0' in node
+    assert 'get_logger().info(f"Opened camera' in node
+    assert 'get_logger().info("Opened camera %s"' not in node

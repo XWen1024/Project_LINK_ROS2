@@ -40,9 +40,12 @@ class FrontCameraNode(Node):
         self._last_status = ""
         self._frames = 0
         self._frame_lock = threading.Lock()
+        self._capture_stop = threading.Event()
+        self._capture_thread: threading.Thread | None = None
         self._latest_frame: Any = None
         self._latest_frame_monotonic = 0.0
         self._latest_stamp_ns = 0
+        self._last_published_stamp_ns = 0
         image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         self._image_pub = self.create_publisher(
             CompressedImage,
@@ -52,9 +55,15 @@ class FrontCameraNode(Node):
         self._status_pub = self.create_publisher(String, "/front_camera/status", 10)
         self.create_service(CaptureStill, "/front_camera/capture_still", self._capture_still)
         period = 1.0 / max(1.0, float(self.get_parameter("preview_fps").value))
-        self.create_timer(period, self._capture)
+        self.create_timer(period, self._publish_preview)
         self.create_timer(1.0, self._publish_periodic_status)
         self._open_camera()
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop,
+            name="front-camera-capture",
+            daemon=True,
+        )
+        self._capture_thread.start()
 
     def _publish_status(self, state: str, detail: str = "") -> None:
         payload = json.dumps(
@@ -114,24 +123,37 @@ class FrontCameraNode(Node):
             return self._cv2.rotate(frame, self._cv2.ROTATE_90_COUNTERCLOCKWISE)
         return frame
 
-    def _capture(self) -> None:
-        if self._camera is None:
-            retry = float(self.get_parameter("reopen_interval_sec").value)
-            if time.monotonic() - self._last_open_attempt >= retry:
-                self._open_camera()
-            return
-        ok, frame = self._camera.read()
-        if not ok or frame is None:
-            self._camera.release()
-            self._camera = None
-            self._publish_status("unavailable", "frame_read_failed")
-            return
-        frame = self._rotate(frame)
-        stamp_ns = self.get_clock().now().nanoseconds
+    def _capture_loop(self) -> None:
+        while not self._capture_stop.is_set():
+            if self._camera is None:
+                retry = float(self.get_parameter("reopen_interval_sec").value)
+                if time.monotonic() - self._last_open_attempt >= retry:
+                    self._open_camera()
+                self._capture_stop.wait(0.05)
+                continue
+            ok, frame = self._camera.read()
+            if not ok or frame is None:
+                self._camera.release()
+                self._camera = None
+                self._publish_status("unavailable", "frame_read_failed")
+                continue
+            frame = self._rotate(frame)
+            stamp_ns = self.get_clock().now().nanoseconds
+            with self._frame_lock:
+                self._latest_frame = frame
+                self._latest_frame_monotonic = time.monotonic()
+                self._latest_stamp_ns = stamp_ns
+
+    def _publish_preview(self) -> None:
         with self._frame_lock:
-            self._latest_frame = frame.copy()
-            self._latest_frame_monotonic = time.monotonic()
-            self._latest_stamp_ns = stamp_ns
+            if (
+                self._latest_frame is None
+                or self._latest_stamp_ns == self._last_published_stamp_ns
+            ):
+                return
+            frame = self._latest_frame.copy()
+            stamp_ns = self._latest_stamp_ns
+            self._last_published_stamp_ns = stamp_ns
         preview_width = max(1, int(self.get_parameter("preview_width").value))
         preview_height = max(1, int(self.get_parameter("preview_height").value))
         if frame.shape[1] != preview_width or frame.shape[0] != preview_height:
@@ -195,6 +217,10 @@ class FrontCameraNode(Node):
         self._publish_status("streaming" if self._camera is not None else "unavailable")
 
     def destroy_node(self):
+        self._capture_stop.set()
+        if self._capture_thread is not None:
+            self._capture_thread.join(timeout=1.5)
+            self._capture_thread = None
         if self._camera is not None:
             self._camera.release()
             self._camera = None

@@ -102,6 +102,8 @@ PARAMETER_DEFAULTS: dict[str, Any] = {
     "arrive_stable_cycles": 5,
     "move_step_limit": 3.0,
     "move_timeout_sec": 15.0,
+    "grasp_timeout_sec": 20.0,
+    "joint_command_limit": 95.0,
     "preset_joint_limit": 95.0,
     "standby_joint_limit": 99.5,
     "center_offset_x": 143.0,
@@ -558,7 +560,7 @@ class VisualGraspNode(Node):
                 raise RuntimeError("Unable to open V4L2 camera")
             self._camera = camera
             self._camera_ready = True
-            self.get_logger().info("Opened camera %s", self._values["camera_device"])
+            self.get_logger().info(f"Opened camera {self._values['camera_device']}")
         except Exception as exc:
             self._camera = None
             self._camera_ready = False
