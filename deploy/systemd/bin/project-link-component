@@ -81,7 +81,8 @@ case "$component" in
     ;;
   robot-description)
     source_main
-    exec ros2 launch turn_on_wheeltec_robot robot_mode_description.launch.py
+    exec ros2 launch turn_on_wheeltec_robot robot_mode_description.launch.py \
+      lidar_mount_yaw_rad:="${LIDAR_MOUNT_YAW_RAD:-3.14159}"
     ;;
   scan)
     source_main
@@ -96,7 +97,8 @@ case "$component" in
       filter_size_surf:="${POINT_LIO_FILTER_SIZE_SURF:-0.15}" \
       filter_size_map:="${POINT_LIO_FILTER_SIZE_MAP:-0.15}" \
       cube_side_length:="${POINT_LIO_CUBE_SIDE_LENGTH:-150.0}" \
-      det_range:="${POINT_LIO_DET_RANGE:-40.0}"
+      det_range:="${POINT_LIO_DET_RANGE:-40.0}" \
+      lidar_mount_yaw_rad:="${LIDAR_MOUNT_YAW_RAD:-3.14159}"
     ;;
   nav2)
     source_main

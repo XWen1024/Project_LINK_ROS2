@@ -175,7 +175,9 @@ class ConsoleWindow(QMainWindow):
 
         content_splitter = QSplitter(Qt.Vertical)
         self.pages = ResponsiveStackedWidget()
-        self.navigation_page = NavigationPage(bridge)
+        self.navigation_page = NavigationPage(
+            bridge, None if demo else self.config_client
+        )
         self.pages.addWidget(self.navigation_page)
         self.manipulation_page = ManipulationPage(bridge, demo=demo)
         self.manipulation_page.message.connect(self._append_log)

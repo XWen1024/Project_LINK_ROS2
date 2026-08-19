@@ -29,6 +29,8 @@ public:
     const double world_yaw = declare_parameter<double>("odom_to_lio_odom_yaw", 0.0);
     projected_z_ = declare_parameter<double>("projected_z", 0.0);
 
+    const bool derive_from_mount =
+      declare_parameter<bool>("derive_lio_to_base_from_mount", true);
     const double lio_to_base_x = declare_parameter<double>("lio_to_base_x", 0.0);
     const double lio_to_base_y = declare_parameter<double>("lio_to_base_y", 0.0);
     const double lio_to_base_z = declare_parameter<double>("lio_to_base_z", 0.0);
@@ -41,10 +43,45 @@ public:
     odom_to_lio_odom_.setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
     odom_to_lio_odom_.setRotation(world_rotation);
 
-    tf2::Quaternion lio_to_base_rotation;
-    lio_to_base_rotation.setRPY(lio_to_base_roll, lio_to_base_pitch, lio_to_base_yaw);
-    lio_to_base_.setOrigin(tf2::Vector3(lio_to_base_x, lio_to_base_y, lio_to_base_z));
-    lio_to_base_.setRotation(lio_to_base_rotation);
+    if (derive_from_mount) {
+      const double base_ground_clearance =
+        declare_parameter<double>("base_ground_clearance", 0.0785);
+      const double lidar_offset_x = declare_parameter<double>("lidar_offset_x", 0.190);
+      const double lidar_offset_y = declare_parameter<double>("lidar_offset_y", 0.0);
+      const double lidar_offset_z = declare_parameter<double>("lidar_offset_z", 0.550);
+      const double lidar_mount_roll = declare_parameter<double>("lidar_mount_roll", 0.0);
+      const double lidar_mount_pitch = declare_parameter<double>("lidar_mount_pitch", 1.5708);
+      const double lidar_mount_yaw =
+        declare_parameter<double>("lidar_mount_yaw_rad", 3.14159);
+      const double lidar_driver_roll = declare_parameter<double>("lidar_driver_roll", 3.14159);
+      const double lidar_driver_pitch = declare_parameter<double>("lidar_driver_pitch", 0.0);
+      const double lidar_driver_yaw =
+        declare_parameter<double>("lidar_driver_yaw", 2.0112063268);
+      const double imu_offset_x = declare_parameter<double>("imu_offset_x", -0.007698);
+      const double imu_offset_y = declare_parameter<double>("imu_offset_y", -0.014655);
+      const double imu_offset_z = declare_parameter<double>("imu_offset_z", 0.00667);
+
+      tf2::Quaternion identity_rotation;
+      identity_rotation.setRPY(0.0, 0.0, 0.0);
+      tf2::Quaternion mount_rotation;
+      mount_rotation.setRPY(lidar_mount_roll, lidar_mount_pitch, lidar_mount_yaw);
+      tf2::Quaternion driver_rotation;
+      driver_rotation.setRPY(lidar_driver_roll, lidar_driver_pitch, lidar_driver_yaw);
+      const tf2::Transform base_to_base_link(
+        identity_rotation, tf2::Vector3(0.0, 0.0, base_ground_clearance));
+      const tf2::Transform base_link_to_mount(
+        mount_rotation, tf2::Vector3(lidar_offset_x, lidar_offset_y, lidar_offset_z));
+      const tf2::Transform mount_to_lidar(driver_rotation, tf2::Vector3(0.0, 0.0, 0.0));
+      const tf2::Transform lidar_to_imu(
+        identity_rotation, tf2::Vector3(imu_offset_x, imu_offset_y, imu_offset_z));
+      lio_to_base_ =
+        (base_to_base_link * base_link_to_mount * mount_to_lidar * lidar_to_imu).inverse();
+    } else {
+      tf2::Quaternion lio_to_base_rotation;
+      lio_to_base_rotation.setRPY(lio_to_base_roll, lio_to_base_pitch, lio_to_base_yaw);
+      lio_to_base_.setOrigin(tf2::Vector3(lio_to_base_x, lio_to_base_y, lio_to_base_z));
+      lio_to_base_.setRotation(lio_to_base_rotation);
+    }
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
     static_tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(*this);

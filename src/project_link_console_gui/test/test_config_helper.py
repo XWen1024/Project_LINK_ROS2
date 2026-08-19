@@ -37,6 +37,36 @@ def test_global_get_masks_secret_values(tmp_path):
     assert value["files"]["voice_api"]["PROJECT_LINK_ASR_PROVIDER"]["value"] == "volcano"
 
 
+def test_lidar_mount_yaw_is_allowlisted_bounded_and_round_trips(tmp_path):
+    saved = _run(
+        tmp_path,
+        "set",
+        "global",
+        {"files": {"console": {"LIDAR_MOUNT_YAW_RAD": "1.2345"}}},
+    )
+    assert saved["restart_required"] is True
+    loaded = _run(tmp_path, "get", "global")
+    assert (
+        loaded["files"]["console"]["LIDAR_MOUNT_YAW_RAD"]["value"]
+        == "1.2345"
+    )
+
+    environment = os.environ.copy()
+    environment["HOME"] = str(tmp_path)
+    result = subprocess.run(
+        [sys.executable, str(HELPER), "set", "global"],
+        input=json.dumps(
+            {"files": {"console": {"LIDAR_MOUNT_YAW_RAD": "4.0"}}}
+        ),
+        text=True,
+        capture_output=True,
+        env=environment,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "lidar_mount_yaw_out_of_range" in result.stderr
+
+
 def test_voice_and_uwb_runtime_overrides_round_trip(tmp_path):
     voice = _run(tmp_path, "get", "voice")
     voice["classic"]["audio_end_silence_ms"] = 650

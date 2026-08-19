@@ -66,3 +66,21 @@ def test_front_camera_exposure_controls_follow_advanced_and_automatic_modes():
     assert page.camera_apply.isEnabled()
     assert page.camera_config_status.text() == "演示相机参数已应用"
     window.close()
+
+
+def test_lidar_calibration_slider_only_changes_demo_preview():
+    app = QApplication.instance() or QApplication([])
+    bridge = DemoBridge()
+    window = ConsoleWindow(bridge, demo=True)
+    page = window.navigation_page
+
+    page.set_advanced(True)
+    page.lidar_preview_degrees.setValue(37.5)
+    assert page.lidar_preview_slider.value() == 375
+    assert "仅预览" in page.lidar_calibration_status.text()
+    assert bridge._lidar_preview_right_rad > 0.0
+
+    page.lidar_reset_preview.click()
+    assert page.lidar_preview_degrees.value() == 0.0
+    assert bridge._lidar_preview_right_rad == 0.0
+    window.close()

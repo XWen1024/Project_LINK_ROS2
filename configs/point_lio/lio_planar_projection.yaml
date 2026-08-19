@@ -11,15 +11,30 @@
     # after the new stationary, in-place-turn, and straight-line tests pass.
     odom_to_lio_odom_yaw: 0.0
 
-    # IMU/LIO body -> base_footprint, derived from the canonical URDF chain
-    # after applying the 90-degree clockwise chassis mounting correction:
-    # base_footprint -> base_link -> unilidar_link -> unilidar_lidar
-    # -> unilidar_imu. Do not duplicate these values in another robot model.
-    lio_to_base_x: -0.0883684513
-    lio_to_base_y: 0.6641805860
-    lio_to_base_z: -0.0066705850
-    lio_to_base_roll: -1.5707950540
-    lio_to_base_pitch: 0.0000011313
-    lio_to_base_yaw: -2.7011826536
+    # Derive IMU/LIO body -> base_footprint from the same physical mounting
+    # values used by the canonical URDF. lidar_mount_yaw_rad is overridden from
+    # the allowlisted Orin console.env at launch time.
+    derive_lio_to_base_from_mount: true
+    base_ground_clearance: 0.0785
+    lidar_offset_x: 0.190
+    lidar_offset_y: 0.000
+    lidar_offset_z: 0.550
+    lidar_mount_roll: 0.0
+    lidar_mount_pitch: 1.5708
+    lidar_mount_yaw_rad: 3.14159
+    lidar_driver_roll: 3.14159
+    lidar_driver_pitch: 0.0
+    lidar_driver_yaw: 2.0112063268
+    imu_offset_x: -0.007698
+    imu_offset_y: -0.014655
+    imu_offset_z: 0.00667
+
+    # Explicit fallback retained for diagnostics only.
+    lio_to_base_x: -0.2602380722
+    lio_to_base_y: 0.5831816143
+    lio_to_base_z: -0.19667
+    lio_to_base_roll: 0.0
+    lio_to_base_pitch: -1.5707963268
+    lio_to_base_yaw: 2.0112063268
 
     projected_z: 0.0

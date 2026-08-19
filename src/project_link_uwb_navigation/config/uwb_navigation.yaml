@@ -59,4 +59,4 @@ uwb_nav2_server:
     sensor_translation_y_m: 0.0
 
     cmd_vel_topic: "/cmd_vel"
-    allowed_cmd_vel_publishers: ["velocity_smoother", "behavior_server"]
+    allowed_cmd_vel_publishers: ["velocity_smoother"]

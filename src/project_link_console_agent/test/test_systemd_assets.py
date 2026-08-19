@@ -85,7 +85,7 @@ def test_console_reactivates_mode_target_after_services_recover():
     assert "self._systemd.start_no_block(target)" in source
 
 
-def test_lidar_chassis_yaw_and_lio_projection_use_the_same_clockwise_correction():
+def test_lidar_mount_yaw_is_allowlisted_and_shared_by_tf_and_lio_projection():
     urdf = (
         REPOSITORY_ROOT
         / "src"
@@ -96,11 +96,13 @@ def test_lidar_chassis_yaw_and_lio_projection_use_the_same_clockwise_correction(
     projection = (
         REPOSITORY_ROOT / "configs" / "point_lio" / "lio_planar_projection.yaml"
     ).read_text(encoding="utf-8")
-    assert 'lidar_mount_rpy" value="0.0 1.5708 1.5707963268"' in urdf
-    assert "lio_to_base_x: -0.0883684513" in projection
-    assert "lio_to_base_y: 0.6641805860" in projection
-    assert "lio_to_base_roll: -1.5707950540" in projection
-    assert "lio_to_base_yaw: -2.7011826536" in projection
+    component = (
+        REPOSITORY_ROOT / "deploy" / "systemd" / "bin" / "project-link-component"
+    ).read_text(encoding="utf-8")
+    assert '<xacro:arg name="lidar_mount_yaw_rad" default="3.14159"/>' in urdf
+    assert '$(arg lidar_mount_yaw_rad)' in urdf
+    assert "derive_lio_to_base_from_mount: true" in projection
+    assert 'lidar_mount_yaw_rad:="${LIDAR_MOUNT_YAW_RAD:-3.14159}"' in component
 
 
 def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():
@@ -110,6 +112,18 @@ def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():
     assert "voice_qwen.yaml" in component
     assert "uwb_navigation.yaml" in component
     assert "enable_motion:=false" in component
+
+
+def test_nav2_routes_all_motion_through_velocity_smoother():
+    launch = (
+        REPOSITORY_ROOT
+        / "src"
+        / "wheeltec_robot_nav2"
+        / "launch"
+        / "point_lio_navigation.launch.py"
+    ).read_text(encoding="utf-8")
+    assert 'SetRemap(src="cmd_vel", dst="cmd_vel_nav")' in launch
+    assert "Only velocity_smoother may publish final /cmd_vel" in launch
 
 
 def test_front_camera_component_uses_the_stable_alias():

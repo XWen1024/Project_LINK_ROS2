@@ -447,6 +447,20 @@ class ConsoleAgent(Node):
             if request.operation == ManageStack.Goal.OPERATION_START_MAPPING:
                 self._systemd.stop(UNITS["navigation_target"])
                 self._systemd.stop(UNITS["rf2o_target"])
+                if request.restart:
+                    self._systemd.stop(UNITS["mapping_target"])
+                    self._start_target_with_progress(
+                        goal_handle,
+                        UNITS["platform_target"],
+                        [
+                            UNITS["base"],
+                            UNITS["lidar"],
+                            UNITS["robot_description"],
+                            UNITS["scan"],
+                            UNITS["platform_target"],
+                        ],
+                        restart=True,
+                    )
                 self._start_target_with_progress(
                     goal_handle,
                     UNITS["mapping_target"],
@@ -459,12 +473,27 @@ class ConsoleAgent(Node):
                         UNITS["point_lio_map"],
                         UNITS["mapping_target"],
                     ],
-                    restart=request.restart,
+                    restart=False,
                 )
                 final_mode = SystemState.MODE_MAPPING
                 final_mode_name = "mapping"
             elif request.operation == ManageStack.Goal.OPERATION_START_NAVIGATION:
                 self._systemd.stop(UNITS["rf2o_target"])
+                if request.restart:
+                    self._systemd.stop(UNITS["navigation_target"])
+                    self._systemd.stop(UNITS["mapping_target"])
+                    self._start_target_with_progress(
+                        goal_handle,
+                        UNITS["platform_target"],
+                        [
+                            UNITS["base"],
+                            UNITS["lidar"],
+                            UNITS["robot_description"],
+                            UNITS["scan"],
+                            UNITS["platform_target"],
+                        ],
+                        restart=True,
+                    )
                 self._start_target_with_progress(
                     goal_handle,
                     UNITS["navigation_target"],
@@ -479,7 +508,7 @@ class ConsoleAgent(Node):
                         UNITS["nav2"],
                         UNITS["navigation_target"],
                     ],
-                    restart=request.restart,
+                    restart=False,
                 )
                 final_mode = SystemState.MODE_NAVIGATION
                 final_mode_name = "navigation"

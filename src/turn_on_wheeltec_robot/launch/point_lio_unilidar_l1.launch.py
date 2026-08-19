@@ -16,6 +16,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -43,6 +44,7 @@ def generate_launch_description():
     det_range = LaunchConfiguration("det_range")
     enable_slam_toolbox = LaunchConfiguration("enable_slam_toolbox")
     use_imu_as_input = LaunchConfiguration("use_imu_as_input")
+    lidar_mount_yaw_rad = LaunchConfiguration("lidar_mount_yaw_rad")
     point_lio_node = Node(
         package="point_lio",
         executable="pointlio_mapping",
@@ -83,7 +85,14 @@ def generate_launch_description():
         executable="lio_planar_projection",
         name="lio_planar_projection",
         output="screen",
-        parameters=[projection_config_file],
+        parameters=[
+            projection_config_file,
+            {
+                "lidar_mount_yaw_rad": ParameterValue(
+                    lidar_mount_yaw_rad, value_type=float
+                )
+            },
+        ],
     )
 
     slam_toolbox_node = Node(
@@ -135,6 +144,11 @@ def generate_launch_description():
                 "projection_config_file",
                 default_value=default_projection_config,
                 description="Planar Point-LIO base projection configuration.",
+            ),
+            DeclareLaunchArgument(
+                "lidar_mount_yaw_rad",
+                default_value="3.14159",
+                description="Calibrated chassis-to-lidar mounting yaw in radians.",
             ),
             DeclareLaunchArgument(
                 "odom_only",

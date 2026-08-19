@@ -63,7 +63,6 @@ voice_dialog_node:
     nav2_cmd_vel_topic: /cmd_vel
     nav2_allowed_cmd_vel_publishers:
       - velocity_smoother
-      - behavior_server
     # Example: /home/wte/.ros/project_link_voice/waypoints.json
     waypoints_override_file: ""
     funvad_device: cuda

@@ -23,6 +23,7 @@ FIELDS = [
     ("console", "ROS_LOCALHOST_ONLY", "允许局域网 ROS", False, True),
     ("console", "CHASSIS_DEVICE", "底盘控制器设备", False, True),
     ("console", "UNILIDAR_PORT", "Unitree 雷达设备", False, False),
+    ("console", "LIDAR_MOUNT_YAW_RAD", "雷达安装方向（弧度）", False, False),
     ("console", "FRONT_CAMERA_DEVICE", "车头摄像头设备", False, True),
     ("console", "FRONT_CAMERA_ROTATION_DEGREES", "车头画面旋转角度", False, False),
     ("console", "FRONT_CAMERA_PREFER_NATIVE_MJPEG", "车头相机原生 MJPEG 直通", False, False),

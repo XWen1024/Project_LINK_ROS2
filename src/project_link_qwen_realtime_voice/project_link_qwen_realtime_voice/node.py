@@ -157,7 +157,7 @@ class QwenRealtimeVoiceNode(Node):
         self.declare_parameter("nav2_action_name", "/navigate_to_pose")
         self.declare_parameter("nav2_behavior_tree", "")
         self.declare_parameter("nav2_cmd_vel_topic", "/cmd_vel")
-        self.declare_parameter("nav2_allowed_cmd_vel_publishers", ["velocity_smoother", "behavior_server"])
+        self.declare_parameter("nav2_allowed_cmd_vel_publishers", ["velocity_smoother"])
         self.declare_parameter("navigation_timeout_sec", 180.0)
         self.declare_parameter("confirmation_timeout_sec", 30.0)
         self.declare_parameter("visual_grasp_timeout_sec", 45.0)

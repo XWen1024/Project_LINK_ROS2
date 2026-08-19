@@ -15,12 +15,18 @@ def generate_launch_description():
         "patrol_robot.urdf.xacro",
     )
     urdf_xacro = LaunchConfiguration("urdf_xacro")
+    lidar_mount_yaw_rad = LaunchConfiguration("lidar_mount_yaw_rad")
 
     return LaunchDescription([
         DeclareLaunchArgument(
             "urdf_xacro",
             default_value=default_xacro,
             description="Canonical Project LINK robot xacro file.",
+        ),
+        DeclareLaunchArgument(
+            "lidar_mount_yaw_rad",
+            default_value="3.14159",
+            description="Calibrated chassis-to-lidar mounting yaw in radians.",
         ),
         Node(
             package="robot_state_publisher",
@@ -30,7 +36,12 @@ def generate_launch_description():
             parameters=[
                 {
                     "robot_description": ParameterValue(
-                        Command(["xacro ", urdf_xacro]),
+                        Command([
+                            "xacro ",
+                            urdf_xacro,
+                            " lidar_mount_yaw_rad:=",
+                            lidar_mount_yaw_rad,
+                        ]),
                         value_type=str,
                     )
                 }

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -73,6 +74,7 @@ ENV_FILES = {
             "UNILIDAR_WS": False,
             "CHASSIS_DEVICE": False,
             "UNILIDAR_PORT": False,
+            "LIDAR_MOUNT_YAW_RAD": False,
             "FRONT_CAMERA_DEVICE": False,
             "FRONT_CAMERA_ROTATION_DEGREES": False,
             "FRONT_CAMERA_PREFER_NATIVE_MJPEG": False,
@@ -132,6 +134,7 @@ ENV_DEFAULTS = {
         "UNILIDAR_WS": "/home/wte/unilidar_sdk/unitree_lidar_ros2",
         "CHASSIS_DEVICE": "/dev/project_link_chassis",
         "UNILIDAR_PORT": "/dev/project_link_lidar",
+        "LIDAR_MOUNT_YAW_RAD": "3.14159",
         "FRONT_CAMERA_DEVICE": "/dev/project_link_front_camera",
         "FRONT_CAMERA_ROTATION_DEGREES": "0",
         "FRONT_CAMERA_PREFER_NATIVE_MJPEG": "true",
@@ -358,6 +361,13 @@ def set_global(payload: dict[str, Any]) -> dict[str, Any]:
             text = str(value).strip()
             if len(text) > 4096 or "\n" in text or "\r" in text:
                 raise ValueError(f"invalid_env_value:{key}")
+            if key == "LIDAR_MOUNT_YAW_RAD":
+                try:
+                    yaw = float(text)
+                except ValueError as exc:
+                    raise ValueError("invalid_lidar_mount_yaw") from exc
+                if not math.isfinite(yaw) or not -3.1415926536 <= yaw <= 3.1415926536:
+                    raise ValueError("lidar_mount_yaw_out_of_range")
             values[key] = text
         write_env(path, values, shell_export=name != "console")
     return {"success": True, "restart_required": True}

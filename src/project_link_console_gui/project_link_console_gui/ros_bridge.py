@@ -61,6 +61,8 @@ class RosBridge(QObject):
         self._connected = False
         self._connection_text = "等待 Orin console agent"
         self._cloud_enabled = False
+        self._lidar_preview_right_rad = 0.0
+        self._last_robot_pose: Pose2D | None = None
         self._front_camera_lock = threading.Lock()
         self._pending_front_camera: bytes | None = None
         self._front_camera_timer = QTimer(self)
@@ -193,7 +195,7 @@ class RosBridge(QObject):
         )
         self._node.create_subscription(
             PointCloud2,
-            "/point_lio/cloud_registered",
+            "/unilidar/cloud",
             self._on_cloud,
             qos_profile_sensor_data,
         )
@@ -274,6 +276,26 @@ class RosBridge(QObject):
 
     def set_cloud_enabled(self, enabled: bool) -> None:
         self._cloud_enabled = bool(enabled)
+
+    def set_lidar_preview_rotation(self, clockwise_degrees: float) -> None:
+        self._lidar_preview_right_rad = math.radians(float(clockwise_degrees))
+
+    def _apply_lidar_preview(
+        self, points: list[tuple[float, float]]
+    ) -> list[tuple[float, float]]:
+        pose = self._last_robot_pose
+        angle = -self._lidar_preview_right_rad
+        if pose is None or abs(angle) < 1.0e-8:
+            return points
+        cosine = math.cos(angle)
+        sine = math.sin(angle)
+        return [
+            (
+                pose.x + cosine * (x - pose.x) - sine * (y - pose.y),
+                pose.y + sine * (x - pose.x) + cosine * (y - pose.y),
+            )
+            for x, y in points
+        ]
 
     def _process_commands(self) -> None:
         latest_teleop = None
@@ -729,7 +751,9 @@ class RosBridge(QObject):
             float(translation.y),
             _yaw_from_quaternion(transform.transform.rotation),
         )
-        self.scan_updated.emit(transform_points(local_points, pose))
+        self.scan_updated.emit(
+            self._apply_lidar_preview(transform_points(local_points, pose))
+        )
 
     def _on_path(self, message) -> None:
         self.path_updated.emit(
@@ -770,7 +794,7 @@ class RosBridge(QObject):
             points.append((x, y))
             if len(points) >= 4000:
                 break
-        self.cloud_updated.emit(points)
+        self.cloud_updated.emit(self._apply_lidar_preview(points))
 
     def _publish_robot_pose(self) -> None:
         try:
@@ -778,13 +802,13 @@ class RosBridge(QObject):
         except self._transform_exception:
             return
         translation = transform.transform.translation
-        self.robot_updated.emit(
-            Pose2D(
-                float(translation.x),
-                float(translation.y),
-                _yaw_from_quaternion(transform.transform.rotation),
-            )
+        pose = Pose2D(
+            float(translation.x),
+            float(translation.y),
+            _yaw_from_quaternion(transform.transform.rotation),
         )
+        self._last_robot_pose = pose
+        self.robot_updated.emit(pose)
 
     def stop(self) -> None:
         self._front_camera_timer.stop()

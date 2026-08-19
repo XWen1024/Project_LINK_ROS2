@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSlider,
     QSpinBox,
     QSplitter,
     QTableWidget,
@@ -191,9 +192,10 @@ class NavigationPage(QWidget):
     MODE_NAVIGATION = 2
     MODE_RF2O = 3
 
-    def __init__(self, bridge, parent=None) -> None:
+    def __init__(self, bridge, config_client=None, parent=None) -> None:
         super().__init__(parent)
         self._bridge = bridge
+        self._config_client = config_client
         self._mode = self.MODE_OFF
         self._connected = False
         self._pending_goal: Pose2D | None = None
@@ -201,6 +203,9 @@ class NavigationPage(QWidget):
         self._last_state: dict = {}
         self._progress_dialog: StackProgressDialog | None = None
         self._camera_frames: deque[float] = deque(maxlen=120)
+        self._lidar_saved_yaw_rad = math.pi
+        self._lidar_pending_yaw_rad: float | None = None
+        self._lidar_restart_pending = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -369,6 +374,38 @@ class NavigationPage(QWidget):
         advanced_layout.addWidget(self.camera_gain, 5, 1)
         advanced_layout.addWidget(self.camera_apply, 6, 0, 1, 2)
         advanced_layout.addWidget(self.camera_config_status, 7, 0, 1, 2)
+
+        lidar_calibration = QGroupBox("雷达方向可视化标定")
+        lidar_layout = QGridLayout(lidar_calibration)
+        self.lidar_preview_slider = QSlider(Qt.Horizontal)
+        self.lidar_preview_slider.setRange(-1800, 1800)
+        self.lidar_preview_slider.setSingleStep(10)
+        self.lidar_preview_degrees = QDoubleSpinBox()
+        self.lidar_preview_degrees.setRange(-180.0, 180.0)
+        self.lidar_preview_degrees.setDecimals(1)
+        self.lidar_preview_degrees.setSingleStep(1.0)
+        self.lidar_preview_degrees.setSuffix(" °")
+        self.lidar_preview_slider.valueChanged.connect(
+            lambda value: self._set_lidar_preview(value / 10.0, source="slider")
+        )
+        self.lidar_preview_degrees.valueChanged.connect(
+            lambda value: self._set_lidar_preview(value, source="spin")
+        )
+        self.lidar_reset_preview = QPushButton("恢复已保存方向")
+        self.lidar_save_apply = QPushButton("保存并应用方向")
+        self.lidar_reset_preview.clicked.connect(lambda: self._set_lidar_preview(0.0))
+        self.lidar_save_apply.clicked.connect(self._save_lidar_calibration)
+        self.lidar_calibration_status = QLabel(
+            "向右为正、向左为负；拖动只改变 Ubuntu 预览，不会控制机器人。"
+        )
+        self.lidar_calibration_status.setWordWrap(True)
+        lidar_layout.addWidget(QLabel("相对当前方向"), 0, 0)
+        lidar_layout.addWidget(self.lidar_preview_degrees, 0, 1)
+        lidar_layout.addWidget(self.lidar_preview_slider, 1, 0, 1, 2)
+        lidar_layout.addWidget(self.lidar_reset_preview, 2, 0)
+        lidar_layout.addWidget(self.lidar_save_apply, 2, 1)
+        lidar_layout.addWidget(self.lidar_calibration_status, 3, 0, 1, 2)
+        advanced_layout.addWidget(lidar_calibration, 8, 0, 1, 2)
         self.advanced_group.setVisible(False)
         side_layout.addWidget(self.advanced_group)
         side_layout.addStretch()
@@ -393,15 +430,20 @@ class NavigationPage(QWidget):
         bridge.stack_progress.connect(self._update_stack_progress)
         bridge.front_camera_parameters.connect(self._update_camera_parameters)
         bridge.front_camera_configured.connect(self._camera_configured)
+        bridge.lifecycle_completed.connect(self._lidar_lifecycle_completed)
+        if self._config_client is not None:
+            self._config_client.loaded.connect(self._lidar_config_loaded)
+            self._config_client.saved.connect(self._lidar_config_saved)
+            self._config_client.failed.connect(self._lidar_config_failed)
 
-    def _request_stack(self, operation: int, title: str) -> None:
+    def _request_stack(self, operation: int, title: str, restart: bool = False) -> None:
         if self._progress_dialog is not None and self._progress_dialog.running:
             self._progress_dialog.raise_()
             self._progress_dialog.activateWindow()
             return
         self._progress_dialog = StackProgressDialog(title, self)
         self._progress_dialog.show()
-        self._bridge.manage_stack(operation, False)
+        self._bridge.manage_stack(operation, restart)
 
     def _update_stack_progress(self, event: dict) -> None:
         if self._progress_dialog is None:
@@ -416,7 +458,109 @@ class NavigationPage(QWidget):
         self.status_table.setColumnHidden(1, not self._advanced)
         if self._advanced:
             self._bridge.request_front_camera_parameters()
+            if self._config_client is not None:
+                self._config_client.load("global")
         self._render_status()
+
+    def _set_lidar_preview(self, clockwise_degrees: float, source: str = "button") -> None:
+        value = max(-180.0, min(180.0, float(clockwise_degrees)))
+        if source != "slider":
+            self.lidar_preview_slider.blockSignals(True)
+            self.lidar_preview_slider.setValue(round(value * 10.0))
+            self.lidar_preview_slider.blockSignals(False)
+        if source != "spin":
+            self.lidar_preview_degrees.blockSignals(True)
+            self.lidar_preview_degrees.setValue(value)
+            self.lidar_preview_degrees.blockSignals(False)
+        self._bridge.set_lidar_preview_rotation(value)
+        candidate = self._normalize_yaw(
+            self._lidar_saved_yaw_rad - math.radians(value)
+        )
+        self.lidar_calibration_status.setText(
+            f"仅预览：向右 {value:+.1f}°；保存后内部 yaw={candidate:.4f} rad"
+        )
+
+    @staticmethod
+    def _normalize_yaw(value: float) -> float:
+        while value <= -math.pi:
+            value += math.tau
+        while value > math.pi:
+            value -= math.tau
+        return value
+
+    def _lidar_config_loaded(self, section: str, data: dict) -> None:
+        if section != "global" or self._lidar_pending_yaw_rad is not None:
+            return
+        value = (
+            data.get("files", {})
+            .get("console", {})
+            .get("LIDAR_MOUNT_YAW_RAD", {})
+            .get("value", "3.14159")
+        )
+        try:
+            self._lidar_saved_yaw_rad = self._normalize_yaw(float(value))
+        except (TypeError, ValueError):
+            self.lidar_calibration_status.setText("Orin 雷达方向配置无效")
+            return
+        self._set_lidar_preview(0.0)
+        self.lidar_calibration_status.setText(
+            f"已读取当前方向：内部 yaw={self._lidar_saved_yaw_rad:.4f} rad；可拖动预览"
+        )
+
+    def _save_lidar_calibration(self) -> None:
+        if self._config_client is None:
+            self.lidar_calibration_status.setText("配置通道不可用")
+            return
+        clockwise = self.lidar_preview_degrees.value()
+        candidate = self._normalize_yaw(
+            self._lidar_saved_yaw_rad - math.radians(clockwise)
+        )
+        self._lidar_pending_yaw_rad = candidate
+        self.lidar_save_apply.setEnabled(False)
+        self.lidar_calibration_status.setText("正在保存到 Orin 白名单配置…")
+        self._config_client.save(
+            "global",
+            {"files": {"console": {"LIDAR_MOUNT_YAW_RAD": f"{candidate:.10f}"}}},
+        )
+
+    def _lidar_config_saved(self, section: str, _data: dict) -> None:
+        if section != "global" or self._lidar_pending_yaw_rad is None:
+            return
+        if self._mode == self.MODE_NAVIGATION:
+            self._lidar_restart_pending = True
+            self.lidar_calibration_status.setText("已保存，正在无目标重启建图与 Navigation2…")
+            self._request_stack(2, "应用雷达方向并重启 Navigation2", restart=True)
+        elif self._mode == self.MODE_MAPPING:
+            self._lidar_restart_pending = True
+            self.lidar_calibration_status.setText("已保存，正在无运动重启建图…")
+            self._request_stack(1, "应用雷达方向并重启建图", restart=True)
+        else:
+            self._finish_lidar_apply("已保存；下次启动建图或导航时生效")
+
+    def _lidar_config_failed(self, section: str, message: str) -> None:
+        if section != "global" or self._lidar_pending_yaw_rad is None:
+            return
+        self._lidar_pending_yaw_rad = None
+        self.lidar_save_apply.setEnabled(True)
+        self.lidar_calibration_status.setText(f"保存失败：{message}")
+
+    def _lidar_lifecycle_completed(self, action: str, success: bool) -> None:
+        if action != "stack" or not self._lidar_restart_pending:
+            return
+        self._lidar_restart_pending = False
+        if success:
+            self._finish_lidar_apply("雷达方向已保存并应用")
+        else:
+            self.lidar_save_apply.setEnabled(True)
+            self.lidar_calibration_status.setText("方向已保存，但节点重启失败；预览修正仍保留")
+
+    def _finish_lidar_apply(self, message: str) -> None:
+        if self._lidar_pending_yaw_rad is not None:
+            self._lidar_saved_yaw_rad = self._lidar_pending_yaw_rad
+        self._lidar_pending_yaw_rad = None
+        self._set_lidar_preview(0.0)
+        self.lidar_save_apply.setEnabled(True)
+        self.lidar_calibration_status.setText(message)
 
     def _camera_auto_changed(self, automatic: bool) -> None:
         self.camera_exposure.setEnabled(not automatic)

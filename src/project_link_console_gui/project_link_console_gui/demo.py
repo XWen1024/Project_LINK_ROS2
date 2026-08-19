@@ -39,6 +39,7 @@ class DemoBridge(QObject):
         self._robot = Pose2D(1.0, 1.0, 0.2)
         self._path: list[tuple[float, float]] = []
         self._cloud_enabled = False
+        self._lidar_preview_right_rad = 0.0
         self._voice_backend = "off"
         self._uwb_shadow = False
         self._tick_count = 0
@@ -220,6 +221,9 @@ class DemoBridge(QObject):
     def set_cloud_enabled(self, enabled: bool) -> None:
         self._cloud_enabled = bool(enabled)
 
+    def set_lidar_preview_rotation(self, clockwise_degrees: float) -> None:
+        self._lidar_preview_right_rad = math.radians(float(clockwise_degrees))
+
     def _tick(self) -> None:
         self._tick_count += 1
         if self._path:
@@ -233,6 +237,21 @@ class DemoBridge(QObject):
             theta = angle + index * math.tau / 160.0
             radius = 0.9 + 0.08 * math.sin(index * 0.31)
             scan.append((self._robot.x + radius * math.cos(theta), self._robot.y + radius * math.sin(theta)))
+        if abs(self._lidar_preview_right_rad) > 1.0e-8:
+            angle = -self._lidar_preview_right_rad
+            cosine = math.cos(angle)
+            sine = math.sin(angle)
+            scan = [
+                (
+                    self._robot.x
+                    + cosine * (x - self._robot.x)
+                    - sine * (y - self._robot.y),
+                    self._robot.y
+                    + sine * (x - self._robot.x)
+                    + cosine * (y - self._robot.y),
+                )
+                for x, y in scan
+            ]
         self.scan_updated.emit(scan)
         if self._cloud_enabled:
             self.cloud_updated.emit(scan[::4])
