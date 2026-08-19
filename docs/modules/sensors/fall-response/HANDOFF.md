@@ -69,10 +69,10 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
 
 ## Remaining gates
 
-- Orin build and automated tests passed through commit `e415791`: 57 tests
-  passed, including the authenticated HTTP create/query/idempotency/cancel
-  lifecycle; generated ROS interfaces were discoverable and all new systemd
-  units verified.
+- Orin build and automated tests passed through commit `3c605e6`; the focused
+  fall-response suite passed 36 tests, including the authenticated HTTP
+  lifecycle and WeChat restart-context restoration. Generated ROS interfaces
+  remain discoverable and all new systemd units previously verified.
 - `yolov8n-pose.pt` is installed with SHA-256
   `c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212`.
   CPU Torch inference measured about 5.49 FPS on 1280x720 blank frames, below
