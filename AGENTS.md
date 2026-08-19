@@ -140,6 +140,13 @@ are evidence snapshots, not current operating instructions.
   generalizable, update this file or the relevant runbook in the same coherent
   change so future agents use the proven command pattern. Do not document one-off
   noise that has no reusable lesson.
+- Orin Python ROS packages in this repository must be built with normal colcon
+  installation unless the package is already proven editable-safe. The installed
+  setuptools rejects ament's `--editable` path for packages such as
+  `project_link_visual_grasp`; mixing ordinary and `--symlink-install` builds also
+  leaves directory/symlink collisions. If switching build modes, delete only the
+  affected packages' verified `build/<pkg>` and `install/<pkg>` generated folders,
+  then rebuild normally. Never clear the whole workspace or runtime data.
 
 ## Active ROS Packages
 

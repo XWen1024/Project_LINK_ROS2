@@ -23,7 +23,8 @@ done
 mkdir -p "$source_root/src" "$build_root"
 
 clone_locked() {
-  local name="$1" url="$2" commit="$3" path="$source_root/src/$name"
+  local name="$1" url="$2" commit="$3"
+  local path="$source_root/src/$name"
   if [[ ! -d "$path/.git" ]]; then
     git clone --filter=blob:none --no-checkout "$url" "$path"
   fi
