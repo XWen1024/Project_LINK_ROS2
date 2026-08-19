@@ -132,13 +132,21 @@ class GatewayRosBridge(Node):
 
 
 class FallGatewayApp:
-    def __init__(self, store: EventStore, bridge: GatewayRosBridge, token: str, model_path: str) -> None:
+    def __init__(
+        self,
+        store: EventStore,
+        bridge: GatewayRosBridge,
+        token: str,
+        model_path: str,
+        world_model_path: str = "/home/wte/models/yolov8s-worldv2.pt",
+    ) -> None:
         if not token:
             raise RuntimeError("FALL_GUARD_TOKEN is not configured")
         self.store = store
         self.bridge = bridge
         self.token = token
         self.model_path = Path(model_path).expanduser()
+        self.world_model_path = Path(world_model_path).expanduser()
 
     @web.middleware
     async def authenticate(self, request: web.Request, handler):
@@ -166,10 +174,13 @@ class FallGatewayApp:
                 "status": "ok",
                 "service": "project-link-fall-gateway",
                 "camera_ready": readiness["camera_ready"],
-                "model_ready": self.model_path.is_file(),
+                "model_ready": self.model_path.is_file() and self.world_model_path.is_file(),
+                "specialized_model_ready": self.model_path.is_file(),
+                "world_model_ready": self.world_model_path.is_file(),
                 "vision_ready": (
                     readiness["camera_ready"]
                     and self.model_path.is_file()
+                    and self.world_model_path.is_file()
                     and bool(os.environ.get("OPENAI_API_KEY"))
                 ),
                 "notification_ready": readiness["notification_ready"],
@@ -245,7 +256,11 @@ async def serve(node: GatewayRosBridge, executor: MultiThreadedExecutor) -> None
         store,
         node,
         os.environ.get("FALL_GUARD_TOKEN", ""),
-        os.environ.get("FALL_YOLO_MODEL", "/home/wte/models/project_link/yolov8n-pose.pt"),
+        os.environ.get(
+            "FALL_SPECIALIZED_MODEL",
+            "/home/wte/models/project_link/human-fall-detection-yolo11.pt",
+        ),
+        os.environ.get("FALL_WORLD_MODEL", "/home/wte/models/yolov8s-worldv2.pt"),
     ).build()
     runner = web.AppRunner(application)
     await runner.setup()

@@ -116,12 +116,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             val result = runCatching { activeDemoGateway?.cancel(incident.eventId) ?: error("Orin 客户端不可用") }
-            result.onSuccess { stage ->
-                if (stage == EventStage.CANCELLED) {
+            result.onSuccess { snapshot ->
+                if (snapshot.stage == EventStage.CANCELLED) {
                     demoJob?.cancel()
-                    publishDemoStage(stage, 0, "已在通知联系人前取消")
+                    publishDemoStage(snapshot.stage, 0, snapshot.message.ifBlank { "已在通知联系人前取消" })
                 } else {
-                    publishDemoStage(stage, 0, stage.message())
+                    publishDemoStage(
+                        snapshot.stage,
+                        0,
+                        snapshot.message.ifBlank { snapshot.stage.defaultMessage() },
+                    )
                 }
             }.onFailure { error ->
                 publishDemoStage(
@@ -214,9 +218,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val remaining = ((cancelDeadline - System.currentTimeMillis() + 999) / 1_000)
                     .toInt()
                     .coerceAtLeast(0)
-                val stage = gateway.status(eventId)
-                publishDemoStage(stage, remaining, stage.message())
-                if (stage.isTerminal()) break
+                val snapshot = gateway.status(eventId)
+                publishDemoStage(
+                    snapshot.stage,
+                    remaining,
+                    snapshot.message.ifBlank { snapshot.stage.defaultMessage() },
+                )
+                if (snapshot.stage.isTerminal()) break
                 delay(1_000)
             }
         } catch (cancelled: CancellationException) {
@@ -252,14 +260,4 @@ private fun EventStage.guardianStatus(): GuardianStatus = when (this) {
     EventStage.NOT_FALL -> GuardianStatus.NOT_FALL
     EventStage.CANCELLED -> GuardianStatus.CANCELLED
     EventStage.FAILED -> GuardianStatus.FAILED
-}
-
-private fun EventStage.message(): String = when (this) {
-    EventStage.ACCEPTED -> "Orin 已接收事件"
-    EventStage.SCANNING -> "机器人正在扫描现场"
-    EventStage.VERIFYING -> "正在进行视觉二次研判"
-    EventStage.NOTIFIED -> "已通知紧急联系人"
-    EventStage.NOT_FALL -> "视觉判断未发现跌倒"
-    EventStage.CANCELLED -> "告警已取消"
-    EventStage.FAILED -> "Orin 处理失败"
 }

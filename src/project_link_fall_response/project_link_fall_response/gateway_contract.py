@@ -73,6 +73,7 @@ def public_event(event: dict[str, Any]) -> dict[str, Any]:
     return {
         "event_id": event["event_id"],
         "status": event["status"],
+        "stage": event.get("stage", ""),
         "message": event.get("message", ""),
         "updated_at_ms": event.get("updated_at_ms", 0),
     }

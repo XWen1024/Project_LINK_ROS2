@@ -182,7 +182,9 @@ class FallDetectionService : Service(), SensorEventListener {
             val remaining = ((cancelDeadline - System.currentTimeMillis() + 999) / 1_000)
                 .toInt()
                 .coerceAtLeast(0)
-            val stage = runCatching { activeGateway?.status(eventId) ?: EventStage.FAILED }
+            val snapshot = runCatching {
+                activeGateway?.status(eventId) ?: EventSnapshot(EventStage.FAILED)
+            }
                 .getOrElse {
                     if (System.currentTimeMillis() >= connectionFailureDeadline) {
                         publishStage(eventId, EventStage.FAILED, 0, "Orin 状态查询连续失败 60 秒")
@@ -195,8 +197,13 @@ class FallDetectionService : Service(), SensorEventListener {
                     continue
                 }
             connectionFailureDeadline = System.currentTimeMillis() + RETRY_WINDOW_MS
-            publishStage(eventId, stage, remaining, stageMessage(stage))
-            if (stage.isTerminal()) break
+            publishStage(
+                eventId,
+                snapshot.stage,
+                remaining,
+                snapshot.message.ifBlank { snapshot.stage.defaultMessage() },
+            )
+            if (snapshot.stage.isTerminal()) break
             delay(1_000)
         }
     }
@@ -205,12 +212,22 @@ class FallDetectionService : Service(), SensorEventListener {
         if (eventId == null || eventId != activeEventId) return
         serviceScope.launch {
             val result = runCatching { activeGateway?.cancel(eventId) ?: error("Orin 客户端不可用") }
-            result.onSuccess { stage ->
-                if (stage == EventStage.CANCELLED) {
+            result.onSuccess { snapshot ->
+                if (snapshot.stage == EventStage.CANCELLED) {
                     incidentJob?.cancel()
-                    publishStage(eventId, stage, 0, "已在通知联系人前取消")
+                    publishStage(
+                        eventId,
+                        snapshot.stage,
+                        0,
+                        snapshot.message.ifBlank { "已在通知联系人前取消" },
+                    )
                 } else {
-                    publishStage(eventId, stage, 0, stageMessage(stage))
+                    publishStage(
+                        eventId,
+                        snapshot.stage,
+                        0,
+                        snapshot.message.ifBlank { snapshot.stage.defaultMessage() },
+                    )
                 }
             }.onFailure { error ->
                 val current = _runtimeState.value.incident?.stage ?: EventStage.ACCEPTED
@@ -336,14 +353,4 @@ private fun EventStage.guardianStatus(): GuardianStatus = when (this) {
     EventStage.NOT_FALL -> GuardianStatus.NOT_FALL
     EventStage.CANCELLED -> GuardianStatus.CANCELLED
     EventStage.FAILED -> GuardianStatus.FAILED
-}
-
-private fun stageMessage(stage: EventStage): String = when (stage) {
-    EventStage.ACCEPTED -> "Orin 已接收事件"
-    EventStage.SCANNING -> "机器人正在扫描现场"
-    EventStage.VERIFYING -> "正在进行视觉二次研判"
-    EventStage.NOTIFIED -> "已通知紧急联系人"
-    EventStage.NOT_FALL -> "视觉判断未发现跌倒"
-    EventStage.CANCELLED -> "告警已取消"
-    EventStage.FAILED -> "Orin 处理失败"
 }

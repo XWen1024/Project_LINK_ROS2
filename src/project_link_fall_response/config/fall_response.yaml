@@ -18,14 +18,20 @@ mobile_fall_coordinator:
     capture_service: /front_camera/capture_still
     notification_service: /fall_detection/send_notification
     event_db_path: ~/.local/state/project-link/fall-response/events.sqlite3
-    model_path: /home/wte/models/project_link/yolov8n-pose.pt
-    frame_count: 5
-    frame_interval_sec: 0.20
+    specialized_model_path: /home/wte/models/project_link/human-fall-detection-yolo11.pt
+    world_model_path: /home/wte/models/yolov8s-worldv2.pt
+    simulated_scan_steps: 12
+    frames_per_angle: 3
+    recheck_frames: 2
+    frame_interval_sec: 0.15
     capture_timeout_sec: 2.0
-    detection_threshold: 0.45
-    keypoint_threshold: 0.30
-    candidate_threshold: 0.65
-    stable_frames: 3
+    simulated_angle_delay_sec: 0.20
+    specialized_inference_threshold: 0.05
+    strong_fallen_threshold: 0.60
+    weak_fallen_threshold: 0.25
+    recheck_frame_threshold: 0.55
+    recheck_average_threshold: 0.50
+    world_person_threshold: 0.50
     yolo_device: ""
     vlm_threshold: 0.70
     openai_base_url: https://ws-f79uecupn4b5efpv.cn-beijing.maas.aliyuncs.com/compatible-mode/v1

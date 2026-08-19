@@ -27,6 +27,16 @@ enum class EventStage {
     FAILED,
 }
 
+fun EventStage.defaultMessage(): String = when (this) {
+    EventStage.ACCEPTED -> "Orin 已接收事件"
+    EventStage.SCANNING -> "机器人正在扫描现场"
+    EventStage.VERIFYING -> "正在进行云端视觉确认"
+    EventStage.NOTIFIED -> "已通知紧急联系人"
+    EventStage.NOT_FALL -> "视觉判断未发现跌倒"
+    EventStage.CANCELLED -> "告警已取消"
+    EventStage.FAILED -> "Orin 处理失败"
+}
+
 data class ImuThresholds(
     val impactG: Float = 2.5f,
     val freeFallG: Float = 0.65f,
@@ -46,6 +56,12 @@ data class IncidentUiState(
     val stage: EventStage,
     val cancelSecondsRemaining: Int,
     val message: String,
+)
+
+data class EventSnapshot(
+    val stage: EventStage,
+    val backendStage: String = "",
+    val message: String = "",
 )
 
 data class ImuSummary(

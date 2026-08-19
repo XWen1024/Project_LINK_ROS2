@@ -28,7 +28,8 @@ SYSTEM_PROMPT = (
     "is lying on the floor, or is in a posture strongly consistent with a fall."
 )
 USER_PROMPT = (
-    "Assess this camera image for a possible fallen person. "
+    "Assess all supplied labeled camera images for a possible fallen person. "
+    "Inspect every visible person and use the scene context to distinguish the floor from beds or sofas. "
     "Return only JSON such as {\"fall_suspected\": false, \"confidence\": 0.0, \"reason\": \"...\"}."
 )
 

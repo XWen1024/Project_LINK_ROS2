@@ -1,15 +1,15 @@
 # Android Fall Response Orin Backend Handoff
 
-Verification date: 2026-08-19
+Verification date: 2026-08-20
 
 ## Implemented boundary
 
-The first delivery is a static, no-motion closed loop. The Android app submits
+The current delivery remains a no-motion closed loop. The Android app submits
 an authenticated event to the Orin, the Orin persists it in SQLite, captures
-five frames from the single front-camera owner, runs local YOLO pose scoring and
-OpenAI-compatible VLM confirmation, then sends one text and at most one image to the
-single bound WeChat contact. No component in this flow publishes `/cmd_vel` or
-starts Nav2.
+virtual 30-degree views from the single stationary front-camera owner, runs a
+specialized `fallen/sitting/standing` model asynchronously, uses YOLO-World as
+the full-coverage person fallback, and requests multi-image VLM confirmation.
+No component publishes `/cmd_vel`, imports Nav2, or starts Nav2.
 
 Public Android endpoints remain:
 
@@ -39,7 +39,8 @@ The only public states are `accepted`, `scanning`, `verifying`, `notified`,
 - `fall_http_gateway`: aiohttp server, Token authentication, validation,
   single-event arbitration and ROS Action dispatch.
 - `mobile_fall_coordinator`: `/fall_detection/respond_to_fall` Action server,
-  static capture, YOLO, VLM, cancellation window and notification sequencing.
+  virtual-angle capture, asynchronous fall inference, YOLO-World fallback,
+  multi-image VLM review, cancellation window and notification sequencing.
 - `project_link_front_camera`: owns `/dev/project_link_front_camera`, publishes
   the low-bandwidth preview and serves `/front_camera/capture_still` from the
   cached high-resolution frame.
@@ -54,20 +55,24 @@ Runtime state defaults to:
 ~/.config/project_link/wechatbot/credentials.json
 ~/.local/state/project-link/clawbot/binding.json
 ~/.local/state/project-link/clawbot/notifications.sqlite3
-/home/wte/models/project_link/yolov8n-pose.pt
+/home/wte/models/project_link/human-fall-detection-yolo11.pt
+/home/wte/models/yolov8s-worldv2.pt
 ```
 
 All credentials, binding state and SQLite files must be mode 0600. The VLM
 defaults to the configurable Aliyun compatible endpoint and `qwen3.8-27b` via
-`OPENAI_BASE_URL` and `OPENAI_MODEL`; the user supplies `OPENAI_API_KEY`. The YOLO
-model is installed explicitly and never downloaded during service startup.
+`OPENAI_BASE_URL` and `OPENAI_MODEL`; the user supplies `OPENAI_API_KEY`. Both
+YOLO models are installed explicitly and never downloaded during service startup.
+
+YOLO Pose is no longer part of the mobile production path. See
+`NAV2_ASYNC_SCAN_HANDOFF.md` for the deliberately deferred Spin adapter.
 
 ## Deployment gates
 
 1. Build `project_link_emergency_interfaces`, `project_link_console_agent` and
    `project_link_fall_response` with a normal colcon installation.
 2. Install `wechatbot-sdk==0.3.0` in the Orin user Python environment.
-3. Install and hash `yolov8n-pose.pt` under `/home/wte/models/project_link/`.
+3. Run `deploy/systemd/bin/project-link-install-fall-models` and verify both hashes.
 4. Copy `deploy/systemd/fall_response.env.example` to the private environment
    file, replace secrets and set mode 0600.
 5. Run `ros2 run project_link_fall_response wechatbot_bind` in the foreground;
@@ -84,12 +89,13 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
   fall-response suite passed 36 tests, including the authenticated HTTP
   lifecycle and WeChat restart-context restoration. Generated ROS interfaces
   remain discoverable and all new systemd units previously verified.
-- `yolov8n-pose.pt` is installed with SHA-256
-  `c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212`.
-  CPU Torch inference measured about 5.49 FPS on 1280x720 blank frames, below
-  the 8 FPS optimization gate. The isolated JetPack CUDA environment now uses
-  Torch 2.8.0 / CUDA 12.6 and measured about 29.9 FPS with the same PT model on
-  blank 1280x720 frames. It is installed only in
+- The specialized YOLO11 model is installed with SHA-256
+  `3f56ad30358d5c63bf8dbc0c1299cf68818c3d291dfb10c94107b94110aadd4c`;
+  it detected the retained difficult curled-floor sample as `fallen=0.6631`
+  and measured about 30.85 FPS. YOLO-World is installed with SHA-256
+  `9b2c17ab6124a913e9b3a5c170617920d91b0f01111a8479da69f00e2cf27792`
+  and detected the same person at 0.8173. The isolated JetPack CUDA environment
+  uses Torch 2.8.0 / CUDA 12.6 and is installed only in
   `~/.local/share/project-link/venvs/fall-cuda`; the service disables user site
   packages and prepends that environment, preserving LeRobot's existing
   user-level Torch 2.7.1+cpu.
@@ -105,5 +111,5 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
   persists and reinjects the bound contact context token after every restart.
 - Android-to-Orin LAN smoke test and 14.9-second cancellation race.
 - Confirmed and degraded notification delivery to the real contact.
-- Only after two static supervised cycles: add the separately gated Nav2 Spin
-  mode. Direct velocity publishing remains forbidden.
+- The Nav2 adapter is intentionally absent. Follow `NAV2_ASYNC_SCAN_HANDOFF.md`
+  in a separate supervised task. Direct velocity publishing remains forbidden.

@@ -310,7 +310,7 @@ curl -X POST \
 
 - P0：在 Orin 普通 colcon 构建并执行 HTTP/SQLite/ROS 自动化测试。
 - P0：安装固定版本 ClawBot Python SDK，完成扫码登录和唯一联系人绑定。
-- P0：安装并记录 `yolov8n-pose.pt` 的 SHA-256，验证五帧静态推理。
+- P0：安装并记录专用 YOLO11 跌倒模型和 YOLO-World 的 SHA-256，验证无运动异步角度回放。
 - P0：手机与真实 Orin 联调 Token、幂等、状态轮询和取消竞态。
 - P1：验证确认告警与视觉失败降级告警的微信文字/图片结果。
 - P2：在单一 `/cmd_vel` 所有权下实现可取消的受控视觉扫圈。

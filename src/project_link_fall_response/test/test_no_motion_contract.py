@@ -13,6 +13,8 @@ def test_mobile_backend_never_publishes_cmd_vel():
     )
     assert 'create_publisher(Twist' not in source
     assert '"/cmd_vel"' not in source
+    assert "nav2_msgs" not in source
+    assert "ActionClient(Spin" not in source
 
 
 def test_emergency_target_does_not_require_motion_stack():

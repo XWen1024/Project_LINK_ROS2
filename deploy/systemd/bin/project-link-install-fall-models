@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+model_dir="${PROJECT_LINK_MODEL_DIR:-$HOME/models}"
+project_dir="$model_dir/project_link"
+fall_path="${FALL_SPECIALIZED_MODEL:-$project_dir/human-fall-detection-yolo11.pt}"
+world_path="${FALL_WORLD_MODEL:-$model_dir/yolov8s-worldv2.pt}"
+fall_url="https://huggingface.co/melihuzunoglu/human-fall-detection/resolve/main/best.pt"
+world_url="https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8s-worldv2.pt"
+fall_sha="3f56ad30358d5c63bf8dbc0c1299cf68818c3d291dfb10c94107b94110aadd4c"
+world_sha="9b2c17ab6124a913e9b3a5c170617920d91b0f01111a8479da69f00e2cf27792"
+
+install -d -m 0755 "$model_dir" "$project_dir"
+
+install_model() {
+  local url="$1"
+  local expected="$2"
+  local destination="$3"
+  local temporary="${destination}.download"
+  rm -f "$temporary"
+  curl -fL --retry 3 --connect-timeout 15 "$url" -o "$temporary"
+  printf '%s  %s\n' "$expected" "$temporary" | sha256sum --check --status
+  chmod 0644 "$temporary"
+  mv -f "$temporary" "$destination"
+  sha256sum "$destination"
+}
+
+install_model "$fall_url" "$fall_sha" "$fall_path"
+install_model "$world_url" "$world_sha" "$world_path"

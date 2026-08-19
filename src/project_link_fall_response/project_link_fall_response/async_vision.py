@@ -10,6 +10,32 @@ import aiohttp
 from .core import FallAssessment, FallAssessmentError, parse_fall_assessment_json
 
 
+def build_openai_vision_payload(
+    *,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    images: list[tuple[str, bytes]],
+) -> dict:
+    if not images:
+        raise FallAssessmentError("vision model request has no images")
+    content = [{"type": "text", "text": user_prompt}]
+    for label, jpeg_data in images:
+        encoded = base64.b64encode(jpeg_data).decode("ascii")
+        content.append({"type": "text", "text": str(label)})
+        content.append(
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}}
+        )
+    return {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": content},
+        ],
+        "temperature": 0,
+    }
+
+
 class AsyncOpenAICompatibleVisionClient:
     def __init__(
         self,
@@ -33,23 +59,17 @@ class AsyncOpenAICompatibleVisionClient:
         return bool(self.api_key)
 
     async def assess(self, jpeg_data: bytes) -> FallAssessment:
+        return await self.assess_many([("camera image", jpeg_data)])
+
+    async def assess_many(self, images: list[tuple[str, bytes]]) -> FallAssessment:
         if not self.api_key:
             raise FallAssessmentError("OPENAI_API_KEY is not configured")
-        encoded = base64.b64encode(jpeg_data).decode("ascii")
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": self.system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": self.user_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}},
-                    ],
-                },
-            ],
-            "temperature": 0,
-        }
+        payload = build_openai_vision_payload(
+            model=self.model,
+            system_prompt=self.system_prompt,
+            user_prompt=self.user_prompt,
+            images=images,
+        )
         timeout = aiohttp.ClientTimeout(total=self.timeout_sec)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:

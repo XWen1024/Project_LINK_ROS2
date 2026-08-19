@@ -12,9 +12,9 @@ import org.json.JSONObject
 
 interface FallGateway {
     suspend fun health(): Boolean
-    suspend fun submit(request: FallEventRequest): EventStage
-    suspend fun status(eventId: String): EventStage
-    suspend fun cancel(eventId: String): EventStage
+    suspend fun submit(request: FallEventRequest): EventSnapshot
+    suspend fun status(eventId: String): EventSnapshot
+    suspend fun cancel(eventId: String): EventSnapshot
 }
 object FallGatewayFactory {
     fun create(settings: AppSettings): FallGateway = if (settings.simulationEnabled) {
@@ -34,7 +34,7 @@ class RealOrinClient(
         request(method = "GET", path = "/health").first in 200..299
     }.getOrDefault(false)
 
-    override suspend fun submit(request: FallEventRequest): EventStage {
+    override suspend fun submit(request: FallEventRequest): EventSnapshot {
         val imuJson = request.imu?.let {
             JSONObject()
                 .put("peak_accel_g", it.peakAccelG.toDouble())
@@ -50,17 +50,17 @@ class RealOrinClient(
             .put("imu", imuJson ?: JSONObject.NULL)
             .toString()
         val (_, response) = request(method = "POST", path = "/api/fall", body = body)
-        return parseStage(response, EventStage.ACCEPTED)
+        return parseSnapshot(response, EventStage.ACCEPTED)
     }
 
-    override suspend fun status(eventId: String): EventStage {
+    override suspend fun status(eventId: String): EventSnapshot {
         val (_, response) = request(method = "GET", path = "/api/fall/$eventId")
-        return parseStage(response, EventStage.ACCEPTED)
+        return parseSnapshot(response, EventStage.ACCEPTED)
     }
 
-    override suspend fun cancel(eventId: String): EventStage {
+    override suspend fun cancel(eventId: String): EventSnapshot {
         val (_, response) = request(method = "POST", path = "/api/fall/$eventId/cancel", body = "{}")
-        return parseStage(response, EventStage.CANCELLED)
+        return parseSnapshot(response, EventStage.CANCELLED)
     }
 
     private suspend fun request(
@@ -101,9 +101,14 @@ class RealOrinClient(
         }
     }
 
-    private fun parseStage(body: String, fallback: EventStage): EventStage {
-        if (body.isBlank()) return fallback
-        return stageFromWire(JSONObject(body).optString("status")) ?: fallback
+    private fun parseSnapshot(body: String, fallback: EventStage): EventSnapshot {
+        if (body.isBlank()) return EventSnapshot(fallback)
+        val json = JSONObject(body)
+        return EventSnapshot(
+            stage = stageFromWire(json.optString("status")) ?: fallback,
+            backendStage = json.optString("stage"),
+            message = json.optString("message"),
+        )
     }
 }
 
@@ -117,28 +122,29 @@ object FakeOrinClient : FallGateway {
         return true
     }
 
-    override suspend fun submit(request: FallEventRequest): EventStage {
+    override suspend fun submit(request: FallEventRequest): EventSnapshot {
         delay(250)
         events.putIfAbsent(request.eventId, FakeEvent(System.currentTimeMillis()))
-        return EventStage.ACCEPTED
+        return EventSnapshot(EventStage.ACCEPTED, message = "Orin 已接收事件")
     }
 
-    override suspend fun status(eventId: String): EventStage {
+    override suspend fun status(eventId: String): EventSnapshot {
         delay(100)
-        val event = events[eventId] ?: return EventStage.FAILED
-        if (event.cancelled) return EventStage.CANCELLED
-        return when (System.currentTimeMillis() - event.startedAtMs) {
+        val event = events[eventId] ?: return EventSnapshot(EventStage.FAILED)
+        if (event.cancelled) return EventSnapshot(EventStage.CANCELLED)
+        val stage = when (System.currentTimeMillis() - event.startedAtMs) {
             in 0..<3_000 -> EventStage.ACCEPTED
             in 3_000..<8_000 -> EventStage.SCANNING
             in 8_000..<15_000 -> EventStage.VERIFYING
             else -> EventStage.NOTIFIED
         }
+        return EventSnapshot(stage, message = stage.defaultMessage())
     }
 
-    override suspend fun cancel(eventId: String): EventStage {
+    override suspend fun cancel(eventId: String): EventSnapshot {
         delay(150)
         events[eventId]?.cancelled = true
-        return EventStage.CANCELLED
+        return EventSnapshot(EventStage.CANCELLED, message = "告警已取消")
     }
 }
 

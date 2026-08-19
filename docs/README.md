@@ -21,6 +21,7 @@ historical evidence.
 - VL53L0X: `modules/sensors/vl53l0x/HANDOFF.md`
 - Fall response:
   - Current Orin backend: `modules/sensors/fall-response/HANDOFF.md`
+  - Async scan to Nav2 boundary: `modules/sensors/fall-response/NAV2_ASYNC_SCAN_HANDOFF.md`
   - Android to Orin backend: `modules/sensors/fall-response/ANDROID_ORIN_HANDOFF.md`
   - Legacy voice trigger: `modules/sensors/fall-response/VOICE_INTEGRATION.md`
 

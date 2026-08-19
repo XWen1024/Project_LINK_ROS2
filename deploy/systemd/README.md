@@ -44,6 +44,11 @@ Generate the Android shared token with
 `OPENAI_API_KEY`, `OPENAI_BASE_URL` and `OPENAI_MODEL` settings. On JetPack 6,
 `deploy/systemd/bin/project-link-setup-fall-cuda` creates an isolated CUDA Torch
 environment for fall inference; it does not replace LeRobot's user-level Torch.
+Install the specialized fall detector and YOLO-World with
+`deploy/systemd/bin/project-link-install-fall-models`; fixed hashes are checked
+before either destination is replaced. The current twelve-heading scan is a
+no-motion simulation. Its Nav2 boundary is documented in
+`docs/modules/sensors/fall-response/NAV2_ASYNC_SCAN_HANDOFF.md`.
 
 Starting the emergency target starts only the front camera, HTTP/visual
 coordinator and WeChat notifier. It does not start the base, lidar or Nav2.

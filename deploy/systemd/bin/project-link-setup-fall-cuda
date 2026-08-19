@@ -36,7 +36,8 @@ from ultralytics import YOLO
 if not torch.cuda.is_available():
     raise SystemExit("isolated Torch installed, but CUDA is unavailable")
 model_path = os.environ.get(
-    "FALL_YOLO_MODEL", "/home/wte/models/project_link/yolov8n-pose.pt"
+    "FALL_SPECIALIZED_MODEL",
+    "/home/wte/models/project_link/human-fall-detection-yolo11.pt",
 )
 model = YOLO(model_path)
 model.predict(source=np.zeros((720, 1280, 3), dtype=np.uint8), device=0, verbose=False)

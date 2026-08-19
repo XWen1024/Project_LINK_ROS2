@@ -3,7 +3,7 @@
 <package format="3">
   <name>project_link_fall_response</name>
   <version>0.1.0</version>
-  <description>Static Android and legacy voice fall-assessment response nodes.</description>
+  <description>No-motion asynchronous Android and legacy voice fall-assessment response nodes.</description>
   <maintainer email="wte@example.com">Project LINK</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_python</buildtool_depend>

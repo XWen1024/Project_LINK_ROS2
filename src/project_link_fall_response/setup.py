@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer="Project LINK",
     maintainer_email="wte@example.com",
-    description="Static Android and legacy voice fall-assessment response nodes.",
+    description="No-motion asynchronous Android and legacy voice fall-assessment response nodes.",
     license="MIT",
     entry_points={
         "console_scripts": [
@@ -26,6 +26,7 @@ setup(
             "mobile_fall_coordinator = project_link_fall_response.mobile_coordinator_node:main",
             "wechat_notifier_node = project_link_fall_response.wechat_notifier_node:main",
             "wechatbot_bind = project_link_fall_response.wechat_bind:main",
+            "simulate_async_scan = project_link_fall_response.simulate_async_scan:main",
         ],
     },
 )

@@ -17,11 +17,12 @@ from rclpy.node import Node
 from project_link_emergency_interfaces.action import RespondToFall
 from project_link_emergency_interfaces.srv import CaptureStill, SendFallNotification
 
+from .async_scan import AsyncScanOrchestrator
 from .async_vision import AsyncOpenAICompatibleVisionClient
 from .core import FallAssessmentError
 from .event_store import EventStore, now_ms
+from .fall_models import SpecializedFallDetector, YoloWorldPersonDetector
 from .fall_response_node import SYSTEM_PROMPT, USER_PROMPT
-from .pose import YoloPoseDetector
 
 
 class MobileFallCoordinator(Node):
@@ -40,13 +41,36 @@ class MobileFallCoordinator(Node):
             callback_group=self._callbacks,
         )
         self._store = EventStore(str(self.get_parameter("event_db_path").value))
-        self._detector = YoloPoseDetector(
-            os.environ.get("FALL_YOLO_MODEL", str(self.get_parameter("model_path").value)),
-            detection_threshold=float(self.get_parameter("detection_threshold").value),
-            keypoint_threshold=float(self.get_parameter("keypoint_threshold").value),
-            candidate_threshold=float(self.get_parameter("candidate_threshold").value),
-            stable_frames=int(self.get_parameter("stable_frames").value),
+        device = os.environ.get("FALL_YOLO_DEVICE", str(self.get_parameter("yolo_device").value))
+        self._fall_detector = SpecializedFallDetector(
+            os.environ.get(
+                "FALL_SPECIALIZED_MODEL", str(self.get_parameter("specialized_model_path").value)
+            ),
+            threshold=float(self.get_parameter("specialized_inference_threshold").value),
+            device=device,
+        )
+        self._person_detector = YoloWorldPersonDetector(
+            os.environ.get("FALL_WORLD_MODEL", str(self.get_parameter("world_model_path").value)),
+            threshold=float(self.get_parameter("world_person_threshold").value),
             device=os.environ.get("FALL_YOLO_DEVICE", str(self.get_parameter("yolo_device").value)),
+        )
+        steps = max(1, int(self.get_parameter("simulated_scan_steps").value))
+        angle_step = 360.0 / steps
+        self._scan = AsyncScanOrchestrator(
+            angles=tuple(index * angle_step for index in range(steps)),
+            frames_per_angle=int(self.get_parameter("frames_per_angle").value),
+            recheck_frames=int(self.get_parameter("recheck_frames").value),
+            strong_threshold=float(self.get_parameter("strong_fallen_threshold").value),
+            weak_threshold=float(self.get_parameter("weak_fallen_threshold").value),
+            recheck_frame_threshold=float(
+                self.get_parameter("recheck_frame_threshold").value
+            ),
+            recheck_average_threshold=float(
+                self.get_parameter("recheck_average_threshold").value
+            ),
+            simulated_angle_delay_sec=float(
+                self.get_parameter("simulated_angle_delay_sec").value
+            ),
         )
         self._vision = AsyncOpenAICompatibleVisionClient(
             api_key=os.environ.get("OPENAI_API_KEY", ""),
@@ -77,7 +101,9 @@ class MobileFallCoordinator(Node):
             cancel_callback=self._cancel_goal,
             callback_group=self._callbacks,
         )
-        self.get_logger().warn("Mobile fall coordinator is in STATIC NO-MOTION mode")
+        self.get_logger().warn(
+            "Mobile fall coordinator is in ASYNC SCAN SIMULATION mode; no Nav2 or motion is used"
+        )
 
     def _declare_parameters(self) -> None:
         self.declare_parameter("respond_action", "/fall_detection/respond_to_fall")
@@ -86,14 +112,22 @@ class MobileFallCoordinator(Node):
         self.declare_parameter(
             "event_db_path", os.path.expanduser("~/.local/state/project-link/fall-response/events.sqlite3")
         )
-        self.declare_parameter("model_path", "/home/wte/models/project_link/yolov8n-pose.pt")
-        self.declare_parameter("frame_count", 5)
-        self.declare_parameter("frame_interval_sec", 0.20)
+        self.declare_parameter(
+            "specialized_model_path", "/home/wte/models/project_link/human-fall-detection-yolo11.pt"
+        )
+        self.declare_parameter("world_model_path", "/home/wte/models/yolov8s-worldv2.pt")
+        self.declare_parameter("simulated_scan_steps", 12)
+        self.declare_parameter("frames_per_angle", 3)
+        self.declare_parameter("recheck_frames", 2)
+        self.declare_parameter("frame_interval_sec", 0.08)
         self.declare_parameter("capture_timeout_sec", 2.0)
-        self.declare_parameter("detection_threshold", 0.45)
-        self.declare_parameter("keypoint_threshold", 0.30)
-        self.declare_parameter("candidate_threshold", 0.65)
-        self.declare_parameter("stable_frames", 3)
+        self.declare_parameter("simulated_angle_delay_sec", 0.20)
+        self.declare_parameter("specialized_inference_threshold", 0.05)
+        self.declare_parameter("strong_fallen_threshold", 0.60)
+        self.declare_parameter("weak_fallen_threshold", 0.25)
+        self.declare_parameter("recheck_frame_threshold", 0.55)
+        self.declare_parameter("recheck_average_threshold", 0.50)
+        self.declare_parameter("world_person_threshold", 0.50)
         self.declare_parameter("yolo_device", "")
         self.declare_parameter("vlm_threshold", 0.70)
         self.declare_parameter(
@@ -164,11 +198,45 @@ class MobileFallCoordinator(Node):
             time.sleep(0.02)
         return False
 
-    def _capture_frames(self, goal_handle) -> list[bytes]:
+    def _scan_feedback(
+        self,
+        goal_handle,
+        event_id: str,
+        stage: str,
+        message: str,
+        step: int,
+        total: int,
+        confidence: float,
+    ) -> None:
+        self._store.update(
+            event_id,
+            status="scanning",
+            stage=stage,
+            message=message,
+            local_confidence=confidence,
+        )
+        self._feedback(
+            goal_handle,
+            stage,
+            message,
+            local=confidence,
+            step=step,
+            total=total,
+        )
+
+    def _capture_frames(
+        self,
+        goal_handle,
+        angle_deg: float,
+        count: int,
+        stage: str,
+        step: int,
+        total: int,
+    ) -> list[bytes]:
         timeout = float(self.get_parameter("capture_timeout_sec").value)
         if not self._capture.wait_for_service(timeout_sec=timeout):
             raise RuntimeError("front camera capture service is unavailable")
-        count = max(1, int(self.get_parameter("frame_count").value))
+        count = max(1, int(count))
         interval = max(0.0, float(self.get_parameter("frame_interval_sec").value))
         frames: list[bytes] = []
         for index in range(count):
@@ -181,13 +249,19 @@ class MobileFallCoordinator(Node):
             if response is None or not response.success or not response.jpeg_data:
                 raise RuntimeError(response.message if response else "front camera returned no response")
             frames.append(bytes(response.jpeg_data))
-            self._feedback(goal_handle, "capturing", "capturing static pose frames", step=index + 1, total=count)
+            self._feedback(
+                goal_handle,
+                stage,
+                f"captured frame {index + 1}/{count} at simulated angle {angle_deg:.0f} degrees",
+                step=step,
+                total=total,
+            )
             if index + 1 < count:
                 time.sleep(interval)
         return frames
 
-    def _assess_vlm(self, jpeg_data: bytes, goal_handle):
-        future = asyncio.run_coroutine_threadsafe(self._vision.assess(jpeg_data), self._async_loop)
+    def _assess_vlm(self, images: list[tuple[str, bytes]], goal_handle):
+        future = asyncio.run_coroutine_threadsafe(self._vision.assess_many(images), self._async_loop)
         while not future.done():
             if self._cancelled(goal_handle):
                 future.cancel()
@@ -252,59 +326,71 @@ class MobileFallCoordinator(Node):
         local_confidence = 0.0
         vlm_confidence = 0.0
         reason = ""
-        frames: list[bytes] = []
+        notification_image = b""
         degraded = False
         try:
-            self._store.update(event_id, status="scanning", stage="preflight", message="static visual preflight")
-            self._feedback(goal_handle, "preflight", "static no-motion visual assessment")
+            self._store.update(
+                event_id,
+                status="scanning",
+                stage="preflight",
+                message="asynchronous 12-angle scan simulation preflight",
+            )
+            self._feedback(
+                goal_handle,
+                "preflight",
+                "starting asynchronous no-motion scan simulation",
+            )
             try:
-                frames = self._capture_frames(goal_handle)
-                self._feedback(goal_handle, "local_inference", "running local YOLO pose")
-                pose = self._detector.assess(frames)
-                local_confidence = pose.confidence
-                reason = pose.reason
-                if pose.outcome == "not_fall":
-                    event = self._store.update(
-                        event_id,
-                        status="not_fall",
-                        stage="completed",
-                        message=reason,
-                        local_confidence=local_confidence,
-                        assessment_reason=reason,
-                    )
-                    goal_handle.succeed()
-                    return self._result(event, local=local_confidence, vlm=0.0, reason=reason)
-                if pose.outcome == "candidate":
-                    frames = [frames[min(pose.best_frame_index, len(frames) - 1)]]
-                else:
+                outcome = self._scan.run(
+                    capture=lambda angle, count, stage, step, total: self._capture_frames(
+                        goal_handle, angle, count, stage, step, total
+                    ),
+                    infer_fall=self._fall_detector.assess,
+                    infer_people=self._person_detector.assess,
+                    cancelled=lambda: self._cancelled(goal_handle),
+                    feedback=lambda stage, message, step, total, confidence: self._scan_feedback(
+                        goal_handle, event_id, stage, message, step, total, confidence
+                    ),
+                )
+                if outcome.kind == "cancelled":
+                    event = self._store.get(event_id)
+                    goal_handle.canceled()
+                    return self._result(event, local=0.0, vlm=0.0, reason="cancelled")
+                local_confidence = outcome.confidence
+                reason = outcome.reason
+                notification_image = outcome.notification_image
+                if outcome.kind == "degraded":
                     degraded = True
+                    vlm_images: list[tuple[str, bytes]] = []
+                else:
+                    vlm_images = list(outcome.vlm_images)
             except Exception as exc:
                 if self._cancelled(goal_handle):
                     event = self._store.get(event_id)
                     goal_handle.canceled()
                     return self._result(event, local=local_confidence, vlm=0.0, reason="cancelled")
                 degraded = True
-                reason = f"local visual assessment unavailable: {exc}"
+                reason = f"local asynchronous visual assessment unavailable: {exc}"
+                vlm_images = []
 
             self._store.update(
                 event_id,
                 status="verifying",
-                stage="vlm_request" if not degraded else "degraded_wait",
+                stage="vlm_request" if vlm_images else "degraded_wait",
                 message=reason,
                 local_confidence=local_confidence,
                 degraded=int(degraded),
                 degraded_reason=reason if degraded else "",
             )
-            jpeg_data = frames[0] if frames else b""
-            if not degraded:
+            if vlm_images:
                 self._feedback(
                     goal_handle,
                     "vlm_request",
-                    "requesting OpenAI-compatible visual confirmation",
+                    f"requesting OpenAI-compatible review of {len(vlm_images)} labeled images",
                     local=local_confidence,
                 )
                 try:
-                    assessment = self._assess_vlm(jpeg_data, goal_handle)
+                    assessment = self._assess_vlm(vlm_images, goal_handle)
                     vlm_confidence = assessment.confidence
                     reason = assessment.reason
                     if not assessment.fall_suspected or assessment.confidence < float(
@@ -365,7 +451,7 @@ class MobileFallCoordinator(Node):
                 degraded=degraded,
                 confidence=vlm_confidence if not degraded else max(local_confidence, vlm_confidence),
                 reason=reason,
-                jpeg_data=jpeg_data,
+                jpeg_data=notification_image,
             )
             status = "notified" if response.text_success else "failed"
             event = self._store.update(

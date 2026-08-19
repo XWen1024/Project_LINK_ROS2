@@ -3,6 +3,8 @@ from urllib import request as urllib_request
 
 import pytest
 
+from project_link_fall_response.async_vision import build_openai_vision_payload
+
 from project_link_fall_response.core import (
     FallAssessmentError,
     FeishuBotClient,
@@ -26,6 +28,25 @@ def test_openai_compatible_client_uses_provider_neutral_api_key(monkeypatch):
     assert client._api_key == "test-key"
     assert client._base_url == "https://example.invalid/v1"
     assert client._model == "vision-model"
+
+
+def test_multi_image_payload_labels_every_angle():
+    payload = build_openai_vision_payload(
+        model="vision-model",
+        system_prompt="system",
+        user_prompt="inspect every image",
+        images=[("overview angle 0", b"a"), ("overview angle 30", b"b")],
+    )
+    content = payload["messages"][1]["content"]
+    assert [item["type"] for item in content] == [
+        "text",
+        "text",
+        "image_url",
+        "text",
+        "image_url",
+    ]
+    assert content[1]["text"] == "overview angle 0"
+    assert content[3]["text"] == "overview angle 30"
 
 
 def test_parse_valid_fall_assessment():

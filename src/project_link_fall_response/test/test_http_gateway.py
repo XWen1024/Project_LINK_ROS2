@@ -58,7 +58,9 @@ def test_android_http_contract_end_to_end():
                 assert duplicate.status == 200
                 assert bridge.dispatched == [event_id]
                 queried = await client.get(f"/api/fall/{event_id}", headers=headers)
-                assert (await queried.json())["status"] == "accepted"
+                queried_payload = await queried.json()
+                assert queried_payload["status"] == "accepted"
+                assert queried_payload["stage"] == "accepted"
                 cancelled = await client.post(
                     f"/api/fall/{event_id}/cancel", headers=headers, json={}
                 )
