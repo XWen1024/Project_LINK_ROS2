@@ -73,6 +73,15 @@ def test_front_camera_component_uses_the_stable_alias():
     assert 'CHASSIS_DEVICE:-/dev/project_link_chassis' in component
 
 
+def test_lidar_component_sources_humble_overlays_without_nounset():
+    component = (DEPLOY_ROOT / "bin" / "project-link-component").read_text(
+        encoding="utf-8"
+    )
+    lidar_block = component.split("  lidar)", 1)[1].split("    ;;", 1)[0]
+    assert "set +u\n    source /opt/ros/humble/setup.bash" in lidar_block
+    assert 'source "$unilidar_ws/install/setup.bash"\n    set -u' in lidar_block
+
+
 def test_console_agent_exposes_only_uwb_shadow_lifecycle_services():
     source = (
         REPOSITORY_ROOT

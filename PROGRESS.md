@@ -83,6 +83,18 @@ Archive tags:
   provides a manually collapsible icon sidebar. Real mode also uses a local lock
   to prevent duplicate GUI/ROS nodes. The voice page now exposes automatic/manual
   control-Action discovery and shows start/switch results directly on the page.
+- Hardware enumeration on 2026-08-19 separated the icSpring chassis-front camera
+  from the Generic/Realtek arm camera. C63A frames were confirmed at 115200 on
+  serial `5B1F024697`. Exact serial udev rules are committed; sudo installation
+  remains pending because the old broad rule still aliases wake board `0004` as
+  `wheeltec_controller`.
+- The front-camera node published compressed JPEG at about `8.0 Hz`. Ubuntu GUI
+  tests passed before and after build (`20 passed`); Orin console/hardware tests
+  passed (`22 passed`) and the updated base/agent packages built with services inactive.
+- DDS Router v2.2.0 and locked dependencies built successfully on Orin ARM64 via
+  the temporary LAN Mihomo proxy. The Router listened only on
+  `127.0.0.1:11666`; Ubuntu BatchMode SSH authentication, tunnel auto-bootstrap
+  and loopback forwarding were verified, then stopped.
 
 ## Current Implementation Order
 
@@ -108,8 +120,9 @@ Archive tags:
         sudo installation on Orin remains pending.
 12. [x] Hide UWB by default and add the Orin-owned front-camera preview path to
         the navigation page. Linux build and live stream validation remain.
-13. [ ] Build the locked DDS Router dependency set on Orin ARM64 and Ubuntu x86_64,
-        then isolate domains 42/142 through an SSH loopback tunnel.
+13. [~] Orin ARM64 Router and SSH tunnel are verified. Build the same locked set
+        on Ubuntu x86_64, then validate ROS Topic/Service/Action across domains
+        42/142 and enable the transport services.
 14. [ ] Save a real named waypoint and complete three Qwen voice-navigation runs.
 
 ## Existing Hardware Gates

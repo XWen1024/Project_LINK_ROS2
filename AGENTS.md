@@ -45,7 +45,10 @@ are evidence snapshots, not current operating instructions.
   Ubuntu Humble build has no `rclpy.parameter_client`; GUI parameter access uses
   explicit `rcl_interfaces/srv/GetParameters` and `SetParameters` clients. Do
   not reintroduce a newer-distro import without verifying it on `ssh seewo`.
-- Both computers use ROS 2 Humble, `ROS_DOMAIN_ID=42`, `ROS_LOCALHOST_ONLY=0`.
+- Both computers use ROS 2 Humble. Orin robot services remain on domain 42.
+  The production Ubuntu console runs on domain 142 and reaches domain 42 only
+  through the loopback DDS Router + SSH tunnel. Direct Ubuntu domain-42 DDS is
+  a temporary compatibility fallback until the transport field gate is complete.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
 - The production cameras have separate roles: `/dev/project_link_front_camera`
   is the chassis-front preview and `/dev/project_link_arm_camera` is the
@@ -153,6 +156,12 @@ are evidence snapshots, not current operating instructions.
   leaves directory/symlink collisions. If switching build modes, delete only the
   affected packages' verified `build/<pkg>` and `install/<pkg>` generated folders,
   then rebuild normally. Never clear the whole workspace or runtime data.
+- ROS 2 Humble `setup.bash` and generated overlay setup files are not safe to
+  source while Bash `set -u` is active; they may read variables such as
+  `AMENT_TRACE_SETUP_FILES` before defining them. In strict-mode scripts, wrap
+  every ROS/ament setup source with `set +u` and restore `set -u` immediately
+  afterward. Treat an `unbound variable` during setup as a shell-wrapper defect,
+  not as a missing ROS package or hardware failure.
 
 ## Active ROS Packages
 
