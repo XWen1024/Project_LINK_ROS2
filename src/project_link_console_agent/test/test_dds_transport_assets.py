@@ -31,6 +31,8 @@ def test_transport_is_loopback_tcp_domain_isolated_and_uwb_free():
     assert ubuntu.count("whitelist-interfaces:") == 2
     assert "transport: tcp" in orin and "transport: tcp" in ubuntu
     assert "-L 127.0.0.1:11666:127.0.0.1:11666" in tunnel
+    assert "systemctl --user start project-link-dds-router-orin.service" in tunnel
+    assert "StrictHostKeyChecking=yes" in tunnel
     assert "uwb" not in orin.lower()
     assert "uwb" not in ubuntu.lower()
     assert "rt/front_camera/*" in orin

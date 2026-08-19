@@ -274,7 +274,7 @@ class ConsoleWindow(QMainWindow):
         )
         self.connection_label.setToolTip(self._connection_text)
         self.transport_label.setText(
-            "⇄" if collapsed else self.transport_label.toolTip()
+            "⇄" if collapsed else f"⇄ {self.transport_label.toolTip()}"
         )
         self.navigation.setStyleSheet(
             "QListWidget { padding: 7px; } QListWidget::item { padding: 12px 8px; }"

@@ -6,7 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=%h/.config/project_link/dds-transport.env
-ExecStart=/usr/bin/ssh -NT -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o ConnectTimeout=8 -L 127.0.0.1:11666:127.0.0.1:11666 ${PROJECT_LINK_ORIN_SSH_TARGET}
+ExecStartPre=/usr/bin/ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 ${PROJECT_LINK_ORIN_SSH_TARGET} systemctl --user start project-link-dds-router-orin.service
+ExecStart=/usr/bin/ssh -NT -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o ConnectTimeout=8 -L 127.0.0.1:11666:127.0.0.1:11666 ${PROJECT_LINK_ORIN_SSH_TARGET}
 Restart=always
 RestartSec=2
 
