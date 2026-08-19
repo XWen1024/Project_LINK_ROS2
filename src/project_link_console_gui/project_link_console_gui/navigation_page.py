@@ -51,6 +51,7 @@ FUNCTION_LABELS = {
     "project-link-nav2.service": "Navigation2 路径规划与导航",
     "project-link-rf2o-fallback.service": "rf2o 备用定位",
     "project-link-visual-grasp.service": "机械臂视觉抓取服务",
+    "project-link-visual-grasp-detector.service": "机械臂 CUDA 目标检测",
     "project-link-vl53l0x.service": "夹爪距离传感器",
     "project-link-voice-classic.service": "经典语音链路",
     "project-link-voice-qwen.service": "Qwen Realtime 语音",

@@ -42,6 +42,7 @@ SUBSYSTEM_LABELS = {
     UNITS["nav2"]: "Navigation2 路径规划与导航",
     UNITS["rf2o"]: "rf2o 备用定位",
     UNITS["visual_grasp"]: "机械臂视觉抓取服务",
+    UNITS["visual_grasp_detector"]: "机械臂 CUDA 目标检测",
     UNITS["vl53l0x"]: "夹爪距离传感器",
     UNITS["voice_classic"]: "经典语音链路",
     UNITS["voice_qwen"]: "Qwen Realtime 语音",

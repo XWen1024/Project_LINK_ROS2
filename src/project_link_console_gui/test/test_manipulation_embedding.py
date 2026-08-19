@@ -73,3 +73,26 @@ def test_visual_grasp_gui_reports_resolution_fps_and_native_mjpeg_mode():
     assert "QImage.fromData(bytes(message.data))" in source
     assert '"原生 MJPEG 直传"' in source
     assert "self.video_status.setText" in source
+    assert "class ClickableVideoLabel(QLabel):" in source
+    assert "frame_point_selected" in source
+    assert '"start_visual_servo"' in source
+    assert '"检测框下边中点"' in source
+    assert '"center_offset_x": offset_x' in source
+
+
+def test_cuda_detector_is_a_separate_process_from_the_lerobot_node():
+    detector = (
+        REPOSITORY_ROOT
+        / "src"
+        / "project_link_visual_grasp"
+        / "project_link_visual_grasp"
+        / "cuda_detector.py"
+    ).read_text(encoding="utf-8")
+    component = (
+        REPOSITORY_ROOT / "deploy" / "systemd" / "bin" / "project-link-component"
+    ).read_text(encoding="utf-8")
+    assert "CudaYoloWorldDetector" in detector
+    assert '"/visual_grasp/detector/result"' in detector
+    assert "SO101Arm" not in detector
+    assert "PYTHONNOUSERSITE=1" in component
+    assert "fall-cuda" in component

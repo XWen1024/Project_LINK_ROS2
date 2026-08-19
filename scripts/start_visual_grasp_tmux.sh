@@ -51,12 +51,15 @@ if tmux has-session -t "$session" 2>/dev/null; then
 fi
 
 command="cd '$repo_root' && source scripts/project_link_env.sh && ros2 launch project_link_visual_grasp visual_grasp.launch.py config:='$config_path'"
+detector_command="cd '$repo_root' && exec deploy/systemd/bin/project-link-component visual-grasp-detector"
 if $with_tof; then
   tof_command="cd '$repo_root' && source scripts/project_link_env.sh && ros2 launch project_link_vl53l0x vl53l0x_gripper.launch.py config:='$tof_config_path'"
   tmux new-session -d -s "$session" -n tof "$tof_command"
+  tmux new-window -t "$session" -n cuda-detector "$detector_command"
   tmux new-window -t "$session" -n visual-grasp "$command"
 else
-  tmux new-session -d -s "$session" -n visual-grasp "$command"
+  tmux new-session -d -s "$session" -n cuda-detector "$detector_command"
+  tmux new-window -t "$session" -n visual-grasp "$command"
 fi
 echo "Started headless visual grasp in tmux session '$session'."
 if $with_tof; then

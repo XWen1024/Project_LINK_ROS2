@@ -1,0 +1,13 @@
+visual_grasp_cuda_detector:
+  ros__parameters:
+    model_path: /home/wte/models/yolov8s-worldv2.pt
+    yolo_device: cuda:0
+    detector_submit_fps: 15.0
+    yolo_conf_threshold: 0.15
+    yolo_max_lost_frames: 15
+    yolo_infer_interval_sec: 0.0
+    yolo_ema_alpha: 0.6
+    yolo_max_center_jump_ratio: 0.12
+    yolo_max_area_change_ratio: 1.8
+    yolo_outlier_hold_frames: 4
+    yolo_track_iou_weight: 0.5

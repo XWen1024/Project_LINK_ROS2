@@ -1,5 +1,7 @@
 [Unit]
 Description=Project LINK headless visual grasp server
+Wants=project-link-visual-grasp-detector.service
+After=project-link-visual-grasp-detector.service
 [Service]
 Type=simple
 WorkingDirectory=/home/wte/wheeltec_robot

@@ -1,0 +1,17 @@
+builtin_interfaces/Time stamp
+string target
+bool model_ready
+string state
+string message
+bool detection_present
+bool trusted
+uint64 sequence
+int32 image_width
+int32 image_height
+int32 bbox_x
+int32 bbox_y
+int32 bbox_width
+int32 bbox_height
+float32 confidence
+float32 inference_ms
+string device

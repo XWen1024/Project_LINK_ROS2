@@ -6,6 +6,9 @@ string state
 string message
 string target
 bool model_ready
+string detector_backend
+string detector_device
+float32 detector_inference_ms
 bool camera_ready
 bool arm_connected
 bool torque_enabled

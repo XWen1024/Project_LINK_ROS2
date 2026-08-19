@@ -39,6 +39,7 @@ from .core import (
     VisualServoController,
     YoloWorldTracker,
 )
+from .external_tracker import ExternalYoloWorldTracker
 
 
 PARAMETER_DEFAULTS: dict[str, Any] = {
@@ -51,7 +52,10 @@ PARAMETER_DEFAULTS: dict[str, Any] = {
     "prefer_native_mjpeg": True,
     "camera_reopen_interval_sec": 2.0,
     "jpeg_quality": 75,
+    "detector_backend": "external_cuda",
+    "detector_stale_timeout_sec": 1.0,
     "model_path": "/home/wte/models/yolov8s-worldv2.pt",
+    "yolo_device": "cpu",
     "yolo_conf_threshold": 0.15,
     "yolo_max_lost_frames": 15,
     "yolo_infer_interval_sec": 0.0,
@@ -116,6 +120,8 @@ PARAMETER_DEFAULTS: dict[str, Any] = {
     "standby_joint_limit": 99.5,
     "center_offset_x": 143.0,
     "center_offset_y": 61.0,
+    "detection_anchor_x_ratio": 0.5,
+    "detection_anchor_y_ratio": 0.5,
     "tof_enabled": False,
     "tof_control_enabled": False,
     "tof_calibrated": False,
@@ -173,7 +179,14 @@ class VisualGraspNode(Node):
         self._tof_subscription = None
 
         self._arm = SO101Arm()
-        self._tracker = YoloWorldTracker(str(self._values["model_path"]), self._values)
+        if str(self._values["detector_backend"]) == "external_cuda":
+            self._tracker = ExternalYoloWorldTracker(self)
+        else:
+            self._tracker = YoloWorldTracker(
+                str(self._values["model_path"]),
+                self._values,
+            )
+        self._tracker.update_config(self._values)
         self._controller = VisualServoController(
             self._arm,
             self._values,
@@ -240,6 +253,7 @@ class VisualGraspNode(Node):
                 "camera_fps",
                 "preview_fps",
                 "camera_reopen_interval_sec",
+                "detector_stale_timeout_sec",
                 "jpeg_quality",
                 "tof_filter_window",
                 "tof_min_valid_samples",
@@ -248,6 +262,31 @@ class VisualGraspNode(Node):
             if parameter.name in {"yolo_ema_alpha", "yolo_conf_threshold", "centering_threshold", "grasp_area_threshold"}:
                 if not 0.0 <= float(parameter.value) <= 1.0:
                     return SetParametersResult(successful=False, reason=f"{parameter.name} must be between 0 and 1")
+            if parameter.name in {
+                "detection_anchor_x_ratio",
+                "detection_anchor_y_ratio",
+            } and not 0.0 <= float(parameter.value) <= 1.0:
+                return SetParametersResult(
+                    successful=False,
+                    reason=f"{parameter.name} must be between 0 and 1",
+                )
+            if parameter.name == "detector_backend" and parameter.value not in {
+                "external_cuda",
+                "in_process",
+            }:
+                return SetParametersResult(
+                    successful=False,
+                    reason="detector_backend must be external_cuda or in_process",
+                )
+            if (
+                parameter.name == "detector_backend"
+                and hasattr(self, "_tracker")
+                and parameter.value != self._values["detector_backend"]
+            ):
+                return SetParametersResult(
+                    successful=False,
+                    reason="detector_backend change requires a service restart",
+                )
             if parameter.name in {"tof_stale_timeout_sec", "tof_grasp_distance_m"}:
                 if float(parameter.value) <= 0.0:
                     return SetParametersResult(successful=False, reason=f"{parameter.name} must be positive")
@@ -286,6 +325,13 @@ class VisualGraspNode(Node):
         if hasattr(self, "_tracker"):
             self._tracker.update_config(changed)
             self._controller.update_config(changed)
+            if {
+                "center_offset_x",
+                "center_offset_y",
+                "detection_anchor_x_ratio",
+                "detection_anchor_y_ratio",
+            } & changed.keys():
+                self._controller.use_configured_visual_center()
             if {
                 "camera_device",
                 "camera_width",
@@ -377,6 +423,11 @@ class VisualGraspNode(Node):
         self.create_service(Trigger, "/visual_grasp/disconnect_arm", self._disconnect_arm_service)
         self.create_service(SetBool, "/visual_grasp/set_torque", self._set_torque)
         self.create_service(Trigger, "/visual_grasp/start_approach", self._start_approach)
+        self.create_service(
+            Trigger,
+            "/visual_grasp/start_visual_servo",
+            self._start_visual_servo,
+        )
         self.create_service(Trigger, "/visual_grasp/stop", self._stop)
         self.create_service(Trigger, "/visual_grasp/record_standby", self._record_position("standby"))
         self.create_service(Trigger, "/visual_grasp/record_pregrasp", self._record_position("pregrasp"))
@@ -436,7 +487,33 @@ class VisualGraspNode(Node):
         return response
 
     def _start_approach(self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        self._last_detection = self._tracker.submit()
+        if self._last_detection is None or not self._last_detection.trusted:
+            response.success = False
+            response.message = "Wait for a stable CUDA detection before grasping"
+            return response
         response.success, response.message = self._controller.start_approach()
+        return response
+
+    def _start_visual_servo(
+        self,
+        _request: Trigger.Request,
+        response: Trigger.Response,
+    ) -> Trigger.Response:
+        self._last_detection = self._tracker.submit()
+        if not self._tracker.model_ready:
+            response.success = False
+            response.message = "CUDA YOLO-World detector is not ready"
+            return response
+        if not self._tracker.target:
+            response.success = False
+            response.message = "Select and start tracking a target first"
+            return response
+        if self._last_detection is None or not self._last_detection.trusted:
+            response.success = False
+            response.message = "Wait for a stable green detection anchor first"
+            return response
+        response.success, response.message = self._controller.start_visual_servo()
         return response
 
     def _stop(self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
@@ -745,27 +822,34 @@ class VisualGraspNode(Node):
         if not self._camera_ready:
             return
         if self._tracker.target:
-            with self._frame_lock:
-                sequence = self._latest_capture_sequence
-                jpeg = self._latest_jpeg
-                frame = None if self._latest_frame is None else self._latest_frame.copy()
-            if sequence != self._last_tracking_sequence:
-                if frame is None and jpeg is not None:
-                    try:
-                        import cv2
-                        import numpy as np
+            if bool(getattr(self._tracker, "requires_frame", True)):
+                with self._frame_lock:
+                    sequence = self._latest_capture_sequence
+                    jpeg = self._latest_jpeg
+                    frame = (
+                        None
+                        if self._latest_frame is None
+                        else self._latest_frame.copy()
+                    )
+                if sequence != self._last_tracking_sequence:
+                    if frame is None and jpeg is not None:
+                        try:
+                            import cv2
+                            import numpy as np
 
-                        frame = cv2.imdecode(
-                            np.frombuffer(jpeg, dtype=np.uint8),
-                            cv2.IMREAD_COLOR,
-                        )
-                    except Exception as exc:
-                        self._last_message = f"Tracking frame decode failed: {exc}"
-                if frame is not None:
-                    height, width = frame.shape[:2]
-                    self._frame_size = (width, height)
-                    self._last_detection = self._tracker.submit(frame)
-                    self._last_tracking_sequence = sequence
+                            frame = cv2.imdecode(
+                                np.frombuffer(jpeg, dtype=np.uint8),
+                                cv2.IMREAD_COLOR,
+                            )
+                        except Exception as exc:
+                            self._last_message = f"Tracking frame decode failed: {exc}"
+                    if frame is not None:
+                        height, width = frame.shape[:2]
+                        self._frame_size = (width, height)
+                        self._last_detection = self._tracker.submit(frame)
+                        self._last_tracking_sequence = sequence
+            else:
+                self._last_detection = self._tracker.submit()
         self._controller.update(
             self._last_detection,
             self._frame_size,
@@ -852,6 +936,9 @@ class VisualGraspNode(Node):
         message.message = self._controller.message or self._tracker.message or self._last_message
         message.target = self._tracker.target
         message.model_ready = self._tracker.model_ready
+        message.detector_backend = str(self._values["detector_backend"])
+        message.detector_device = self._tracker.device
+        message.detector_inference_ms = float(self._tracker.inference_ms)
         message.camera_ready = self._camera_ready
         message.arm_connected = self._arm.connected
         message.torque_enabled = self._arm.torque_enabled

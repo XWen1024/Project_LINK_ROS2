@@ -47,7 +47,10 @@ PARAMETERS = {
     "prefer_native_mjpeg": True,
     "camera_reopen_interval_sec": 2.0,
     "jpeg_quality": 75,
+    "detector_backend": "external_cuda",
+    "detector_stale_timeout_sec": 1.0,
     "model_path": "/home/wte/models/yolov8s-worldv2.pt",
+    "yolo_device": "cpu",
     "yolo_conf_threshold": 0.15,
     "yolo_max_lost_frames": 15,
     "yolo_infer_interval_sec": 0.0,
@@ -111,6 +114,8 @@ PARAMETERS = {
     "standby_joint_limit": 99.5,
     "center_offset_x": 143.0,
     "center_offset_y": 61.0,
+    "detection_anchor_x_ratio": 0.5,
+    "detection_anchor_y_ratio": 0.5,
     "tof_enabled": False,
     "tof_control_enabled": False,
     "tof_calibrated": False,
@@ -121,6 +126,83 @@ PARAMETERS = {
     "tof_grasp_distance_m": 0.06,
     "action_default_timeout_sec": 45.0,
 }
+
+DETECTION_ANCHORS = (
+    ("检测框中心", 0.5, 0.5),
+    ("检测框上边中点", 0.5, 0.0),
+    ("检测框下边中点", 0.5, 1.0),
+    ("检测框左边中点", 0.0, 0.5),
+    ("检测框右边中点", 1.0, 0.5),
+)
+
+
+def map_display_point_to_frame(
+    click_x: float,
+    click_y: float,
+    display_width: int,
+    display_height: int,
+    image_width: int,
+    image_height: int,
+    frame_width: int,
+    frame_height: int,
+):
+    if min(
+        display_width,
+        display_height,
+        image_width,
+        image_height,
+        frame_width,
+        frame_height,
+    ) <= 0:
+        return None
+    offset_x = (display_width - image_width) / 2.0
+    offset_y = (display_height - image_height) / 2.0
+    local_x = click_x - offset_x
+    local_y = click_y - offset_y
+    if not 0.0 <= local_x < image_width or not 0.0 <= local_y < image_height:
+        return None
+    frame_x = round(local_x * frame_width / image_width)
+    frame_y = round(local_y * frame_height / image_height)
+    return (
+        min(frame_width - 1, max(0, frame_x)),
+        min(frame_height - 1, max(0, frame_y)),
+    )
+
+
+class ClickableVideoLabel(QLabel):
+    frame_point_selected = Signal(int, int)
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self._selection_enabled = False
+        self._frame_size = (0, 0)
+
+    def set_frame_size(self, width: int, height: int) -> None:
+        self._frame_size = (int(width), int(height))
+
+    def set_selection_enabled(self, enabled: bool) -> None:
+        self._selection_enabled = bool(enabled)
+        self.setCursor(Qt.CrossCursor if enabled else Qt.ArrowCursor)
+
+    def mousePressEvent(self, event) -> None:
+        if self._selection_enabled and event.button() == Qt.LeftButton:
+            pixmap = self.pixmap()
+            if pixmap is not None and not pixmap.isNull():
+                point = map_display_point_to_frame(
+                    event.position().x(),
+                    event.position().y(),
+                    self.width(),
+                    self.height(),
+                    pixmap.width(),
+                    pixmap.height(),
+                    self._frame_size[0],
+                    self._frame_size[1],
+                )
+                if point is not None:
+                    self.frame_point_selected.emit(*point)
+                    event.accept()
+                    return
+        super().mousePressEvent(event)
 
 
 class ParameterServiceClient:
@@ -185,6 +267,7 @@ class RemoteClient(Node):
             name: self.create_client(Trigger, root + "/" + name)
             for name in (
                 "connect_arm", "disconnect_arm", "start_approach", "stop",
+                "start_visual_servo",
                 "record_standby", "record_pregrasp", "record_placement",
                 "go_standby", "go_pregrasp", "go_placement",
                 "start_demo_recording", "stop_demo_recording",
@@ -231,6 +314,7 @@ class VisualGraspPanel(QWidget):
         self.parameter_widgets: dict[str, QWidget] = {}
         self._last_image_stamp = None
         self._image_times: deque[float] = deque(maxlen=120)
+        self._frame_size = (0, 0)
         self._show_advanced_parameters = bool(show_advanced_parameters)
         self._build_ui()
         self._timer = QTimer(self)
@@ -243,14 +327,21 @@ class VisualGraspPanel(QWidget):
         layout.addWidget(self._device_box())
 
         body = QHBoxLayout()
-        self.video = QLabel("等待 Orin 视频流")
+        video_panel = QWidget()
+        video_layout = QVBoxLayout(video_panel)
+        video_layout.setContentsMargins(0, 0, 0, 0)
+        self.video = ClickableVideoLabel("等待 Orin 视频流")
         self.video.setAlignment(Qt.AlignCenter)
         self.video.setMinimumSize(480, 320)
         self.video.setFrameShape(QLabel.Box)
-        body.addWidget(self.video, 3)
+        self.video.frame_point_selected.connect(self._set_servo_point)
+        video_layout.addWidget(self.video, 1)
 
         self.video_status = QLabel("等待 /visual_grasp/image/compressed")
         self.video_status.setStyleSheet("color: #8e98a5;")
+        video_layout.addWidget(self.video_status)
+        video_layout.addWidget(self._alignment_box())
+        body.addWidget(video_panel, 3)
 
         control_widget = QWidget()
         controls = QVBoxLayout(control_widget)
@@ -267,7 +358,6 @@ class VisualGraspPanel(QWidget):
         control_scroll.setMinimumWidth(340)
         body.addWidget(control_scroll, 2)
         layout.addLayout(body)
-        layout.addWidget(self.video_status)
 
         self.parameter_scroll = QScrollArea()
         self.parameter_scroll.setWidgetResizable(True)
@@ -295,6 +385,37 @@ class VisualGraspPanel(QWidget):
         layout.setColumnStretch(1, 1)
         return box
 
+    def _alignment_box(self) -> QGroupBox:
+        box = QGroupBox("视觉伺服对齐")
+        layout = QGridLayout(box)
+        self.pick_servo_point = QPushButton("点击画面选择黄色对齐点")
+        self.pick_servo_point.setCheckable(True)
+        self.pick_servo_point.toggled.connect(self._toggle_servo_point_selection)
+        self.use_detection_anchor = QPushButton("黄色点设为当前绿色点")
+        self.use_detection_anchor.clicked.connect(self._use_current_detection_anchor)
+        self.reset_servo_point = QPushButton("恢复画面中心")
+        self.reset_servo_point.clicked.connect(self._reset_servo_point)
+        self.detection_anchor_combo = QComboBox()
+        for label, ratio_x, ratio_y in DETECTION_ANCHORS:
+            self.detection_anchor_combo.addItem(label, (ratio_x, ratio_y))
+        self.detection_anchor_combo.currentIndexChanged.connect(
+            self._detection_anchor_changed
+        )
+        self.enable_vertical_servo = QCheckBox("允许上下对齐（现场确认后启用）")
+        self.enable_vertical_servo.toggled.connect(self._vertical_servo_changed)
+        self.servo_point_status = QLabel(
+            "黄色十字是机械臂对齐点；绿色圆点是检测框锚点。"
+        )
+        self.servo_point_status.setWordWrap(True)
+        layout.addWidget(self.pick_servo_point, 0, 0, 1, 2)
+        layout.addWidget(self.use_detection_anchor, 0, 2)
+        layout.addWidget(self.reset_servo_point, 0, 3)
+        layout.addWidget(QLabel("绿色锚点"), 1, 0)
+        layout.addWidget(self.detection_anchor_combo, 1, 1, 1, 3)
+        layout.addWidget(self.enable_vertical_servo, 2, 0, 1, 4)
+        layout.addWidget(self.servo_point_status, 3, 0, 1, 4)
+        return box
+
     def _status_box(self) -> QGroupBox:
         box = QGroupBox("状态")
         layout = QFormLayout(box)
@@ -320,6 +441,7 @@ class VisualGraspPanel(QWidget):
         layout.addWidget(self.target_edit, 0, 1, 1, 3)
         controls = [
             ("开始跟踪", self._set_target),
+            ("开始视觉伺服", lambda: self._trigger("start_visual_servo")),
             ("开始抓取", lambda: self._trigger("start_approach")),
             ("停止运动", lambda: self._trigger("stop")),
         ]
@@ -453,7 +575,11 @@ class VisualGraspPanel(QWidget):
             return
         self.state_label.setText(status.state)
         hardware = "模型:{0} 相机:{1} 机械臂:{2} 校准:{3} 扭矩:{4}".format(
-            "就绪" if status.model_ready else "加载中/错误",
+            (
+                f"就绪({status.detector_device}, {status.detector_inference_ms:.0f} ms)"
+                if status.model_ready
+                else "加载中/错误"
+            ),
             "就绪" if status.camera_ready else "不可用",
             "已连接" if status.arm_connected else "未连接",
             "有效" if status.arm_calibrated else "未完成",
@@ -489,6 +615,25 @@ class VisualGraspPanel(QWidget):
         if image.isNull():
             self.video_status.setText("机械臂相机图像解码失败")
             return
+        first_frame = self._frame_size == (0, 0)
+        self._frame_size = (image.width(), image.height())
+        self.video.set_frame_size(image.width(), image.height())
+        if first_frame:
+            self._sync_alignment_controls()
+        image = image.convertToFormat(QImage.Format_RGB888)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        target_x = image.width() / 2.0 + self._parameter_float(
+            "center_offset_x",
+            0.0,
+        )
+        target_y = image.height() / 2.0 + self._parameter_float(
+            "center_offset_y",
+            0.0,
+        )
+        painter.setPen(QPen(QColor(255, 196, 0), 3))
+        painter.drawLine(int(target_x - 12), int(target_y), int(target_x + 12), int(target_y))
+        painter.drawLine(int(target_x), int(target_y - 12), int(target_x), int(target_y + 12))
         status = self.client.status
         if (
             status is not None
@@ -496,9 +641,6 @@ class VisualGraspPanel(QWidget):
             and status.bbox_width > 0
             and status.bbox_height > 0
         ):
-            image = image.convertToFormat(QImage.Format_RGB888)
-            painter = QPainter(image)
-            painter.setRenderHint(QPainter.Antialiasing, True)
             painter.setPen(QPen(QColor(0, 220, 90), 3))
             painter.drawRect(
                 status.bbox_x,
@@ -511,7 +653,17 @@ class VisualGraspPanel(QWidget):
                 max(22, status.bbox_y - 8),
                 f"{status.target} {status.confidence:.2f}",
             )
-            painter.end()
+            anchor_x = status.bbox_x + status.bbox_width * self._parameter_float(
+                "detection_anchor_x_ratio",
+                0.5,
+            )
+            anchor_y = status.bbox_y + status.bbox_height * self._parameter_float(
+                "detection_anchor_y_ratio",
+                0.5,
+            )
+            painter.setBrush(QColor(0, 220, 90))
+            painter.drawEllipse(int(anchor_x - 6), int(anchor_y - 6), 12, 12)
+        painter.end()
         pixmap = QPixmap.fromImage(image)
         self.video.setPixmap(
             pixmap.scaled(
@@ -541,6 +693,122 @@ class VisualGraspPanel(QWidget):
             f"已连接 · {image.width()}×{image.height()} · 显示 {fps:.1f} FPS · "
             f"采集 {source_fps:.1f} FPS · {capture_mode}"
         )
+
+    def _parameter_float(self, name: str, default: float) -> float:
+        widget = self.parameter_widgets.get(name)
+        if isinstance(widget, (QDoubleSpinBox, QSpinBox)):
+            return float(widget.value())
+        return float(default)
+
+    def _toggle_servo_point_selection(self, enabled: bool) -> None:
+        if enabled and self._frame_size == (0, 0):
+            self.pick_servo_point.blockSignals(True)
+            self.pick_servo_point.setChecked(False)
+            self.pick_servo_point.blockSignals(False)
+            self._show_message("请先等待机械臂相机画面")
+            return
+        self.video.set_selection_enabled(enabled)
+        self.pick_servo_point.setText(
+            "请点击黄色十字最终应在的位置"
+            if enabled
+            else "点击画面选择黄色对齐点"
+        )
+
+    def _set_servo_point(self, frame_x: int, frame_y: int) -> None:
+        width, height = self._frame_size
+        if width <= 0 or height <= 0:
+            return
+        offset_x = float(frame_x - width / 2.0)
+        offset_y = float(frame_y - height / 2.0)
+        self._set_alignment_parameters(
+            {
+                "center_offset_x": offset_x,
+                "center_offset_y": offset_y,
+                "auto_lock_vertical_center_on_pregrasp": False,
+            },
+            f"黄色对齐点已保存为 ({frame_x}, {frame_y})",
+        )
+        self.pick_servo_point.setChecked(False)
+
+    def _use_current_detection_anchor(self) -> None:
+        status = self.client.status
+        if status is None or status.bbox_width <= 0 or status.bbox_height <= 0:
+            self._show_message("当前没有稳定的检测框")
+            return
+        ratio_x, ratio_y = self._selected_detection_anchor()
+        self._set_servo_point(
+            round(status.bbox_x + status.bbox_width * ratio_x),
+            round(status.bbox_y + status.bbox_height * ratio_y),
+        )
+
+    def _reset_servo_point(self) -> None:
+        self._set_alignment_parameters(
+            {
+                "center_offset_x": 0.0,
+                "center_offset_y": 0.0,
+                "auto_lock_vertical_center_on_pregrasp": False,
+            },
+            "黄色对齐点已恢复为画面中心",
+        )
+
+    def _selected_detection_anchor(self) -> tuple[float, float]:
+        value = self.detection_anchor_combo.currentData()
+        if isinstance(value, tuple) and len(value) == 2:
+            return float(value[0]), float(value[1])
+        return 0.5, 0.5
+
+    def _detection_anchor_changed(self, _index: int) -> None:
+        ratio_x, ratio_y = self._selected_detection_anchor()
+        self._set_alignment_parameters(
+            {
+                "detection_anchor_x_ratio": ratio_x,
+                "detection_anchor_y_ratio": ratio_y,
+            },
+            f"绿色检测锚点已切换为：{self.detection_anchor_combo.currentText()}",
+        )
+
+    def _vertical_servo_changed(self, enabled: bool) -> None:
+        self._set_alignment_parameters(
+            {"centering_tilt_motion_enabled": bool(enabled)},
+            "视觉伺服将同时进行左右和上下对齐"
+            if enabled
+            else "视觉伺服仅进行左右对齐",
+        )
+
+    def _set_alignment_parameters(self, values: dict, success_message: str) -> None:
+        parameters = [Parameter(name, value=value) for name, value in values.items()]
+        future = self.client.parameter_client.set_parameters(parameters)
+        future.add_done_callback(
+            lambda completed: self._alignment_parameters_applied(
+                completed,
+                values,
+                success_message,
+            )
+        )
+
+    def _alignment_parameters_applied(
+        self,
+        future,
+        values: dict,
+        success_message: str,
+    ) -> None:
+        try:
+            results = future.result().results
+            failures = [result.reason for result in results if not result.successful]
+        except Exception as exc:
+            self._show_message(f"保存视觉伺服对齐点失败：{exc}")
+            return
+        if failures:
+            self._show_message("；".join(failures))
+            return
+        for name, value in values.items():
+            widget = self.parameter_widgets.get(name)
+            if isinstance(widget, QCheckBox):
+                widget.setChecked(bool(value))
+            elif isinstance(widget, (QDoubleSpinBox, QSpinBox)):
+                widget.setValue(value)
+        self.servo_point_status.setText(success_message)
+        self._show_message(success_message)
 
     def _select_discovered_device(self, index: int) -> None:
         namespace = self.device_combo.itemData(index)
@@ -612,6 +880,38 @@ class VisualGraspPanel(QWidget):
                 widget.setValue(value.double_value)
             else:
                 widget.setText(value.string_value)
+        self._sync_alignment_controls()
+
+    def _sync_alignment_controls(self) -> None:
+        ratio_x = self._parameter_float("detection_anchor_x_ratio", 0.5)
+        ratio_y = self._parameter_float("detection_anchor_y_ratio", 0.5)
+        best_index = min(
+            range(self.detection_anchor_combo.count()),
+            key=lambda index: abs(
+                float(self.detection_anchor_combo.itemData(index)[0]) - ratio_x
+            )
+            + abs(float(self.detection_anchor_combo.itemData(index)[1]) - ratio_y),
+        )
+        self.detection_anchor_combo.blockSignals(True)
+        self.detection_anchor_combo.setCurrentIndex(best_index)
+        self.detection_anchor_combo.blockSignals(False)
+        vertical_widget = self.parameter_widgets.get("centering_tilt_motion_enabled")
+        vertical_enabled = (
+            vertical_widget.isChecked()
+            if isinstance(vertical_widget, QCheckBox)
+            else False
+        )
+        self.enable_vertical_servo.blockSignals(True)
+        self.enable_vertical_servo.setChecked(vertical_enabled)
+        self.enable_vertical_servo.blockSignals(False)
+        width, height = self._frame_size
+        if width > 0 and height > 0:
+            point_x = width / 2.0 + self._parameter_float("center_offset_x", 0.0)
+            point_y = height / 2.0 + self._parameter_float("center_offset_y", 0.0)
+            self.servo_point_status.setText(
+                f"黄色对齐点 ({point_x:.0f}, {point_y:.0f})；"
+                f"绿色点使用{self.detection_anchor_combo.currentText()}。"
+            )
 
     def _apply_parameters(self) -> None:
         parameters = []

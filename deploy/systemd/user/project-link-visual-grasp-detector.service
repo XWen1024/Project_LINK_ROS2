@@ -1,0 +1,15 @@
+[Unit]
+Description=Project LINK isolated CUDA YOLO-World detector
+PartOf=project-link-visual-grasp.service
+Before=project-link-visual-grasp.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/console.env
+ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component visual-grasp-detector
+ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /visual_grasp/detector/result 90
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=15

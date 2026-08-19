@@ -117,6 +117,7 @@ class TrackerState(str, Enum):
 class ServoState(str, Enum):
     IDLE = "IDLE"
     TRACKING = "TRACKING"
+    VISUAL_SERVO = "VISUAL_SERVO"
     CENTERING = "CENTERING"
     APPROACHING = "APPROACHING"
     FINAL_APPROACH = "FINAL_APPROACH"
@@ -255,6 +256,7 @@ class YoloWorldTracker:
     def __init__(self, model_path: str, config: dict[str, Any]):
         self._model_path = model_path
         self._config = dict(config)
+        self._device = str(self._config.get("yolo_device", "")).strip()
         self._model: Any = None
         self._model_error = ""
         self._target = ""
@@ -269,6 +271,7 @@ class YoloWorldTracker:
         self._wake = threading.Event()
         self._running = True
         self._last_infer = 0.0
+        self._last_inference_ms = 0.0
         self._message = "YOLO-World model loading"
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
@@ -293,9 +296,20 @@ class YoloWorldTracker:
         with self._lock:
             return self._model is not None
 
+    @property
+    def device(self) -> str:
+        return self._device or "auto"
+
+    @property
+    def inference_ms(self) -> float:
+        with self._lock:
+            return self._last_inference_ms
+
     def update_config(self, config: dict[str, Any]) -> None:
         with self._lock:
             self._config.update(config)
+            if "yolo_device" in config:
+                self._device = str(config["yolo_device"]).strip()
 
     def set_target(self, target: str) -> tuple[bool, str]:
         target = target.strip()
@@ -329,9 +343,9 @@ class YoloWorldTracker:
             self._state = TrackerState.IDLE if self._model else TrackerState.LOADING
             self._message = "Target cleared"
 
-    def submit(self, frame: np.ndarray) -> Optional[Detection]:
+    def submit(self, frame: Optional[np.ndarray]) -> Optional[Detection]:
         with self._lock:
-            if self._target and self._model is not None:
+            if frame is not None and self._target and self._model is not None:
                 self._latest_frame = frame.copy()
                 self._wake.set()
             return self._latest_detection
@@ -363,8 +377,14 @@ class YoloWorldTracker:
         try:
             from ultralytics import YOLO
 
-            model = YOLO(self._model_path)
-            model.predict(np.zeros((32, 32, 3), dtype=np.uint8), verbose=False)
+            model = YOLO(self._model_path, task="detect")
+            predict_options = {"verbose": False}
+            if self._device:
+                predict_options["device"] = self._device
+            model.predict(
+                np.zeros((32, 32, 3), dtype=np.uint8),
+                **predict_options,
+            )
             with self._lock:
                 self._model = model
                 self._state = TrackerState.IDLE
@@ -378,6 +398,7 @@ class YoloWorldTracker:
                 self._message = f"YOLO-World model load failed: {exc}"
 
     def _infer(self, model: Any, frame: np.ndarray) -> None:
+        started = time.monotonic()
         try:
             with self._lock:
                 threshold = float(self._config.get("yolo_conf_threshold", 0.15))
@@ -393,7 +414,10 @@ class YoloWorldTracker:
                     self._config.get("yolo_outlier_hold_frames", 4)
                 )
                 iou_weight = float(self._config.get("yolo_track_iou_weight", 0.5))
-            result = model.predict(frame, conf=threshold, verbose=False)[0]
+            predict_options = {"conf": threshold, "verbose": False}
+            if self._device:
+                predict_options["device"] = self._device
+            result = model.predict(frame, **predict_options)[0]
             boxes = result.boxes
             detection: Optional[Detection] = None
             if boxes is not None and len(boxes) > 0:
@@ -498,6 +522,9 @@ class YoloWorldTracker:
             with self._lock:
                 self._state = TrackerState.ERROR
                 self._message = f"YOLO-World inference failed: {exc}"
+        finally:
+            with self._lock:
+                self._last_inference_ms = (time.monotonic() - started) * 1000.0
 
 
 class SO101Arm:
@@ -1191,6 +1218,18 @@ class VisualServoController:
         )
         return target_x, target_y
 
+    def detection_anchor(self, detection: Detection) -> tuple[float, float]:
+        x, y, width, height = detection.bbox
+        ratio_x = max(
+            0.0,
+            min(1.0, float(self.config.get("detection_anchor_x_ratio", 0.5))),
+        )
+        ratio_y = max(
+            0.0,
+            min(1.0, float(self.config.get("detection_anchor_y_ratio", 0.5))),
+        )
+        return x + width * ratio_x, y + height * ratio_y
+
     def use_configured_visual_center(self) -> None:
         self._session_target_center_y = None
         self._centering_error_history.clear()
@@ -1212,6 +1251,7 @@ class VisualServoController:
 
     def set_tracking(self) -> None:
         if self.state not in (
+            ServoState.VISUAL_SERVO,
             ServoState.CENTERING,
             ServoState.APPROACHING,
             ServoState.FINAL_APPROACH,
@@ -1219,6 +1259,24 @@ class VisualServoController:
         ):
             self.state = ServoState.TRACKING
             self.message = "Tracking; waiting for manual grasp command"
+
+    def start_visual_servo(self) -> tuple[bool, str]:
+        if not self.arm.connected:
+            return False, "SO-101 is not connected"
+        if not self.arm.torque_enabled:
+            return False, "Enable SO-101 torque before visual servoing"
+        if self.state in (
+            ServoState.MOVING,
+            ServoState.CENTERING,
+            ServoState.APPROACHING,
+            ServoState.FINAL_APPROACH,
+            ServoState.RANGE_WAIT,
+        ):
+            return False, "Stop the current arm motion before visual servoing"
+        self._reset_centering_filter()
+        self.state = ServoState.VISUAL_SERVO
+        self.message = "Visual servo started; aligning the selected box anchor"
+        return True, self.message
 
     def _reset_centering_filter(self, reset_detection_sequence: bool = True) -> None:
         self._centering_error_history.clear()
@@ -1301,6 +1359,7 @@ class VisualServoController:
                 )
         if self.state in (
             ServoState.MOVING,
+            ServoState.VISUAL_SERVO,
             ServoState.CENTERING,
             ServoState.APPROACHING,
             ServoState.FINAL_APPROACH,
@@ -1369,16 +1428,19 @@ class VisualServoController:
             self._tick_move()
             return
         if self.state not in (
+            ServoState.VISUAL_SERVO,
             ServoState.CENTERING,
             ServoState.APPROACHING,
             ServoState.FINAL_APPROACH,
             ServoState.RANGE_WAIT,
         ):
             return
-        if self._grasp_started <= 0.0:
+        if self.state != ServoState.VISUAL_SERVO and self._grasp_started <= 0.0:
             self._grasp_started = time.monotonic()
-        if time.monotonic() - self._grasp_started > float(
-            self.config.get("grasp_timeout_sec", 20.0)
+        if (
+            self.state != ServoState.VISUAL_SERVO
+            and time.monotonic() - self._grasp_started
+            > float(self.config.get("grasp_timeout_sec", 20.0))
         ):
             self.state = ServoState.ERROR
             self.message = "Visual grasp timed out before completion"
@@ -1406,7 +1468,7 @@ class VisualServoController:
             return
         if detection.sequence > 0:
             self._last_visual_detection_sequence = detection.sequence
-        if self.state == ServoState.CENTERING:
+        if self.state in (ServoState.VISUAL_SERVO, ServoState.CENTERING):
             self._tick_center(detection, frame_size)
         elif self.state in (ServoState.APPROACHING, ServoState.RANGE_WAIT):
             self._tick_approach(detection, frame_size, tof_reading)
@@ -1544,9 +1606,8 @@ class VisualServoController:
 
     def _tick_center(self, detection: Detection, frame_size: tuple[int, int]) -> None:
         width, height = frame_size
-        x, y, box_width, box_height = detection.bbox
-        center_x = x + box_width / 2.0
-        center_y = y + box_height / 2.0
+        _, _, box_width, box_height = detection.bbox
+        center_x, center_y = self.detection_anchor(detection)
         if (
             self._session_target_center_y is None
             and bool(self.config.get("auto_lock_vertical_center_on_pregrasp", False))
@@ -1610,6 +1671,11 @@ class VisualServoController:
         )
         confirm_cycles = max(1, int(self.config.get("centering_confirm_cycles", 2)))
         if self._centering_confirm_cycles >= confirm_cycles:
+            if self.state == ServoState.VISUAL_SERVO:
+                self._centering_error_history.clear()
+                self._centering_confirm_cycles = 0
+                self.message = "Visual servo aligned; tracking the selected box anchor"
+                return
             self._reset_centering_filter(reset_detection_sequence=False)
             self.state = ServoState.APPROACHING
             self.message = (
@@ -2482,8 +2548,7 @@ class VisualServoController:
         error_x = error_y = None
         if detection is not None:
             bbox_x, bbox_y, bbox_width, bbox_height = detection.bbox
-            bbox_center_x = bbox_x + bbox_width / 2.0
-            bbox_center_y = bbox_y + bbox_height / 2.0
+            bbox_center_x, bbox_center_y = self.detection_anchor(detection)
             bbox_area_px = bbox_width * bbox_height
             bbox_area_ratio = bbox_area_px / float(width * height)
             error_x = (bbox_center_x - target_center_x) / width

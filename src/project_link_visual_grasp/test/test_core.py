@@ -99,6 +99,8 @@ def controller_config(**overrides):
         "standby_joint_limit": 99.5,
         "center_offset_x": 0.0,
         "center_offset_y": 0.0,
+        "detection_anchor_x_ratio": 0.5,
+        "detection_anchor_y_ratio": 0.5,
         "centering_threshold": 0.04,
         "centering_limit_hold_cycles": 3,
         "centering_error_window": 3,
@@ -116,6 +118,71 @@ def controller_config(**overrides):
     }
     config.update(overrides)
     return config
+
+
+def test_detection_anchor_can_use_a_box_edge_instead_of_only_the_center():
+    controller = VisualServoController(
+        FakeArm(),
+        controller_config(
+            detection_anchor_x_ratio=1.0,
+            detection_anchor_y_ratio=0.0,
+        ),
+        {},
+    )
+
+    assert controller.detection_anchor(Detection((10, 20, 50, 40), 0.9)) == (
+        60.0,
+        20.0,
+    )
+
+
+def test_visual_servo_keeps_tracking_after_the_selected_points_align():
+    arm = FakeArm()
+    controller = VisualServoController(
+        arm,
+        controller_config(
+            auto_lock_vertical_center_on_pregrasp=False,
+            centering_min_samples=1,
+            centering_confirm_cycles=1,
+        ),
+        {},
+    )
+
+    success, _message = controller.start_visual_servo()
+    assert success
+    controller.update(
+        Detection((40, 40, 20, 20), 0.9, trusted=True, sequence=1),
+        (100, 100),
+        None,
+    )
+
+    assert controller.state == ServoState.VISUAL_SERVO
+    assert "aligned" in controller.message
+    assert not arm.arm_commands
+
+
+def test_visual_servo_commands_a_bounded_correction_toward_the_selected_point():
+    arm = FakeArm()
+    controller = VisualServoController(
+        arm,
+        controller_config(
+            auto_lock_vertical_center_on_pregrasp=False,
+            centering_min_samples=1,
+            centering_confirm_cycles=1,
+        ),
+        {},
+    )
+    controller.start_visual_servo()
+
+    controller.update(
+        Detection((70, 40, 20, 20), 0.9, trusted=True, sequence=1),
+        (100, 100),
+        None,
+    )
+
+    assert controller.state == ServoState.VISUAL_SERVO
+    assert len(arm.arm_commands) == 1
+    assert 0.0 < arm.arm_commands[0]["shoulder_pan.pos"] <= 1.5
 
 
 def test_tof_control_closes_gripper_at_calibrated_distance():

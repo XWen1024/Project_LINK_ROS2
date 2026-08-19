@@ -9,7 +9,10 @@ visual_grasp:
     prefer_native_mjpeg: true
     camera_reopen_interval_sec: 2.0
     jpeg_quality: 75
+    detector_backend: external_cuda
+    detector_stale_timeout_sec: 1.0
     model_path: /home/wte/models/yolov8s-worldv2.pt
+    yolo_device: cpu
     yolo_conf_threshold: 0.15
     yolo_max_lost_frames: 15
     yolo_infer_interval_sec: 0.0
@@ -74,6 +77,8 @@ visual_grasp:
     standby_joint_limit: 99.5
     center_offset_x: 143.0
     center_offset_y: 61.0
+    detection_anchor_x_ratio: 0.5
+    detection_anchor_y_ratio: 0.5
     tof_enabled: false
     tof_control_enabled: false
     tof_calibrated: false

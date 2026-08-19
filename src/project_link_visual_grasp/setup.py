@@ -22,6 +22,7 @@ setup(
     entry_points={
         "console_scripts": [
             "visual_grasp_node = project_link_visual_grasp.node:main",
+            "visual_grasp_cuda_detector = project_link_visual_grasp.cuda_detector:main",
         ],
     },
-)
+)

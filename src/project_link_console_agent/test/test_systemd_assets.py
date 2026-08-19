@@ -141,6 +141,23 @@ def test_front_camera_component_uses_the_stable_alias():
     assert 'FRONT_CAMERA_GAIN:-32' in component
 
 
+def test_visual_grasp_cuda_detector_is_process_isolated_from_lerobot():
+    component = (DEPLOY_ROOT / "bin" / "project-link-component").read_text(
+        encoding="utf-8"
+    )
+    detector = (DEPLOY_ROOT / "user" / UNITS["visual_grasp_detector"]).read_text(
+        encoding="utf-8"
+    )
+    main = (DEPLOY_ROOT / "user" / UNITS["visual_grasp"]).read_text(
+        encoding="utf-8"
+    )
+    assert 'PYTHONNOUSERSITE=1' in component
+    assert 'fall-cuda' in component
+    assert 'project_link_visual_grasp.cuda_detector' in component
+    assert f"PartOf={UNITS['visual_grasp']}" in detector
+    assert f"Wants={UNITS['visual_grasp_detector']}" in main
+
+
 def test_lidar_component_sources_humble_overlays_without_nounset():
     component = (DEPLOY_ROOT / "bin" / "project-link-component").read_text(
         encoding="utf-8"

@@ -20,6 +20,7 @@ UNITS = {
     "nav2": "project-link-nav2.service",
     "rf2o": "project-link-rf2o-fallback.service",
     "visual_grasp": "project-link-visual-grasp.service",
+    "visual_grasp_detector": "project-link-visual-grasp-detector.service",
     "vl53l0x": "project-link-vl53l0x.service",
     "voice_classic": "project-link-voice-classic.service",
     "voice_qwen": "project-link-voice-qwen.service",

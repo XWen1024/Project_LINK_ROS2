@@ -127,6 +127,19 @@ case "$component" in
     exec ros2 launch project_link_visual_grasp visual_grasp.launch.py \
       config:="${VISUAL_GRASP_CONFIG:-$workspace/configs/visual_grasp/visual_grasp.yaml}"
     ;;
+  visual-grasp-detector)
+    source_main
+    cuda_venv="${VISUAL_GRASP_CUDA_VENV:-$HOME/.local/share/project-link/venvs/fall-cuda}"
+    cuda_site="${VISUAL_GRASP_CUDA_SITE:-$cuda_venv/lib/python3.10/site-packages}"
+    [[ -d "$cuda_site" ]] || {
+      echo "Visual-grasp CUDA site-packages is missing: $cuda_site" >&2
+      exit 1
+    }
+    export PYTHONNOUSERSITE=1
+    export PYTHONPATH="$cuda_site${PYTHONPATH:+:$PYTHONPATH}"
+    exec /usr/bin/python3 -m project_link_visual_grasp.cuda_detector --ros-args \
+      --params-file "${VISUAL_GRASP_CUDA_CONFIG:-$workspace/configs/visual_grasp/cuda_detector.yaml}"
+    ;;
   vl53l0x)
     source_main
     exec ros2 launch project_link_vl53l0x vl53l0x_gripper.launch.py \
