@@ -165,9 +165,9 @@ local_costmap:
           raytrace_max_range: 5.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
-        # Midpoint between the permissive first pass and the over-conservative pass.
-        inflation_radius: 0.40
-        cost_scaling_factor: 3.5
+        # Preserve the measured footprint while allowing supervised indoor passages.
+        inflation_radius: 0.28
+        cost_scaling_factor: 5.0
       always_send_full_costmap: true
 
 global_costmap:
@@ -207,8 +207,8 @@ global_costmap:
           raytrace_max_range: 10.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
-        inflation_radius: 0.40
-        cost_scaling_factor: 3.5
+        inflation_radius: 0.28
+        cost_scaling_factor: 5.0
       always_send_full_costmap: true
 
 planner_server:

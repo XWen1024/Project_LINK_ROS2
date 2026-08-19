@@ -126,6 +126,10 @@ base_footprint
 ```
 
 - `footprint_padding=0.01 m`。
+- 2026-08-20 室内通道实测后，局部与全局 inflation layer 统一为
+  `inflation_radius=0.28 m`、`cost_scaling_factor=5.0`。不得为通过狭窄通道
+  缩小真实 footprint；如果仍失败，先区分黑色硬占用栅格、目标超出全局地图
+  和粉红软膨胀代价。
 - 雷达安装平移保留为：`x=0.190 m`、`y=0.000 m`、`z=0.550 m`，其中真实
   `lidar_offset_y` 尚未进行独立物理测量。
 - 2026-08-20 现场静止点云标定后的底盘安装姿态为：roll

@@ -103,6 +103,12 @@ Archive tags:
   `-2.2°`, yaw `90°`; red production and green preview clouds overlap in RViz2.
   The mapping target, Point-LIO, `/odom_lio`, `/scan_accumulated` and `/map`
   returned ready without publishing velocity or sending a navigation goal.
+- The Point-LIO Nav2 local/global inflation layers were reduced from
+  `0.40 m / 3.5` to `0.28 m / 5.0` while retaining the measured
+  `0.51 m x 0.41 m` footprint and `0.01 m` padding. Live testing opened the
+  previously overlapping soft-cost corridor and completed multiple supervised
+  goals. Remaining failures were tied to hard occupied cells or a goal outside
+  the global costmap, not to the inflation radius alone.
 - The front-camera path now uses native 1280x720 MJPEG pass-through at about
   `29.8 FPS`. Fixed exposure `300` and gain `32` preserve that rate; the navigation
   page exposes runtime automatic/manual exposure controls only in advanced mode.
