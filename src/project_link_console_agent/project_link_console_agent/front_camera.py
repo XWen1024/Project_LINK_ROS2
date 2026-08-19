@@ -10,6 +10,7 @@ import time
 from typing import Any
 
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
@@ -55,6 +56,8 @@ class FrontCameraNode(Node):
         self._latest_stamp_ns = 0
         self._last_published_stamp_ns = 0
         self._capture_mode = "starting"
+        self._exposure_update_requested = False
+        self.add_on_set_parameters_callback(self._on_parameters_set)
         image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         self._image_pub = self.create_publisher(
             CompressedImage,
@@ -68,6 +71,7 @@ class FrontCameraNode(Node):
         period = 0.5 / max(1.0, float(self.get_parameter("preview_fps").value))
         self.create_timer(period, self._publish_preview)
         self.create_timer(1.0, self._publish_periodic_status)
+        self.create_timer(0.1, self._apply_pending_exposure)
         self._capture_thread = threading.Thread(
             target=self._capture_loop,
             name="front-camera-capture",
@@ -92,6 +96,46 @@ class FrontCameraNode(Node):
         message = String()
         message.data = payload
         self._status_pub.publish(message)
+
+    def _on_parameters_set(self, parameters) -> SetParametersResult:
+        for parameter in parameters:
+            try:
+                if parameter.name == "manual_exposure" and not isinstance(
+                    parameter.value, bool
+                ):
+                    return SetParametersResult(
+                        successful=False, reason="manual_exposure must be boolean"
+                    )
+                if parameter.name == "exposure_time_absolute" and not 1 <= int(
+                    parameter.value
+                ) <= 5000:
+                    return SetParametersResult(
+                        successful=False,
+                        reason="exposure_time_absolute must be between 1 and 5000",
+                    )
+                if parameter.name == "camera_gain" and not 0 <= int(
+                    parameter.value
+                ) <= 63:
+                    return SetParametersResult(
+                        successful=False, reason="camera_gain must be between 0 and 63"
+                    )
+            except (TypeError, ValueError):
+                return SetParametersResult(
+                    successful=False, reason=f"invalid value for {parameter.name}"
+                )
+        if any(
+            parameter.name
+            in {"manual_exposure", "exposure_time_absolute", "camera_gain"}
+            for parameter in parameters
+        ):
+            self._exposure_update_requested = True
+        return SetParametersResult(successful=True)
+
+    def _apply_pending_exposure(self) -> None:
+        if not self._exposure_update_requested:
+            return
+        self._exposure_update_requested = False
+        self._apply_exposure_controls(str(self.get_parameter("camera_device").value))
 
     def _capture_loop(self) -> None:
         native_allowed = bool(self.get_parameter("prefer_native_mjpeg").value)
@@ -150,26 +194,43 @@ class FrontCameraNode(Node):
                 continue
             buffer.extend(chunk)
             while True:
-                start = buffer.find(b"\xff\xd8")
-                if start < 0:
-                    if len(buffer) > 1:
-                        del buffer[:-1]
+                jpeg = self._pop_native_jpeg(buffer)
+                if jpeg is None:
                     break
-                end = buffer.find(b"\xff\xd9", start + 2)
-                if end < 0:
-                    if start > 0:
-                        del buffer[:start]
-                    if len(buffer) > 8 * 1024 * 1024:
-                        buffer.clear()
-                    break
-                jpeg = bytes(buffer[start : end + 2])
-                del buffer[: end + 2]
                 stamp_ns = self.get_clock().now().nanoseconds
                 with self._frame_lock:
                     self._latest_jpeg = jpeg
                     self._latest_frame = None
                     self._latest_frame_monotonic = time.monotonic()
                     self._latest_stamp_ns = stamp_ns
+
+    @staticmethod
+    def _pop_native_jpeg(buffer: bytearray) -> bytes | None:
+        """Pop one complete JPEG, dropping a truncated frame before a new SOI."""
+        while True:
+            start = buffer.find(b"\xff\xd8")
+            if start < 0:
+                if len(buffer) > 1:
+                    del buffer[:-1]
+                return None
+            if start > 0:
+                del buffer[:start]
+                start = 0
+            end = buffer.find(b"\xff\xd9", 2)
+            next_start = buffer.find(b"\xff\xd8", 2)
+            if next_start >= 0 and (end < 0 or next_start < end):
+                # The UVC transfer for the previous frame was truncated. Keep
+                # the newer SOI and wait for/publish only its matching EOI.
+                del buffer[:next_start]
+                continue
+            if end < 0:
+                if len(buffer) > 8 * 1024 * 1024:
+                    buffer.clear()
+                return None
+            jpeg = bytes(buffer[: end + 2])
+            del buffer[: end + 2]
+            if len(jpeg) >= 1024:
+                return jpeg
 
     def _apply_exposure_controls(self, device: str) -> None:
         if shutil.which("v4l2-ctl") is None:
@@ -180,13 +241,17 @@ class FrontCameraNode(Node):
             controls = f"auto_exposure=1,exposure_time_absolute={exposure},gain={gain}"
         else:
             controls = "auto_exposure=3"
-        result = subprocess.run(
-            ["v4l2-ctl", "-d", device, f"--set-ctrl={controls}"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5.0,
-        )
+        try:
+            result = subprocess.run(
+                ["v4l2-ctl", "-d", device, f"--set-ctrl={controls}"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5.0,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            self.get_logger().warning(f"Unable to apply camera exposure controls: {exc}")
+            return
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip()
             self.get_logger().warning(f"Unable to apply camera exposure controls: {detail}")

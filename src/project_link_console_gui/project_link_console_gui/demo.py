@@ -18,6 +18,8 @@ class DemoBridge(QObject):
     path_updated = Signal(object)
     robot_updated = Signal(object)
     front_camera_image = Signal(bytes)
+    front_camera_parameters = Signal(dict)
+    front_camera_configured = Signal(bool, str)
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
     stack_progress = Signal(dict)
@@ -191,6 +193,17 @@ class DemoBridge(QObject):
     def stop_visual_grasp(self) -> None:
         self.manipulation_operation.emit("演示机械臂服务已停止")
         self.lifecycle_completed.emit("manipulation", True)
+
+    def request_front_camera_parameters(self) -> None:
+        self.front_camera_parameters.emit(
+            {"automatic": False, "exposure": 300, "gain": 32}
+        )
+
+    def set_front_camera_exposure(self, automatic: bool, exposure: int, gain: int) -> None:
+        self.front_camera_parameters.emit(
+            {"automatic": automatic, "exposure": exposure, "gain": gain}
+        )
+        self.front_camera_configured.emit(True, "演示相机参数已应用")
 
     def start_uwb_shadow(self) -> None:
         self._uwb_shadow = True

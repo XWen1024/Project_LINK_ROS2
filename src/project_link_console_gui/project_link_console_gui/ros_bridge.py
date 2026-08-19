@@ -31,6 +31,8 @@ class RosBridge(QObject):
     path_updated = Signal(object)
     robot_updated = Signal(object)
     front_camera_image = Signal(bytes)
+    front_camera_parameters = Signal(dict)
+    front_camera_configured = Signal(bool, str)
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
     stack_progress = Signal(dict)
@@ -76,9 +78,11 @@ class RosBridge(QObject):
         from nav_msgs.msg import OccupancyGrid, Path
         from project_link_console_interfaces.action import ManageStack, SwitchVoice
         from project_link_console_interfaces.msg import ConsoleEvent, SystemState, TeleopCommand
+        from rcl_interfaces.srv import GetParameters, SetParameters
         from rclpy.action import ActionClient
         from rclpy.executors import MultiThreadedExecutor
         from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+        from rclpy.parameter import Parameter
         from rclpy.signals import SignalHandlerOptions
         from rclpy.time import Time
         from sensor_msgs.msg import CompressedImage, LaserScan, PointCloud2
@@ -95,6 +99,9 @@ class RosBridge(QObject):
         self._trigger_type = Trigger
         self._time_type = Time
         self._point_cloud2 = point_cloud2
+        self._parameter_type = Parameter
+        self._get_parameters_type = GetParameters
+        self._set_parameters_type = SetParameters
         if not rclpy.ok():
             rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
         self._node = rclpy.create_node("project_link_console_gui")
@@ -110,6 +117,12 @@ class RosBridge(QObject):
         self._navigate_client = ActionClient(self._node, NavigateToPose, "/navigate_to_pose")
         self._emergency_client = self._node.create_client(
             Trigger, "/project_link/console/emergency_stop"
+        )
+        self._front_camera_get_client = self._node.create_client(
+            GetParameters, "/project_link_front_camera/get_parameters"
+        )
+        self._front_camera_set_client = self._node.create_client(
+            SetParameters, "/project_link_front_camera/set_parameters"
         )
         self._start_uwb_client = None
         self._stop_uwb_client = None
@@ -247,6 +260,12 @@ class RosBridge(QObject):
     def stop_visual_grasp(self) -> None:
         self._put(("visual_grasp", False))
 
+    def request_front_camera_parameters(self) -> None:
+        self._put(("front_camera_get",))
+
+    def set_front_camera_exposure(self, automatic: bool, exposure: int, gain: int) -> None:
+        self._put(("front_camera_set", bool(automatic), int(exposure), int(gain)))
+
     def start_uwb_shadow(self) -> None:
         self._put(("uwb_shadow", True))
 
@@ -277,6 +296,10 @@ class RosBridge(QObject):
                 self._probe_voice_control()
             elif command[0] == "visual_grasp":
                 self._set_visual_grasp(command[1])
+            elif command[0] == "front_camera_get":
+                self._get_front_camera_parameters()
+            elif command[0] == "front_camera_set":
+                self._set_front_camera_parameters(*command[1:])
             elif command[0] == "uwb_shadow":
                 self._set_uwb_shadow(command[1])
         if latest_teleop is not None:
@@ -333,6 +356,56 @@ class RosBridge(QObject):
         self.manipulation_operation.emit(message)
         self.operation_event.emit(message)
         self.lifecycle_completed.emit(action, success)
+
+    def _get_front_camera_parameters(self) -> None:
+        if not self._front_camera_get_client.wait_for_service(timeout_sec=0.25):
+            self.front_camera_configured.emit(False, "车头相机参数服务尚未连接")
+            return
+        request = self._get_parameters_type.Request()
+        request.names = ["manual_exposure", "exposure_time_absolute", "camera_gain"]
+        self._front_camera_get_client.call_async(request).add_done_callback(
+            self._front_camera_parameters_received
+        )
+
+    def _front_camera_parameters_received(self, future) -> None:
+        try:
+            values = future.result().values
+            result = {
+                "automatic": not bool(values[0].bool_value),
+                "exposure": int(values[1].integer_value),
+                "gain": int(values[2].integer_value),
+            }
+        except Exception as exc:
+            self.front_camera_configured.emit(False, f"读取车头相机参数失败：{exc}")
+            return
+        self.front_camera_parameters.emit(result)
+
+    def _set_front_camera_parameters(self, automatic: bool, exposure: int, gain: int) -> None:
+        if not self._front_camera_set_client.wait_for_service(timeout_sec=0.25):
+            self.front_camera_configured.emit(False, "车头相机参数服务尚未连接")
+            return
+        request = self._set_parameters_type.Request()
+        request.parameters = [
+            self._parameter_type("manual_exposure", value=not automatic).to_parameter_msg(),
+            self._parameter_type("exposure_time_absolute", value=exposure).to_parameter_msg(),
+            self._parameter_type("camera_gain", value=gain).to_parameter_msg(),
+        ]
+        self._front_camera_set_client.call_async(request).add_done_callback(
+            self._front_camera_parameters_set
+        )
+
+    def _front_camera_parameters_set(self, future) -> None:
+        try:
+            results = future.result().results
+            failures = [item.reason for item in results if not item.successful]
+        except Exception as exc:
+            self.front_camera_configured.emit(False, f"应用车头相机参数失败：{exc}")
+            return
+        if failures:
+            self.front_camera_configured.emit(False, "；".join(failures))
+            return
+        self.front_camera_configured.emit(True, "车头相机曝光参数已立即应用")
+        self._get_front_camera_parameters()
 
     def _switch_voice(self, backend: int) -> None:
         if not self._switch_voice_client.wait_for_server(timeout_sec=0.25):

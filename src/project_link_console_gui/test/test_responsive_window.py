@@ -44,3 +44,25 @@ def test_voice_controls_use_action_availability_not_only_state_heartbeat():
     assert not page.classic_button.isEnabled()
     assert not page.qwen_button.isEnabled()
     window.close()
+
+
+def test_front_camera_exposure_controls_follow_advanced_and_automatic_modes():
+    app = QApplication.instance() or QApplication([])
+    bridge = DemoBridge()
+    window = ConsoleWindow(bridge, demo=True)
+    page = window.navigation_page
+
+    assert page.advanced_group.isHidden()
+    page.set_advanced(True)
+    assert not page.advanced_group.isHidden()
+    assert page.camera_exposure.isEnabled()
+    assert page.camera_gain.isEnabled()
+
+    page.camera_auto_exposure.setChecked(True)
+    assert not page.camera_exposure.isEnabled()
+    assert not page.camera_gain.isEnabled()
+
+    page.camera_apply.click()
+    assert page.camera_apply.isEnabled()
+    assert page.camera_config_status.text() == "演示相机参数已应用"
+    window.close()

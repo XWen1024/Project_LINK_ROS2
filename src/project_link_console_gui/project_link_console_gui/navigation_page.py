@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -348,6 +349,26 @@ class NavigationPage(QWidget):
         note = QLabel("GUI 发送 20 Hz 租约；Orin 负责限幅、模式门控和 250 ms 超时停车。")
         note.setWordWrap(True)
         advanced_layout.addWidget(note, 2, 0, 1, 2)
+        self.camera_auto_exposure = QCheckBox("自动曝光（弱光时可能降低帧率）")
+        self.camera_exposure = QSpinBox()
+        self.camera_exposure.setRange(1, 5000)
+        self.camera_exposure.setValue(300)
+        self.camera_exposure.setSuffix(" 级")
+        self.camera_gain = QSpinBox()
+        self.camera_gain.setRange(0, 63)
+        self.camera_gain.setValue(32)
+        self.camera_apply = QPushButton("立即应用车头曝光")
+        self.camera_apply.clicked.connect(self._apply_camera_exposure)
+        self.camera_auto_exposure.toggled.connect(self._camera_auto_changed)
+        self.camera_config_status = QLabel("固定曝光可保持约 30 FPS；长期默认值可在全局设置保存。")
+        self.camera_config_status.setWordWrap(True)
+        advanced_layout.addWidget(self.camera_auto_exposure, 3, 0, 1, 2)
+        advanced_layout.addWidget(QLabel("手动曝光"), 4, 0)
+        advanced_layout.addWidget(self.camera_exposure, 4, 1)
+        advanced_layout.addWidget(QLabel("画面增益"), 5, 0)
+        advanced_layout.addWidget(self.camera_gain, 5, 1)
+        advanced_layout.addWidget(self.camera_apply, 6, 0, 1, 2)
+        advanced_layout.addWidget(self.camera_config_status, 7, 0, 1, 2)
         self.advanced_group.setVisible(False)
         side_layout.addWidget(self.advanced_group)
         side_layout.addStretch()
@@ -370,6 +391,8 @@ class NavigationPage(QWidget):
         root.addWidget(status_group)
 
         bridge.stack_progress.connect(self._update_stack_progress)
+        bridge.front_camera_parameters.connect(self._update_camera_parameters)
+        bridge.front_camera_configured.connect(self._camera_configured)
 
     def _request_stack(self, operation: int, title: str) -> None:
         if self._progress_dialog is not None and self._progress_dialog.running:
@@ -391,7 +414,39 @@ class NavigationPage(QWidget):
         self.teleop.setVisible(self._advanced)
         self.advanced_group.setVisible(self._advanced)
         self.status_table.setColumnHidden(1, not self._advanced)
+        if self._advanced:
+            self._bridge.request_front_camera_parameters()
         self._render_status()
+
+    def _camera_auto_changed(self, automatic: bool) -> None:
+        self.camera_exposure.setEnabled(not automatic)
+        self.camera_gain.setEnabled(not automatic)
+
+    def _apply_camera_exposure(self) -> None:
+        self.camera_apply.setEnabled(False)
+        self.camera_config_status.setText("正在应用到 Orin…")
+        self._bridge.set_front_camera_exposure(
+            self.camera_auto_exposure.isChecked(),
+            self.camera_exposure.value(),
+            self.camera_gain.value(),
+        )
+
+    def _update_camera_parameters(self, values: dict) -> None:
+        automatic = bool(values.get("automatic", False))
+        self.camera_auto_exposure.blockSignals(True)
+        self.camera_auto_exposure.setChecked(automatic)
+        self.camera_auto_exposure.blockSignals(False)
+        self.camera_exposure.setValue(int(values.get("exposure", 300)))
+        self.camera_gain.setValue(int(values.get("gain", 32)))
+        self._camera_auto_changed(automatic)
+        self.camera_apply.setEnabled(True)
+        self.camera_config_status.setText(
+            "自动曝光已启用" if automatic else "固定曝光已启用，可稳定保持满帧"
+        )
+
+    def _camera_configured(self, success: bool, message: str) -> None:
+        self.camera_apply.setEnabled(True)
+        self.camera_config_status.setText(message)
 
     def update_system_state(self, state: dict) -> None:
         self._last_state = state

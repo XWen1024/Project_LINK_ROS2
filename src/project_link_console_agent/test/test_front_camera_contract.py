@@ -52,6 +52,25 @@ def test_front_camera_service_is_optional_to_platform_motion_stack():
     assert "/front_camera/image/compressed" in unit
 
 
+def test_native_mjpeg_parser_drops_truncated_frame_before_next_soi():
+    from project_link_console_agent.front_camera import FrontCameraNode
+
+    valid = b"\xff\xd8" + b"x" * 2048 + b"\xff\xd9"
+    buffer = bytearray(b"noise\xff\xd8truncated" + valid)
+    assert FrontCameraNode._pop_native_jpeg(buffer) == valid
+
+
+def test_front_camera_runtime_exposure_parameters_are_bounded():
+    source = (
+        PACKAGE_ROOT / "project_link_console_agent" / "front_camera.py"
+    ).read_text(encoding="utf-8")
+    assert 'parameter.name == "manual_exposure"' in source
+    assert "manual_exposure must be boolean" in source
+    assert "exposure_time_absolute must be between 1 and 5000" in source
+    assert "camera_gain must be between 0 and 63" in source
+    assert 'controls = "auto_exposure=3"' in source
+
+
 def test_production_hardware_rules_separate_chassis_wakeup_and_cameras():
     rules = (
         REPOSITORY_ROOT / "config" / "udev" / "99-project-link-hardware.rules"

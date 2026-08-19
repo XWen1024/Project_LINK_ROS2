@@ -34,6 +34,23 @@ def test_navigation_page_has_separate_front_camera_preview():
     assert '"/visual_grasp/image/compressed"' not in bridge
 
 
+def test_front_camera_exposure_is_advanced_and_uses_typed_parameter_services():
+    page = _source("navigation_page.py")
+    bridge = _source("ros_bridge.py")
+    demo = _source("demo.py")
+    assert 'QCheckBox("自动曝光（弱光时可能降低帧率）")' in page
+    assert 'QPushButton("立即应用车头曝光")' in page
+    assert "self.advanced_group.setVisible(self._advanced)" in page
+    assert "self.camera_exposure.setEnabled(not automatic)" in page
+    assert "self.camera_gain.setEnabled(not automatic)" in page
+    assert '"/project_link_front_camera/get_parameters"' in bridge
+    assert '"/project_link_front_camera/set_parameters"' in bridge
+    assert "self._set_parameters_type.Request()" in bridge
+    assert "self._parameter_type(" in bridge
+    assert "shell" not in bridge
+    assert "front_camera_parameters" in demo
+
+
 def test_navigation_lifecycle_has_chinese_status_and_progress_dialog():
     page = _source("navigation_page.py")
     bridge = _source("ros_bridge.py")
