@@ -16,6 +16,9 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
   but must never run simultaneously.
 - UWB: code is preserved, but the page is hidden and the module is outside the current MVP.
+- Fall response: the Android client and Orin no-motion backend are implemented
+  with Token-authenticated HTTP, SQLite idempotency/cancellation, the shared
+  front camera, YOLO/VLM assessment and a single-contact WeChat notifier.
 - Console: typed interfaces, headless agent, versioned systemd user units and the
   PySide6 pages are implemented. The visible Ubuntu GUI includes navigation with
   a distinct chassis-front camera preview, manipulation with its independent arm
@@ -39,6 +42,7 @@ See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware g
 - [Voice overview](docs/modules/voice/OVERVIEW.md)
 - [UWB handoff](docs/modules/uwb/HANDOFF.md)
 - [VL53L0X handoff](docs/modules/sensors/vl53l0x/HANDOFF.md)
+- [Fall-response handoff](docs/modules/sensors/fall-response/HANDOFF.md)
 
 The previous detailed README is preserved at
 `docs/archive/handoffs/README_DETAIL_20260815.md`.

@@ -40,6 +40,11 @@ Archive tags:
 - Python syntax checks passed for visual grasp, VL53L0X, Windows lab and Qwen packages.
 - PowerShell parsing passed for the Windows visual-grasp launcher.
 - Qwen and classic voice are both present on `main` but remain mutually exclusive at runtime.
+- The Android fall-guard client and first Orin static backend are implemented:
+  authenticated aiohttp endpoints, SQLite state/transition storage, atomic
+  cancellation and notification claiming, shared front-camera still capture,
+  local YOLO pose scoring, SiliconFlow VLM and pinned WeChat SDK integration.
+  Orin build, model installation, QR binding and real notification remain gates.
 - Orin direct pytest across console agent, classic voice and Qwen Realtime:
   79 passed after the new event/config integration.
 - The versioned systemd graph contains 13 services, 3 mode targets and 1 shared

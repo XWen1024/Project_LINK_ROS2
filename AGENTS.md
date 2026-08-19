@@ -28,6 +28,7 @@ context belongs in `docs/modules/`; historical context belongs in `docs/archive/
 - Voice: `docs/modules/voice/OVERVIEW.md`
 - UWB: `docs/modules/uwb/HANDOFF.md`
 - VL53L0X: `docs/modules/sensors/vl53l0x/HANDOFF.md`
+- Fall response: `docs/modules/sensors/fall-response/HANDOFF.md`
 
 Read the relevant current handoff before changing a module. Archived documents
 are evidence snapshots, not current operating instructions.
