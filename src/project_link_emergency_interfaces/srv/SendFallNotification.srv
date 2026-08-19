@@ -1,0 +1,12 @@
+string event_id
+bool degraded
+float32 confidence
+string reason
+int64 occurred_at_ms
+uint8[] jpeg_data
+---
+bool attempted
+bool text_success
+bool image_success
+string receipt
+string message

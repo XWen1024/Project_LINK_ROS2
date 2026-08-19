@@ -52,7 +52,20 @@ case "$component" in
     source_main
     exec ros2 run project_link_console_agent front_camera --ros-args \
       -p camera_device:="${FRONT_CAMERA_DEVICE:-/dev/project_link_front_camera}" \
-      -p rotation_degrees:="${FRONT_CAMERA_ROTATION_DEGREES:-90}"
+      -p rotation_degrees:="${FRONT_CAMERA_ROTATION_DEGREES:-0}"
+    ;;
+  fall-response)
+    source_main
+    source_optional_env "${PROJECT_LINK_FALL_ENV:-$HOME/.config/project_link/fall_response.env}"
+    exec ros2 launch project_link_fall_response mobile_fall_response.launch.py
+    ;;
+  wechatbot)
+    source_main
+    source_optional_env "${PROJECT_LINK_FALL_ENV:-$HOME/.config/project_link/fall_response.env}"
+    exec ros2 run project_link_fall_response wechat_notifier_node --ros-args \
+      -p credentials_path:="${WECHATBOT_CREDENTIALS:-$HOME/.config/project_link/wechatbot/credentials.json}" \
+      -p binding_path:="${WECHATBOT_BINDING:-$HOME/.local/state/project-link/clawbot/binding.json}" \
+      -p ledger_path:="${WECHATBOT_LEDGER:-$HOME/.local/state/project-link/clawbot/notifications.sqlite3}"
     ;;
   robot-description)
     source_main

@@ -1,0 +1,16 @@
+[Unit]
+Description=Project LINK single-contact WeChat emergency notifier
+PartOf=project-link-emergency.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wte/wheeltec_robot
+EnvironmentFile=-%h/.config/project_link/fall_response.env
+ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component wechatbot
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+[Install]
+WantedBy=project-link-emergency.target

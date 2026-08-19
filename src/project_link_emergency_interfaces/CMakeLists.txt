@@ -7,8 +7,10 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/AssessFall.action"
+  "action/RespondToFall.action"
   "srv/CaptureStill.srv"
   "srv/ConfirmFallAlert.srv"
+  "srv/SendFallNotification.srv"
   DEPENDENCIES builtin_interfaces
 )
 

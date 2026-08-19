@@ -70,7 +70,7 @@ class FallResponseNode(Node):
 
     def _declare_parameters(self) -> None:
         self.declare_parameter("assess_action", "/fall_detection/assess_fall")
-        self.declare_parameter("capture_service", "/fall_detection/capture_still")
+        self.declare_parameter("capture_service", "/front_camera/capture_still")
         self.declare_parameter("confirm_service", "/fall_detection/confirm_alert")
         self.declare_parameter("tts_topic", "/voice/tts_text")
         self.declare_parameter(

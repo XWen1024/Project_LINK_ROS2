@@ -39,7 +39,7 @@ devices:
     usb: "2993:0858"
     serial: "20240307110322"
     v4l_index: 0
-    rotation_degrees: 90
+    rotation_degrees: 0
     role: chassis_front_preview
   arm_camera:
     alias: /dev/project_link_arm_camera

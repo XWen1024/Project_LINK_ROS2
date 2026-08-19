@@ -19,7 +19,10 @@ historical evidence.
 - Qwen Realtime: `modules/voice/qwen-realtime/HANDOFF.md`
 - UWB: `modules/uwb/HANDOFF.md`
 - VL53L0X: `modules/sensors/vl53l0x/HANDOFF.md`
-- Fall response: `modules/sensors/fall-response/VOICE_INTEGRATION.md`
+- Fall response:
+  - Current Orin backend: `modules/sensors/fall-response/HANDOFF.md`
+  - Android to Orin backend: `modules/sensors/fall-response/ANDROID_ORIN_HANDOFF.md`
+  - Legacy voice trigger: `modules/sensors/fall-response/VOICE_INTEGRATION.md`
 
 ## Runbooks And Archives
 

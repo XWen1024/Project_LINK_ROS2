@@ -1,2 +1,5 @@
-# Optional runtime dependencies for the Orin deployment.
-# Prefer the JetPack-provided OpenCV build if available.
+# Application-only dependencies. Keep JetPack Torch/OpenCV and the already
+# validated Ultralytics installation outside this file.
+aiohttp>=3.9
+cryptography>=42.0
+wechatbot-sdk==0.3.0

@@ -129,7 +129,7 @@ ENV_DEFAULTS = {
         "CHASSIS_DEVICE": "/dev/project_link_chassis",
         "UNILIDAR_PORT": "/dev/project_link_lidar",
         "FRONT_CAMERA_DEVICE": "/dev/project_link_front_camera",
-        "FRONT_CAMERA_ROTATION_DEGREES": "90",
+        "FRONT_CAMERA_ROTATION_DEGREES": "0",
         "ROS_DOMAIN_ID": "42",
         "ROS_LOCALHOST_ONLY": "0",
         "PROJECT_LINK_VOICE_ENABLE_MOTION": "false",

@@ -12,6 +12,8 @@ UNITS = {
     "base": "project-link-base.service",
     "lidar": "project-link-lidar.service",
     "front_camera": "project-link-front-camera.service",
+    "fall_response": "project-link-fall-response.service",
+    "wechatbot": "project-link-wechatbot.service",
     "robot_description": "project-link-robot-description.service",
     "scan": "project-link-scan.service",
     "point_lio_map": "project-link-point-lio-map.service",
@@ -26,6 +28,7 @@ UNITS = {
     "mapping_target": "project-link-mapping.target",
     "navigation_target": "project-link-navigation.target",
     "rf2o_target": "project-link-rf2o-fallback.target",
+    "emergency_target": "project-link-emergency.target",
 }
 
 ALLOWED_UNITS = frozenset(UNITS.values())

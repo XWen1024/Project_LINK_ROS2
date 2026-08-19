@@ -1,17 +1,7 @@
-fall_camera_node:
-  ros__parameters:
-    camera_device: /dev/FallCam
-    camera_width: 1280
-    camera_height: 720
-    camera_fps: 15.0
-    jpeg_quality: 80
-    warmup_frames: 2
-    capture_service: /fall_detection/capture_still
-
 fall_response_node:
   ros__parameters:
     assess_action: /fall_detection/assess_fall
-    capture_service: /fall_detection/capture_still
+    capture_service: /front_camera/capture_still
     confirm_service: /fall_detection/confirm_alert
     tts_topic: /voice/tts_text
     alert_tts_text: 您看起来摔倒了，正在为您呼叫紧急联系人。
@@ -21,3 +11,31 @@ fall_response_node:
     siliconflow_base_url: https://api.siliconflow.cn/v1
     siliconflow_model: Qwen/Qwen2.5-VL-72B-Instruct
     siliconflow_request_timeout_sec: 20.0
+
+mobile_fall_coordinator:
+  ros__parameters:
+    respond_action: /fall_detection/respond_to_fall
+    capture_service: /front_camera/capture_still
+    notification_service: /fall_detection/send_notification
+    event_db_path: ~/.local/state/project-link/fall-response/events.sqlite3
+    model_path: /home/wte/models/project_link/yolov8n-pose.pt
+    frame_count: 5
+    frame_interval_sec: 0.20
+    capture_timeout_sec: 2.0
+    detection_threshold: 0.45
+    keypoint_threshold: 0.30
+    candidate_threshold: 0.65
+    stable_frames: 3
+    yolo_device: ""
+    vlm_threshold: 0.70
+    siliconflow_base_url: https://api.siliconflow.cn/v1
+    siliconflow_model: Qwen/Qwen2.5-VL-72B-Instruct
+    siliconflow_timeout_sec: 20.0
+    notification_timeout_sec: 90.0
+
+wechat_notifier_node:
+  ros__parameters:
+    notification_service: /fall_detection/send_notification
+    credentials_path: ~/.config/project_link/wechatbot/credentials.json
+    binding_path: ~/.local/state/project-link/clawbot/binding.json
+    ledger_path: ~/.local/state/project-link/clawbot/notifications.sqlite3
