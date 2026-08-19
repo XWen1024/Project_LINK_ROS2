@@ -1,5 +1,5 @@
 [Unit]
-Description=Project LINK Android fall gateway and static visual coordinator
+Description=Project LINK Android fall gateway and asynchronous no-motion visual coordinator
 PartOf=project-link-emergency.target
 Wants=project-link-front-camera.service
 After=project-link-front-camera.service project-link-wechatbot.service

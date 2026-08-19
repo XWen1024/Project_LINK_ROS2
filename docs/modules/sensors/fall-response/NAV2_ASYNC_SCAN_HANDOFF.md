@@ -1,6 +1,7 @@
 # Fall Response Async Scan to Nav2 Handoff
 
 Verification date: 2026-08-20
+Source implementation commit: `d7ca4dd`
 
 ## Current boundary
 
