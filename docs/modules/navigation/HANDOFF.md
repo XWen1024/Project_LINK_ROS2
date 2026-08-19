@@ -2,7 +2,7 @@
 
 Status: current; hardware aliases and no-motion sensor gates passed; supervised motion pending
 Last verified: 2026-08-19
-Verified code: `main@c081309`
+Verified code: `main@3210e70`
 
 本文档是 Project LINK 当前 Point-LIO + slam_toolbox + Navigation2 路线的
 长期调试入口。内容从 `AGENTS.md`、`PROGRESS.md` 和已完成的 Orin 实机验证中
@@ -24,6 +24,10 @@ Verified code: `main@c081309`
 - 车头 icSpring 摄像头由 Orin 以 `/dev/project_link_front_camera` 独占，
   发布 `/front_camera/image/compressed`；中控仅在地图侧边小框渲染。
   摄像头故障不得阻断建图或 Nav2 的基本启动。
+- 车头摄像头已验证原生 `1280x720 MJPEG @ 30 FPS`。默认固定曝光为
+  `exposure=300`、`gain=32`；中控高级模式可即时切换自动曝光，或恢复手动
+  曝光并调节曝光值与增益。GUI 只调用该节点固定的 ROS 参数服务，不接收
+  任意命令；长期默认值仍由全局设置中的 allowlist 配置保存。
 
 ## 2. 一键脚本
 

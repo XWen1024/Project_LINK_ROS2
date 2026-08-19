@@ -97,9 +97,13 @@ Archive tags:
   voltage was `23.98 V`, `/cmd_vel` had zero publishers, Unitree L1 cloud was
   about `9.1-9.2 Hz`, L1 IMU about `238 Hz`, and the arm camera captured a frame.
   SO-101 was identity-checked only; no torque or motion command was sent.
-- The front-camera node published compressed JPEG at about `8.0 Hz`. Ubuntu GUI
-  tests passed before and after build (`20 passed`); Orin console/hardware tests
-  passed (`22 passed`) and the updated base/agent packages built with services inactive.
+- The front-camera path now uses native 1280x720 MJPEG pass-through at about
+  `29.8 FPS`. Fixed exposure `300` and gain `32` preserve that rate; the navigation
+  page exposes runtime automatic/manual exposure controls only in advanced mode.
+  Orin agent tests passed (`28 passed`) and Ubuntu GUI tests passed (`25 passed`)
+  at `main@3210e70`. A real Ubuntu RosBridge round trip changed the camera to
+  automatic exposure, read it back, then restored manual `300/32`; `/cmd_vel`
+  and all motion paths were untouched.
 - DDS Router v2.2.0 and locked dependencies built successfully on both Orin ARM64
   and Ubuntu x86_64. BatchMode SSH, tunnel bootstrap, loopback-only listeners,
   single/reverse forwarding, exact ROS DDS types and forced reader/writer tests
@@ -131,7 +135,8 @@ Archive tags:
         Versioned exact-serial udev rules are installed and all aliases verified;
         the unsafe broad chassis rule is disabled.
 12. [x] Hide UWB by default and add the Orin-owned front-camera preview path to
-        the navigation page. Linux build and about-8-Hz live stream validation passed.
+        the navigation page. Linux build, native 720p/30-FPS streaming and
+        advanced-mode automatic/manual exposure control validation passed.
 13. [x] Build the locked DDS Router on both hosts and evaluate the domain-42/142
         SSH-tunnel route. The field gate failed, so preserve it as experimental
         and default the MVP launcher back to verified native DDS Peer.
