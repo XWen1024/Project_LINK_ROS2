@@ -20,6 +20,17 @@ GET  /api/fall/{event_id}
 POST /api/fall/{event_id}/cancel
 ```
 
+All four endpoints, including `/health`, require the shared Token header. A
+local authenticated health check is:
+
+```bash
+set -a
+source ~/.config/project_link/fall_response.env
+set +a
+curl -sS -H "X-Fall-Guard-Token: $FALL_GUARD_TOKEN" \
+  http://127.0.0.1:8765/health | python3 -m json.tool
+```
+
 The only public states are `accepted`, `scanning`, `verifying`, `notified`,
 `not_fall`, `cancelled`, and `failed`. `event_id` is the idempotency key.
 
