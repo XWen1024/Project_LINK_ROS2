@@ -76,9 +76,12 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
 - `yolov8n-pose.pt` is installed with SHA-256
   `c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212`.
   CPU Torch inference measured about 5.49 FPS on 1280x720 blank frames, below
-  the 8 FPS optimization gate. JetPack CUDA inference is installed only in
+  the 8 FPS optimization gate. The isolated JetPack CUDA environment now uses
+  Torch 2.8.0 / CUDA 12.6 and measured about 29.9 FPS with the same PT model on
+  blank 1280x720 frames. It is installed only in
   `~/.local/share/project-link/venvs/fall-cuda`; the service disables user site
-  packages and prepends that environment, preserving LeRobot's existing Torch.
+  packages and prepends that environment, preserving LeRobot's existing
+  user-level Torch 2.7.1+cpu.
 - A real `/front_camera/capture_still` call passed at 1280x720 with a 57,996-byte
   JPEG while Nav2 and both fall services stayed inactive. Focus/orientation and
   representative-person five-frame inference still require supervised review.
