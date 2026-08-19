@@ -14,7 +14,9 @@ private val Context.fallGuardDataStore by preferencesDataStore(name = "fall_guar
 class SettingsStore(private val context: Context) {
     val settings: Flow<AppSettings> = context.fallGuardDataStore.data.map { preferences ->
         AppSettings(
-            orinBaseUrl = preferences[ORIN_URL] ?: AppSettings().orinBaseUrl,
+            orinBaseUrl = preferences[ORIN_URL]
+                ?.takeUnless { it == LEGACY_PLACEHOLDER_URL }
+                ?: AppSettings().orinBaseUrl,
             deviceName = preferences[DEVICE_NAME] ?: AppSettings().deviceName,
             sharedToken = preferences[SHARED_TOKEN].orEmpty(),
             simulationEnabled = preferences[SIMULATION_ENABLED] ?: true,
@@ -41,6 +43,7 @@ class SettingsStore(private val context: Context) {
     }
 
     private companion object {
+        const val LEGACY_PLACEHOLDER_URL = "http://192.168.1.100:8765"
         val ORIN_URL = stringPreferencesKey("orin_url")
         val DEVICE_NAME = stringPreferencesKey("device_name")
         val SHARED_TOKEN = stringPreferencesKey("shared_token")

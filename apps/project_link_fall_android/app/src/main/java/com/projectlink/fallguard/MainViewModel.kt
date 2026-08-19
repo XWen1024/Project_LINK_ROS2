@@ -82,7 +82,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(demoConfirmationVisible = true) }
         } else {
             _uiState.update {
-                it.copy(status = GuardianStatus.DISCONNECTED, statusMessage = "请先连接 Orin")
+                it.copy(
+                    status = GuardianStatus.DISCONNECTED,
+                    statusMessage = "请先连接 Orin",
+                    informationDialog = InformationDialogState(
+                        title = "Orin 尚未连接",
+                        message = "请先在设置中关闭本地模拟、填写 Orin 局域网地址和 Token，然后点击测试连接。",
+                        details = "当前配置：${it.settings.orinBaseUrl}\n手机不能使用 127.0.0.1；Orin 当前地址应为 http://10.255.176.119:8765。",
+                        isError = true,
+                    ),
+                )
             }
         }
     }
@@ -129,6 +138,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     incident.cancelSecondsRemaining,
                     "取消未获 Orin 确认：${error.message ?: "网络错误"}",
                 )
+                showInformation(
+                    title = "取消请求失败",
+                    message = "Orin 没有确认取消，联系人通知状态仍不确定。",
+                    details = diagnosticDetails(error),
+                    isError = true,
+                )
             }
         }
     }
@@ -157,6 +172,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(settingsVisible = false) }
     }
 
+    fun dismissInformation() {
+        _uiState.update { state ->
+            state.copy(
+                informationDialog = null,
+                settingsVisible = state.informationDialog?.returnToSettings == true,
+            )
+        }
+    }
+
     fun saveSettings(settings: AppSettings) {
         viewModelScope.launch {
             settingsStore.save(settings)
@@ -173,13 +197,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun testConnection(settings: AppSettings) {
         _uiState.update { it.copy(testingConnection = true) }
         viewModelScope.launch {
-            val connected = FallGatewayFactory.create(settings).health()
+            val result = FallGatewayFactory.create(settings, getApplication()).health()
             _uiState.update {
                 it.copy(
                     testingConnection = false,
-                    orinConnected = connected,
-                    status = if (connected) GuardianStatus.IDLE else GuardianStatus.DISCONNECTED,
-                    statusMessage = if (connected) "Orin 连接正常" else "无法连接 Orin，请检查地址和 Token",
+                    settings = settings,
+                    settingsVisible = false,
+                    orinConnected = result.success,
+                    status = if (result.success) GuardianStatus.IDLE else GuardianStatus.DISCONNECTED,
+                    statusMessage = result.summary,
+                    informationDialog = InformationDialogState(
+                        title = if (result.success) "连接测试成功" else "连接测试失败",
+                        message = result.summary,
+                        details = result.details,
+                        isError = !result.success,
+                        returnToSettings = true,
+                    ),
                 )
             }
         }
@@ -188,7 +221,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun startDemoIncident() {
         val settings = _uiState.value.settings
         val eventId = UUID.randomUUID().toString()
-        val gateway = FallGatewayFactory.create(settings)
+        val gateway = FallGatewayFactory.create(settings, getApplication())
         activeDemoGateway = gateway
         activeDemoEventId = eventId
         _uiState.update {
@@ -223,6 +256,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             throw cancelled
         } catch (error: Exception) {
             publishDemoStage(EventStage.FAILED, 0, error.message ?: "Orin 连接失败")
+            showInformation(
+                title = "事件提交失败",
+                message = "App 未能完成 Orin 跌倒事件请求。",
+                details = diagnosticDetails(error),
+                isError = true,
+            )
         }
     }
 
@@ -235,6 +274,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 incident = IncidentUiState(eventId, stage, remaining, message),
             )
         }
+    }
+
+    private fun showInformation(
+        title: String,
+        message: String,
+        details: String,
+        isError: Boolean,
+    ) {
+        _uiState.update {
+            it.copy(informationDialog = InformationDialogState(title, message, details, isError))
+        }
+    }
+
+    private fun diagnosticDetails(error: Throwable): String = buildString {
+        appendLine("目标：${_uiState.value.settings.orinBaseUrl}")
+        appendLine("当前网络：${NetworkDiagnostics.describe(getApplication())}")
+        appendLine("错误类型：${error.javaClass.simpleName}")
+        append("错误信息：${error.message ?: "无详细信息"}")
     }
 }
 

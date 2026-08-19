@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -66,6 +68,7 @@ fun MainScreen(
     onSettingsDismissed: () -> Unit,
     onSettingsSaved: (AppSettings) -> Unit,
     onConnectionTested: (AppSettings) -> Unit,
+    onInformationDismissed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -166,6 +169,53 @@ fun MainScreen(
             onTestConnection = onConnectionTested,
         )
     }
+
+    state.informationDialog?.let { information ->
+        InformationDialog(
+            state = information,
+            onDismiss = onInformationDismissed,
+        )
+    }
+}
+
+@Composable
+private fun InformationDialog(
+    state: InformationDialogState,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = state.title,
+                color = if (state.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(state.message, style = MaterialTheme.typography.bodyLarge)
+                if (state.details.isNotBlank()) {
+                    SelectionContainer {
+                        Text(
+                            text = state.details,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 360.dp)
+                                .verticalScroll(rememberScrollState())
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+                                .padding(12.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("知道了") } },
+    )
 }
 
 @Composable
@@ -399,6 +449,9 @@ private fun SettingsDialog(
                     value = settings.orinBaseUrl,
                     onValueChange = { settings = settings.copy(orinBaseUrl = it) },
                     label = { Text("Orin 局域网地址") },
+                    supportingText = {
+                        Text("示例：http://10.255.176.119:8765；不要填写 127.0.0.1 或 /health")
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -464,6 +517,11 @@ private fun SettingsDialog(
                         settings = settings.copy(thresholds = settings.thresholds.copy(stillnessSeconds = it))
                     }
                 }
+                Text(
+                    text = "版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         },
         confirmButton = { Button(onClick = { onSave(settings) }) { Text("保存") } },
@@ -538,6 +596,7 @@ private fun MainScreenPreview() {
             onSettingsDismissed = {},
             onSettingsSaved = {},
             onConnectionTested = {},
+            onInformationDismissed = {},
         )
     }
 }

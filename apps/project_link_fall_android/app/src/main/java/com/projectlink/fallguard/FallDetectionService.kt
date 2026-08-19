@@ -110,7 +110,7 @@ class FallDetectionService : Service(), SensorEventListener {
         serviceScope.launch {
             val settings = settingsStore.settings.first()
             detector = FallDetector(settings.thresholds)
-            activeGateway = FallGatewayFactory.create(settings)
+            activeGateway = FallGatewayFactory.create(settings, applicationContext)
             val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
             val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
             val rotationVector = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -130,7 +130,7 @@ class FallDetectionService : Service(), SensorEventListener {
             rotationVector?.let {
                 sensorManager.registerListener(this@FallDetectionService, it, SENSOR_PERIOD_US)
             }
-            val connected = activeGateway?.health() == true
+            val connected = activeGateway?.health()?.success == true
             _runtimeState.value = ServiceRuntimeState(
                 guarding = true,
                 sensorAvailable = true,

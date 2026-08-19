@@ -34,11 +34,25 @@ data class ImuThresholds(
     val stillnessSeconds: Float = 2f,
 )
 data class AppSettings(
-    val orinBaseUrl: String = "http://192.168.1.100:8765",
+    val orinBaseUrl: String = "http://10.255.176.119:8765",
     val deviceName: String = "demo-phone",
     val sharedToken: String = "",
     val simulationEnabled: Boolean = true,
     val thresholds: ImuThresholds = ImuThresholds(),
+)
+
+data class GatewayHealthResult(
+    val success: Boolean,
+    val summary: String,
+    val details: String,
+)
+
+data class InformationDialogState(
+    val title: String,
+    val message: String,
+    val details: String = "",
+    val isError: Boolean = false,
+    val returnToSettings: Boolean = false,
 )
 
 data class IncidentUiState(
@@ -85,5 +99,6 @@ data class MainUiState(
     val demoConfirmationVisible: Boolean = false,
     val demoCountdown: Int? = null,
     val incident: IncidentUiState? = null,
+    val informationDialog: InformationDialogState? = null,
 )
 

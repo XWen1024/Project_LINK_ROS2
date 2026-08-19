@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
                     onSettingsDismissed = viewModel::hideSettings,
                     onSettingsSaved = viewModel::saveSettings,
                     onConnectionTested = viewModel::testConnection,
+                    onInformationDismissed = viewModel::dismissInformation,
                 )
             }
         }

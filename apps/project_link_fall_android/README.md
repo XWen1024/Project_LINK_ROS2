@@ -1,5 +1,7 @@
 # LINK 跌倒守护 Android MVP
 
+当前版本：`0.2.0 (2)`。
+
 单手机、单页面的现场演示 App。支持手机 IMU 疑似跌倒检测、安全演示触发、局域网通知 Orin、15 秒取消窗口和本地模拟后端。
 
 ## 构建
@@ -24,6 +26,8 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`。
 
 连接真实 Orin 时关闭本地模拟，填写 `http://<orin-ip>:<port>` 和共享 Token，再点击“测试连接”。
 
+连接测试现在会弹出完整诊断信息：实际目标 URL、手机当前网络类型、Token 是否已填写、HTTP 状态码、后端 readiness 和 JSON 响应。手机端禁止填写 `127.0.0.1`、`localhost` 或 `0.0.0.0`；这些地址不会指向 Orin。
+
 ## Orin HTTP 约定
 
 - `GET /health`
@@ -41,6 +45,7 @@ Orin 必须把 `event_id` 作为幂等键，并在请求中的 `cancel_window_ms
 
 - Windows 已验证编译、单元测试和 Lint。
 - 小米 2304FPN6DC（Android 16 / API 36）已完成安装、冷启动和主要按钮手工验收。
+- 2026-08-19 已通过手机到 `http://10.255.176.119:8765/health` 的真实 Token 健康检查，返回 HTTP 200，所有后端 readiness 为 `true`。
 - 仍需验证通知权限后的长时间锁屏后台采样和 MIUI 电池优化策略。
 - IMU 阈值是原型初值，不能作为医疗级跌倒检测依据。
 - 人员不要通过真实摔倒测试；使用软垫、假人或受控放置手机。
