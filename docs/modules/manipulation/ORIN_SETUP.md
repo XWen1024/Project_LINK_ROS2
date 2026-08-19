@@ -21,20 +21,31 @@
    colcon build --packages-select wheeltec_robot_msg project_link_vl53l0x project_link_visual_grasp project_link_visual_grasp_gui
    ```
 
-2. 在能够导入 `rclpy` 的 Orin Python 环境安装 Jetson 兼容的 PyTorch/CUDA、
-   `ultralytics`、`opencv-python`、`numpy`、`PyYAML` 和 `lerobot`；运行
-   `python3 -c 'import torch, ultralytics, cv2, lerobot'` 验证。
+2. 不要把 CUDA Torch 装入或注入完整机械臂进程。LeRobot 继续使用已验证的
+   `~/.local` 环境；YOLO-World 使用独立目录：
+
+   ```bash
+   ./deploy/systemd/bin/project-link-setup-fall-cuda
+   ```
+
+   该脚本在 `~/.local/share/project-link/venvs/fall-cuda` 固定 Torch 2.8、
+   CUDA 12.6、Ultralytics 8.4.32 和 Ultralytics CLIP 提交
+   `488e81a6711eea7346872b46ea928b367da8889d`。若现场网络需要代理，只给该
+   安装命令临时设置代理；运行期不得依赖联网自动安装。
 3. 将现有 `yolov8s-worldv2.pt` 放入 `/home/wte/models/yolov8s-worldv2.pt`；模型文件
    不提交到 Git。
-4. 为摄像头与 SO-101 建立稳定设备名。默认值为 `/dev/RgbCam` 和 `/dev/so101`；可先改
+4. 为摄像头与 SO-101 建立稳定设备名。生产默认值为
+   `/dev/project_link_arm_camera` 和 `/dev/project_link_so101`；可先改
    `configs/visual_grasp/visual_grasp.yaml`，或由 GUI 远程调参。
 5. 启用扭矩前执行：
 
    ```bash
    source /home/wte/wheeltec_robot/scripts/project_link_env.sh
-   v4l2-ctl --device=/dev/RgbCam --all
-   ls -l /dev/so101
-   python3 -c 'from ultralytics import YOLO; YOLO("/home/wte/models/yolov8s-worldv2.pt"); print("model ok")'
+   v4l2-ctl --device=/dev/project_link_arm_camera --list-formats-ext
+   ls -l /dev/project_link_so101
+   PYTHONNOUSERSITE=1 \
+   PYTHONPATH=/home/wte/.local/share/project-link/venvs/fall-cuda/lib/python3.10/site-packages \
+   python3 -c 'import clip, torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
    ```
 
 ## 启动 Orin 和 Ubuntu
@@ -56,6 +67,10 @@ ros2 run project_link_visual_grasp_gui visual_grasp_gui
 
 GUI 通过 ROS 2 心跳自动发现 Orin；命名空间手动输入仅作回退。所有控制走 DDS，不创建
 按 IP 的自定义 TCP 控制协议。
+
+生产 systemd 会同时管理 `project-link-visual-grasp.service` 和
+`project-link-visual-grasp-detector.service`。检测器退出或结果超过 1 秒未更新时，
+主节点清空检测并停止新的视觉伺服修正，不会回退到同进程 CPU Torch。
 
 首次接入保持：
 

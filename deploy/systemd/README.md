@@ -44,6 +44,12 @@ Generate the Android shared token with
 `OPENAI_API_KEY`, `OPENAI_BASE_URL` and `OPENAI_MODEL` settings. On JetPack 6,
 `deploy/systemd/bin/project-link-setup-fall-cuda` creates an isolated CUDA Torch
 environment for fall inference; it does not replace LeRobot's user-level Torch.
+The same isolated environment is reused only by
+`project-link-visual-grasp-detector.service` for YOLO-World. The setup script
+also installs a fixed Ultralytics CLIP commit so production startup never invokes
+Ultralytics dependency auto-installation. The main visual-grasp service continues
+to use the validated LeRobot environment and controls SO-101; the detector has no
+arm driver or control interface.
 Install the specialized fall detector and YOLO-World with
 `deploy/systemd/bin/project-link-install-fall-models`; fixed hashes are checked
 before either destination is replaced. The current twelve-heading scan is a

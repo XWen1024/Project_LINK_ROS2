@@ -213,6 +213,15 @@ are evidence snapshots, not current operating instructions.
 - UWB remains code-preserved and shadow-only when explicitly enabled, but it is
   hidden and excluded from the current MVP.
 - Orin exclusively owns the SO-101, both RGB cameras and VL53L0X serial ports.
+- Keep LeRobot/SO-101 and CUDA YOLO-World in separate Python processes. The
+  main `project-link-visual-grasp.service` keeps the validated user-site LeRobot
+  environment; `project-link-visual-grasp-detector.service` alone prepends
+  `/home/wte/.local/share/project-link/venvs/fall-cuda/lib/python3.10/site-packages`
+  with `PYTHONNOUSERSITE=1`. Never point the complete mechanical-arm process at
+  the CUDA site-packages or allow the detector to import/control SO-101.
+- The isolated CUDA environment must contain the pinned Ultralytics CLIP commit
+  `488e81a6711eea7346872b46ea928b367da8889d`. Runtime model startup must not rely
+  on Ultralytics network auto-installation.
 - Never use increased joint limits, blind travel or timeouts to conceal a grasp failure.
 
 ## Console Architecture Rules
@@ -227,6 +236,11 @@ are evidence snapshots, not current operating instructions.
 - API keys remain in mode-0600 Orin files and are edited through an allowlisted
   SSH configuration helper. Do not send secret values in ordinary ROS messages.
 - Volcengine Embedded Kit S2S is archived and must not appear as a normal console backend.
+- Manipulator visual servo uses an operator-selected yellow image target and a
+  configurable green detection-box anchor. Horizontal correction is the safe
+  default. Vertical shoulder-lift correction remains explicit and supervised;
+  never silently enable it or start visual servo without a fresh trusted CUDA
+  detection, connected arm, enabled torque and a clear workspace.
 
 ## Update And Git Rules
 

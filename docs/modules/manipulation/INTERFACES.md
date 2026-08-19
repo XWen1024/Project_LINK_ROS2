@@ -1,15 +1,20 @@
 # Visual Grasp ROS 2 Interface
 
-Orin 上的 `project_link_visual_grasp` 节点独占摄像头、YOLO-World 模型和 SO-101
-串口。Ubuntu 上的 GUI 只是 ROS 2 客户端。两台机器必须使用相同的
+Orin 上的 `project_link_visual_grasp` 主节点独占摄像头和 SO-101 串口；独立的
+`visual_grasp_cuda_detector` 进程独占 YOLO-World CUDA 推理。Ubuntu 上的 GUI
+只是 ROS 2 客户端。两台机器必须使用相同的
 `ROS_DOMAIN_ID=42` 与 `ROS_LOCALHOST_ONLY=0`。
 
 ## Topics
 
 | 名称 | 类型 | 用途 |
 | --- | --- | --- |
-| `/visual_grasp/image/compressed` | `sensor_msgs/CompressedImage` | Orin 标注 YOLO 框和状态后的 JPEG 图像。 |
+| `/visual_grasp/image/compressed` | `sensor_msgs/CompressedImage` | Orin 原生 MJPEG 直传；Ubuntu 绘制对齐点和检测框。 |
+| `/visual_grasp/camera_status` | `std_msgs/String` | 相机采集模式、尺寸、帧率和帧年龄 JSON。 |
 | `/visual_grasp/status` | `wheeltec_robot_msg/VisualGraspStatus` | 执行状态、目标、硬件健康、检测框、关节和错误。 |
+| `/visual_grasp/detector/target` | `std_msgs/String` | 主节点向独立 CUDA 检测器发布当前文本目标。 |
+| `/visual_grasp/detector/config` | `std_msgs/String` | 主节点发送允许动态修改的 YOLO 参数 JSON。 |
+| `/visual_grasp/detector/result` | `wheeltec_robot_msg/VisualGraspDetection` | CUDA 模型状态、设备、耗时和检测框。 |
 | `/visual_grasp/tof_range` | `sensor_msgs/Range` | SO-101 末端 VL53L0X 的有效距离。 |
 | `/visual_grasp/tof_status` | `std_msgs/String` | 串口连接、有效/拒绝帧、重启和 stale 状态 JSON。 |
 | `/project_link_visual_grasp/discovery` | `wheeltec_robot_msg/VisualGraspStatus` | GUI 设备自动发现心跳。 |
@@ -23,6 +28,7 @@ Orin 上的 `project_link_visual_grasp` 节点独占摄像头、YOLO-World 模�
 | `/visual_grasp/connect_arm`、`/visual_grasp/disconnect_arm` | `std_srvs/Trigger` | 连接或断开 SO-101。 |
 | `/visual_grasp/set_torque` | `std_srvs/SetBool` | 开启或关闭扭矩。 |
 | `/visual_grasp/start_approach` | `std_srvs/Trigger` | 操作员确认后执行居中、逼近和夹取。 |
+| `/visual_grasp/start_visual_servo` | `std_srvs/Trigger` | 只让绿色检测锚点持续追踪黄色对齐点，不自动进入逼近。 |
 | `/visual_grasp/stop` | `std_srvs/Trigger` | 停止逼近或预设姿态运动，保留跟踪。 |
 | `/visual_grasp/record_{standby,pregrasp,placement}` | `std_srvs/Trigger` | 在 Orin 保存当前姿态。 |
 | `/visual_grasp/go_{standby,pregrasp,placement}` | `std_srvs/Trigger` | 以非 `shoulder_pan` 关节优先的方式前往已保存姿态。 |
@@ -34,6 +40,15 @@ Orin 上的 `project_link_visual_grasp` 节点独占摄像头、YOLO-World 模�
 
 使用标准 ROS 2 参数服务可远程调整所有节点参数。接受的修改即时应用，并保存到 Orin
 的 `~/.config/project_link/visual_grasp/overrides.yaml`；运行时不会改写仓库 YAML。
+
+视觉伺服参数的 GUI 语义：
+
+- 黄色十字：操作员在画面中选择的机械臂/夹爪对齐目标；保存为
+  `center_offset_x/y`。
+- 绿色圆点：检测框锚点；可选择中心或四条边的中点，保存为
+  `detection_anchor_x_ratio/y_ratio`。
+- `centering_tilt_motion_enabled=false` 是安全默认，只做左右对齐。上下对齐
+  会使用 `shoulder_lift`，必须由操作员显式开启并单独现场验证。
 
 ToF 参数默认关闭：
 

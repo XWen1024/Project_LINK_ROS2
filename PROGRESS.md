@@ -116,6 +116,22 @@ Archive tags:
   at `main@3210e70`. A real Ubuntu RosBridge round trip changed the camera to
   automatic exposure, read it back, then restored manual `300/32`; `/cmd_vel`
   and all motion paths were untouched.
+- The independent manipulator camera is now also configured for its verified
+  native `1280x720@30 FPS` MJPEG mode instead of the previous YUYV 10-FPS path.
+  Native JPEG bytes are forwarded without Orin re-encoding; CUDA detection
+  decodes the newest frame only at its own submit rate.
+- YOLO-World was separated from the LeRobot/SO-101 process. The new
+  `project-link-visual-grasp-detector.service` uses the isolated `fall-cuda`
+  site-packages with Torch `2.8.0`, CUDA `12.6`, Ultralytics `8.4.32` and a pinned
+  Ultralytics CLIP commit. A live `1280x720` arm-camera frame completed CUDA
+  inference on `cuda:0` in about `56.8 ms`; the validation called no arm service
+  and sent no joint command.
+- The Ubuntu mechanical-arm page restored the Windows-lab click-to-select visual
+  servo flow. A yellow target cross and configurable green box anchor are visible;
+  the operator can choose five anchors, reset/use the current detection point and
+  start persistent visual servo separately from automatic grasp. Horizontal is
+  the safe default; vertical correction remains explicit. Ubuntu passed 67 related
+  tests plus a direct offscreen panel smoke test at `main@f712eb3`.
 - DDS Router v2.2.0 and locked dependencies built successfully on both Orin ARM64
   and Ubuntu x86_64. BatchMode SSH, tunnel bootstrap, loopback-only listeners,
   single/reverse forwarding, exact ROS DDS types and forced reader/writer tests
@@ -153,7 +169,10 @@ Archive tags:
         SSH-tunnel route. The field gate failed, so preserve it as experimental
         and default the MVP launcher back to verified native DDS Peer.
 14. [ ] Save a real named waypoint and complete three Qwen voice-navigation runs.
-15. [ ] After the MVP loop, implement a typed allowlisted console bridge over SSH
+15. [ ] With the arm supported and torque off, restart the paired visual-grasp
+        services and validate native 30-FPS display, CUDA status and click-selected
+        horizontal servo in the visible Ubuntu GUI. Validate vertical servo separately.
+16. [ ] After the MVP loop, implement a typed allowlisted console bridge over SSH
         and validate reconnect/state resynchronization before replacing DDS Peer.
 
 ## Existing Hardware Gates

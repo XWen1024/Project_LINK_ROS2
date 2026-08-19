@@ -14,7 +14,10 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
   primary route; rf2o remains a fallback. The Unitree L1 mount is calibrated to
   roll `-90°`, pitch `-2.2°`, yaw `90°`, with the production and console-preview
   point clouds verified to overlap.
-- Manipulation: headless YOLO World + SO-101 + optional ToF with Ubuntu remote GUI.
+- Manipulation: native 720p/30-FPS arm-camera streaming, isolated CUDA
+  YOLO-World inference, SO-101 + optional ToF, and an Ubuntu click-to-select
+  visual-servo target/box anchor GUI. CUDA Torch never replaces LeRobot's
+  validated CPU environment.
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
   but must never run simultaneously.
 - UWB: code is preserved, but the page is hidden and the module is outside the current MVP.

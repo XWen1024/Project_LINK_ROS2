@@ -1,7 +1,7 @@
 # Ubuntu Control Console Architecture
 
 Status: accepted implementation architecture
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-20
 Target: Ubuntu 22.04 + ROS 2 Humble
 
 ## Boundary
@@ -49,8 +49,9 @@ Ubuntu needs its own authorized SSH key; Windows private keys must not be copied
 
 1. Navigation and mapping: system mode, 2D layers, goals, map saving, health and
    supervised dead-man teleoperation.
-2. Manipulation: independent arm-camera video, target tracking, SO-101, presets, calibration,
-   ToF and visual grasp.
+2. Manipulation: independent native-MJPEG arm-camera video, isolated CUDA
+   YOLO-World state/timing, click-selected yellow servo target, configurable
+   green detection-box anchor, SO-101, presets, calibration, ToF and visual grasp.
 3. Voice: classic/Qwen exclusive selection, session state, simplified events and
    per-stage timing.
 4. Voice configuration: common parameters, prompt profiles and registered tools.
