@@ -121,6 +121,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun clearIncident() {
+        if (_uiState.value.guarding) {
+            FallDetectionService.clear(getApplication())
+        }
+        _uiState.update { state ->
+            val nextStatus = if (state.guarding) GuardianStatus.GUARDING else GuardianStatus.IDLE
+            state.copy(
+                status = nextStatus,
+                statusMessage = if (state.guarding) "正在监测手机 IMU" else "准备就绪",
+                incident = null,
+            )
+        }
+        activeDemoEventId = null
+        activeDemoGateway = null
+    }
+
     fun showSettings() {
         _uiState.update { it.copy(settingsVisible = true) }
     }

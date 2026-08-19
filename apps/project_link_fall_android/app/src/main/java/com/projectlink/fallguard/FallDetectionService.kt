@@ -54,6 +54,7 @@ class FallDetectionService : Service(), SensorEventListener {
         when (intent?.action) {
             ACTION_STOP -> stopGuardian()
             ACTION_CANCEL_EVENT -> cancelEvent(intent.getStringExtra(EXTRA_EVENT_ID))
+            ACTION_CLEAR_EVENT -> clearEvent()
             else -> startGuardian()
         }
         return START_STICKY
@@ -175,6 +176,7 @@ class FallDetectionService : Service(), SensorEventListener {
         }
 
         val cancelDeadline = System.currentTimeMillis() + CANCEL_WINDOW_MS
+        var connectionFailureDeadline = System.currentTimeMillis() + RETRY_WINDOW_MS
         publishStage(eventId, EventStage.ACCEPTED, 15, "Orin 已接收，正在启动视觉扫描")
         while (true) {
             val remaining = ((cancelDeadline - System.currentTimeMillis() + 999) / 1_000)
@@ -182,12 +184,17 @@ class FallDetectionService : Service(), SensorEventListener {
                 .coerceAtLeast(0)
             val stage = runCatching { activeGateway?.status(eventId) ?: EventStage.FAILED }
                 .getOrElse {
+                    if (System.currentTimeMillis() >= connectionFailureDeadline) {
+                        publishStage(eventId, EventStage.FAILED, 0, "Orin 状态查询连续失败 60 秒")
+                        break
+                    }
                     _runtimeState.update { state ->
                         state.copy(orinConnected = false, statusMessage = "Orin 连接中断，正在重试")
                     }
                     delay(1_000)
                     continue
                 }
+            connectionFailureDeadline = System.currentTimeMillis() + RETRY_WINDOW_MS
             publishStage(eventId, stage, remaining, stageMessage(stage))
             if (stage.isTerminal()) break
             delay(1_000)
@@ -201,6 +208,17 @@ class FallDetectionService : Service(), SensorEventListener {
             val result = runCatching { activeGateway?.cancel(eventId) ?: EventStage.CANCELLED }
                 .getOrDefault(EventStage.CANCELLED)
             publishStage(eventId, result, 0, "已在通知联系人前取消")
+        }
+    }
+
+    private fun clearEvent() {
+        activeEventId = null
+        _runtimeState.update { state ->
+            state.copy(
+                status = if (state.guarding) GuardianStatus.GUARDING else GuardianStatus.IDLE,
+                statusMessage = if (state.guarding) "正在监测手机 IMU" else "准备就绪",
+                incident = null,
+            )
         }
     }
 
@@ -260,6 +278,7 @@ class FallDetectionService : Service(), SensorEventListener {
         const val ACTION_START = "com.projectlink.fallguard.action.START"
         const val ACTION_STOP = "com.projectlink.fallguard.action.STOP"
         const val ACTION_CANCEL_EVENT = "com.projectlink.fallguard.action.CANCEL_EVENT"
+        const val ACTION_CLEAR_EVENT = "com.projectlink.fallguard.action.CLEAR_EVENT"
         const val EXTRA_EVENT_ID = "event_id"
         private const val NOTIFICATION_CHANNEL_ID = "fall_guard_service"
         private const val NOTIFICATION_ID = 1001
@@ -287,6 +306,10 @@ class FallDetectionService : Service(), SensorEventListener {
                     .setAction(ACTION_CANCEL_EVENT)
                     .putExtra(EXTRA_EVENT_ID, eventId),
             )
+        }
+
+        fun clear(context: Context) {
+            context.startService(Intent(context, FallDetectionService::class.java).setAction(ACTION_CLEAR_EVENT))
         }
     }
 }

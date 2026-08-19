@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
                     onDemoDismissed = viewModel::dismissDemo,
                     onDemoCountdownCancelled = viewModel::cancelDemoCountdown,
                     onIncidentCancelled = viewModel::cancelIncident,
+                    onIncidentDismissed = viewModel::clearIncident,
                     onSettingsRequested = viewModel::showSettings,
                     onSettingsDismissed = viewModel::hideSettings,
                     onSettingsSaved = viewModel::saveSettings,

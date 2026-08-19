@@ -61,6 +61,7 @@ fun MainScreen(
     onDemoDismissed: () -> Unit,
     onDemoCountdownCancelled: () -> Unit,
     onIncidentCancelled: () -> Unit,
+    onIncidentDismissed: () -> Unit,
     onSettingsRequested: () -> Unit,
     onSettingsDismissed: () -> Unit,
     onSettingsSaved: (AppSettings) -> Unit,
@@ -129,7 +130,11 @@ fun MainScreen(
             }
 
             state.incident?.let { incident ->
-                IncidentCard(incident = incident, onCancel = onIncidentCancelled)
+                IncidentCard(
+                    incident = incident,
+                    onCancel = onIncidentCancelled,
+                    onDismiss = onIncidentDismissed,
+                )
             }
 
             Text(
@@ -280,6 +285,7 @@ private fun IncidentCard(
     incident: IncidentUiState,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    onDismiss: () -> Unit,
 ) {
     val terminal = incident.stage in setOf(
         EventStage.NOTIFIED,
@@ -305,6 +311,13 @@ private fun IncidentCard(
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                 ) {
                     Text("我没事，取消告警")
+                }
+            } else if (terminal) {
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) {
+                    Text("完成，返回待机")
                 }
             }
         }
@@ -520,6 +533,7 @@ private fun MainScreenPreview() {
             onDemoDismissed = {},
             onDemoCountdownCancelled = {},
             onIncidentCancelled = {},
+            onIncidentDismissed = {},
             onSettingsRequested = {},
             onSettingsDismissed = {},
             onSettingsSaved = {},

@@ -9,7 +9,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@drawable/ic_launcher"
         android:label="LINK 跌倒守护"
         android:supportsRtl="true"
         android:theme="@style/Theme.ProjectLinkFallGuard"
