@@ -54,7 +54,10 @@ class FrontCameraNode(Node):
         )
         self._status_pub = self.create_publisher(String, "/front_camera/status", 10)
         self.create_service(CaptureStill, "/front_camera/capture_still", self._capture_still)
-        period = 1.0 / max(1.0, float(self.get_parameter("preview_fps").value))
+        # Poll the latest-frame slot at twice the requested output rate. Capture
+        # and publish clocks otherwise alias when both run at 30 Hz, causing the
+        # publisher to miss every third fresh frame and settle near 20 Hz.
+        period = 0.5 / max(1.0, float(self.get_parameter("preview_fps").value))
         self.create_timer(period, self._publish_preview)
         self.create_timer(1.0, self._publish_periodic_status)
         self._open_camera()

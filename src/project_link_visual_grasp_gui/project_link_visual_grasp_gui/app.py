@@ -9,6 +9,7 @@ import rclpy
 from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage
 from std_srvs.srv import SetBool, Trigger
 from wheeltec_robot_msg.msg import VisualGraspStatus
@@ -154,7 +155,7 @@ class RemoteClient(Node):
             CompressedImage,
             "/visual_grasp/image/compressed",
             self._on_image,
-            1,
+            qos_profile_sensor_data,
         )
         self._discovery_sub = self.create_subscription(
             VisualGraspStatus,
