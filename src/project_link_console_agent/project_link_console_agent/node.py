@@ -356,17 +356,41 @@ class ConsoleAgent(Node):
             self._systemd.start_no_block(target)
         deadline = time.monotonic() + timeout_sec
         last_snapshot = None
+        next_target_reactivation = 0.0
         while time.monotonic() < deadline:
             states = self._systemd.safe_states(ordered_units)
+            dependencies_ready = all(
+                states[unit].active for unit in ordered_units if unit != target
+            )
             failed = [
                 state
                 for state in states.values()
                 if state.active_state == "failed" or state.sub_state == "failed"
+                if not (state.unit == target and dependencies_ready)
             ]
             if failed:
                 state = failed[0]
                 label = SUBSYSTEM_LABELS.get(state.unit, state.unit)
                 raise RuntimeError(f"{label}启动失败：{state.result}")
+            target_state = states[target]
+            now = time.monotonic()
+            if (
+                dependencies_ready
+                and not target_state.active
+                and now >= next_target_reactivation
+            ):
+                # A required service may recover through Restart=on-failure after
+                # systemd has already marked the original target job failed. In
+                # that state Nav2 and both costmaps are healthy, but the target
+                # remains inactive forever unless it is explicitly started again.
+                self._feedback(
+                    goal_handle,
+                    target,
+                    0.96,
+                    "依赖功能已就绪，正在重新确认模式状态",
+                )
+                self._systemd.start_no_block(target)
+                next_target_reactivation = now + 2.0
             ready_count = sum(1 for unit in ordered_units if states[unit].active)
             pending = next(
                 (unit for unit in ordered_units if not states[unit].active),

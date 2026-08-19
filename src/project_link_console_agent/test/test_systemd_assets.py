@@ -72,6 +72,37 @@ def test_accumulated_scan_waits_for_point_lio_odom_without_platform_cycle():
     assert "topic /scan_accumulated 45" in point_lio
 
 
+def test_console_reactivates_mode_target_after_services_recover():
+    source = (
+        REPOSITORY_ROOT
+        / "src"
+        / "project_link_console_agent"
+        / "project_link_console_agent"
+        / "node.py"
+    ).read_text(encoding="utf-8")
+    assert "dependencies_ready = all(" in source
+    assert "依赖功能已就绪，正在重新确认模式状态" in source
+    assert "self._systemd.start_no_block(target)" in source
+
+
+def test_lidar_chassis_yaw_and_lio_projection_use_the_same_clockwise_correction():
+    urdf = (
+        REPOSITORY_ROOT
+        / "src"
+        / "turn_on_wheeltec_robot"
+        / "urdf"
+        / "patrol_robot.urdf.xacro"
+    ).read_text(encoding="utf-8")
+    projection = (
+        REPOSITORY_ROOT / "configs" / "point_lio" / "lio_planar_projection.yaml"
+    ).read_text(encoding="utf-8")
+    assert 'lidar_mount_rpy" value="0.0 1.5708 1.5707963268"' in urdf
+    assert "lio_to_base_x: -0.0883684513" in projection
+    assert "lio_to_base_y: 0.6641805860" in projection
+    assert "lio_to_base_roll: -1.5707950540" in projection
+    assert "lio_to_base_yaw: -2.7011826536" in projection
+
+
 def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():
     component = (DEPLOY_ROOT / "bin" / "project-link-component").read_text(encoding="utf-8")
     assert "PROJECT_LINK_VOICE_PROFILE" in component

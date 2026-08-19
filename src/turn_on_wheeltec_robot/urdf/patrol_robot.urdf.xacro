@@ -11,8 +11,9 @@
   <xacro:property name="lidar_offset_y" value="0.000"/>
   <xacro:property name="lidar_offset_z" value="0.550"/>
 
-  <!-- Mechanical mounting frame fixed to the chassis. -->
-  <xacro:property name="lidar_mount_rpy" value="0.0 1.5708 3.14159"/>
+  <!-- Mechanical mounting frame fixed to the chassis. The chassis-facing yaw
+       is 90 deg clockwise from the previous pi-radian assumption. -->
+  <xacro:property name="lidar_mount_rpy" value="0.0 1.5708 1.5707963268"/>
 
   <!-- Verified Unitree driver-frame correction: roll=pi, yaw=115.234 deg. -->
   <xacro:property name="lidar_driver_rpy" value="3.14159 0.0 2.0112063268"/>

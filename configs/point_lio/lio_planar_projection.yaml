@@ -11,14 +11,15 @@
     # after the new stationary, in-place-turn, and straight-line tests pass.
     odom_to_lio_odom_yaw: 0.0
 
-    # IMU/LIO body -> base_footprint, derived from the canonical URDF chain:
+    # IMU/LIO body -> base_footprint, derived from the canonical URDF chain
+    # after applying the 90-degree clockwise chassis mounting correction:
     # base_footprint -> base_link -> unilidar_link -> unilidar_lidar
     # -> unilidar_imu. Do not duplicate these values in another robot model.
-    lio_to_base_x: -0.2602380722
-    lio_to_base_y: 0.5831816143
-    lio_to_base_z: -0.19667
-    lio_to_base_roll: 0.0
-    lio_to_base_pitch: -1.5707963268
-    lio_to_base_yaw: 2.0112063268
+    lio_to_base_x: -0.0883684513
+    lio_to_base_y: 0.6641805860
+    lio_to_base_z: -0.0066705850
+    lio_to_base_roll: -1.5707950540
+    lio_to_base_pitch: 0.0000011313
+    lio_to_base_yaw: -2.7011826536
 
     projected_z: 0.0
