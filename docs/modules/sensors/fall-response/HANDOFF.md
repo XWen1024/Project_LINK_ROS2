@@ -67,9 +67,14 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
 
 ## Remaining gates
 
-- Orin colcon build and automated tests.
-- Real camera focus/orientation and five-frame inference performance.
-- Model file installation and SHA-256 recording.
+- Orin build and automated tests passed at commit `9bb061f`: 56 tests passed,
+  generated ROS interfaces were discoverable, and all new systemd units verified.
+- `yolov8n-pose.pt` is installed with SHA-256
+  `c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212`.
+  CPU Torch inference measured about 5.49 FPS on 1280x720 blank frames, below
+  the 8 FPS optimization gate. TensorRT 10.3 is present, but a CUDA-enabled
+  Torch environment must be isolated and validated before engine export.
+- Real camera focus/orientation and five-frame inference validation.
 - User-owned WeChat QR login and single-contact binding.
 - Android-to-Orin LAN smoke test and 14.9-second cancellation race.
 - Confirmed and degraded notification delivery to the real contact.
