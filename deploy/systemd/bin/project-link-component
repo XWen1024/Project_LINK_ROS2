@@ -137,6 +137,10 @@ case "$component" in
     }
     export PYTHONNOUSERSITE=1
     export PYTHONPATH="$cuda_site${PYTHONPATH:+:$PYTHONPATH}"
+    /usr/bin/python3 -c 'import clip, torch; assert torch.cuda.is_available()' || {
+      echo "Visual-grasp CUDA dependencies are incomplete; run project-link-setup-fall-cuda" >&2
+      exit 1
+    }
     exec /usr/bin/python3 -m project_link_visual_grasp.cuda_detector --ros-args \
       --params-file "${VISUAL_GRASP_CUDA_CONFIG:-$workspace/configs/visual_grasp/cuda_detector.yaml}"
     ;;

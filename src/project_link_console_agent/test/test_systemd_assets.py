@@ -154,6 +154,7 @@ def test_visual_grasp_cuda_detector_is_process_isolated_from_lerobot():
     assert 'PYTHONNOUSERSITE=1' in component
     assert 'fall-cuda' in component
     assert 'project_link_visual_grasp.cuda_detector' in component
+    assert "import clip, torch" in component
     assert f"PartOf={UNITS['visual_grasp']}" in detector
     assert f"Wants={UNITS['visual_grasp_detector']}" in main
 
