@@ -9,9 +9,10 @@ Build a single Ubuntu 22.04 control console that replaces routine startup script
 renders navigation and module state on the laptop, and controls headless Orin
 services through typed ROS interfaces and `systemd --user`.
 
-The current MVP is reliable Ubuntu-to-Orin transport plus one repeatable Qwen
-Realtime to Nav2 loop. UWB is excluded. The STM32-native handset is the primary
-manual driving control; GUI teleop remains an advanced-mode backup.
+The current MVP uses verified native DDS Peer on domain 42 plus SSH-owned
+lifecycle/configuration, followed by one repeatable Qwen Realtime to Nav2 loop.
+UWB is excluded. The STM32-native handset is the primary manual driving control;
+GUI teleop remains an advanced-mode backup.
 
 ## Repository Consolidation Completed
 
@@ -40,6 +41,11 @@ Archive tags:
 - Python syntax checks passed for visual grasp, VL53L0X, Windows lab and Qwen packages.
 - PowerShell parsing passed for the Windows visual-grasp launcher.
 - Qwen and classic voice are both present on `main` but remain mutually exclusive at runtime.
+- The Android fall-guard client and first Orin static backend are implemented:
+  authenticated aiohttp endpoints, SQLite state/transition storage, atomic
+  cancellation and notification claiming, shared front-camera still capture,
+  local YOLO pose scoring, SiliconFlow VLM and pinned WeChat SDK integration.
+  Orin build, model installation, QR binding and real notification remain gates.
 - Orin direct pytest across console agent, classic voice and Qwen Realtime:
   79 passed after the new event/config integration.
 - The versioned systemd graph contains 13 services, 3 mode targets and 1 shared
@@ -85,16 +91,22 @@ Archive tags:
   control-Action discovery and shows start/switch results directly on the page.
 - Hardware enumeration on 2026-08-19 separated the icSpring chassis-front camera
   from the Generic/Realtek arm camera. C63A frames were confirmed at 115200 on
-  serial `5B1F024697`. Exact serial udev rules are committed; sudo installation
-  remains pending because the old broad rule still aliases wake board `0004` as
-  `wheeltec_controller`.
+  serial `5B1F024697`. Exact serial udev rules are installed and verified for all
+  six production aliases; the unsafe broad chassis rule was backed up and disabled.
+- No-motion hardware validation passed: C63A `/odom` and IMU were about `20 Hz`,
+  voltage was `23.98 V`, `/cmd_vel` had zero publishers, Unitree L1 cloud was
+  about `9.1-9.2 Hz`, L1 IMU about `238 Hz`, and the arm camera captured a frame.
+  SO-101 was identity-checked only; no torque or motion command was sent.
 - The front-camera node published compressed JPEG at about `8.0 Hz`. Ubuntu GUI
   tests passed before and after build (`20 passed`); Orin console/hardware tests
   passed (`22 passed`) and the updated base/agent packages built with services inactive.
-- DDS Router v2.2.0 and locked dependencies built successfully on Orin ARM64 via
-  the temporary LAN Mihomo proxy. The Router listened only on
-  `127.0.0.1:11666`; Ubuntu BatchMode SSH authentication, tunnel auto-bootstrap
-  and loopback forwarding were verified, then stopped.
+- DDS Router v2.2.0 and locked dependencies built successfully on both Orin ARM64
+  and Ubuntu x86_64. BatchMode SSH, tunnel bootstrap, loopback-only listeners,
+  single/reverse forwarding, exact ROS DDS types and forced reader/writer tests
+  were exercised. No typed endpoint crossed the WAN participants reliably, so
+  all Router/tunnel units remain disabled/inactive and the console launcher now
+  defaults to native domain-42 DDS. Router mode requires explicit experimental
+  opt-in; the post-MVP robust path is a typed allowlisted console bridge over SSH.
 
 ## Current Implementation Order
 
@@ -116,14 +128,16 @@ Archive tags:
 10. [x] Add UWB shadow plots, tuning and proposed-calibration capture.
 11. [x] Identify the fixed production hardware set: C63A, Unitree L1, SO-101,
         wake board, chassis-front icSpring camera and independent arm camera.
-        Versioned exact-serial udev rules and verification scripts are added;
-        sudo installation on Orin remains pending.
+        Versioned exact-serial udev rules are installed and all aliases verified;
+        the unsafe broad chassis rule is disabled.
 12. [x] Hide UWB by default and add the Orin-owned front-camera preview path to
-        the navigation page. Linux build and live stream validation remain.
-13. [~] Orin ARM64 Router and SSH tunnel are verified. Build the same locked set
-        on Ubuntu x86_64, then validate ROS Topic/Service/Action across domains
-        42/142 and enable the transport services.
+        the navigation page. Linux build and about-8-Hz live stream validation passed.
+13. [x] Build the locked DDS Router on both hosts and evaluate the domain-42/142
+        SSH-tunnel route. The field gate failed, so preserve it as experimental
+        and default the MVP launcher back to verified native DDS Peer.
 14. [ ] Save a real named waypoint and complete three Qwen voice-navigation runs.
+15. [ ] After the MVP loop, implement a typed allowlisted console bridge over SSH
+        and validate reconnect/state resynchronization before replacing DDS Peer.
 
 ## Existing Hardware Gates
 

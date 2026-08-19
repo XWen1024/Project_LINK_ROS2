@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+venv="${FALL_CUDA_VENV:-$HOME/.local/share/project-link/venvs/fall-cuda}"
+torch_index="${FALL_TORCH_INDEX:-https://pypi.jetson-ai-lab.io/jp6/cu126}"
+torch_version="${FALL_TORCH_VERSION:-2.8.0}"
+torchvision_version="${FALL_TORCHVISION_VERSION:-0.23.0}"
+ultralytics_version="${FALL_ULTRALYTICS_VERSION:-8.4.32}"
+
+python3 -m venv --system-site-packages "$venv"
+export PYTHONNOUSERSITE=1
+"$venv/bin/python" -m pip install --upgrade pip
+"$venv/bin/python" -m pip install \
+  --index-url "$torch_index" \
+  "torch==$torch_version" \
+  "torchvision==$torchvision_version"
+"$venv/bin/python" -m pip install --no-deps --upgrade \
+  --target "$venv/lib/python3.10/site-packages" \
+  "numpy==1.26.4" \
+  "opencv-python-headless==4.10.0.84"
+"$venv/bin/python" -m pip install --upgrade \
+  --target "$venv/lib/python3.10/site-packages" \
+  "aiohttp>=3.9,<4"
+"$venv/bin/python" -m pip install --no-deps "ultralytics==$ultralytics_version"
+"$venv/bin/python" -m pip install "polars==1.39.3" "ultralytics-thop==2.0.18"
+
+"$venv/bin/python" - <<'PY'
+import os
+
+import aiohttp
+import cv2
+import numpy as np
+import torch
+from ultralytics import YOLO
+
+if not torch.cuda.is_available():
+    raise SystemExit("isolated Torch installed, but CUDA is unavailable")
+model_path = os.environ.get(
+    "FALL_YOLO_MODEL", "/home/wte/models/project_link/yolov8n-pose.pt"
+)
+model = YOLO(model_path)
+model.predict(source=np.zeros((720, 1280, 3), dtype=np.uint8), device=0, verbose=False)
+print(f"torch={torch.__version__} cuda={torch.version.cuda} device={torch.cuda.get_device_name(0)}")
+print(
+    f"numpy={np.__version__} opencv={cv2.__version__} "
+    f"aiohttp={aiohttp.__version__} model={model_path}"
+)
+PY
+
+printf 'FALL_PYTHON_SITE=%s/lib/python3.10/site-packages\n' "$venv"

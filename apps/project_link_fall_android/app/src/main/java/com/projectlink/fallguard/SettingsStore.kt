@@ -51,4 +51,3 @@ class SettingsStore(private val context: Context) {
         val STILLNESS_SECONDS = floatPreferencesKey("stillness_seconds")
     }
 }
-

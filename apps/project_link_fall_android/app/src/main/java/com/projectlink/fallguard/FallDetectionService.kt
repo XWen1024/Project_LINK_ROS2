@@ -203,11 +203,19 @@ class FallDetectionService : Service(), SensorEventListener {
 
     private fun cancelEvent(eventId: String?) {
         if (eventId == null || eventId != activeEventId) return
-        incidentJob?.cancel()
-        incidentJob = serviceScope.launch {
-            val result = runCatching { activeGateway?.cancel(eventId) ?: EventStage.CANCELLED }
-                .getOrDefault(EventStage.CANCELLED)
-            publishStage(eventId, result, 0, "已在通知联系人前取消")
+        serviceScope.launch {
+            val result = runCatching { activeGateway?.cancel(eventId) ?: error("Orin 客户端不可用") }
+            result.onSuccess { stage ->
+                if (stage == EventStage.CANCELLED) {
+                    incidentJob?.cancel()
+                    publishStage(eventId, stage, 0, "已在通知联系人前取消")
+                } else {
+                    publishStage(eventId, stage, 0, stageMessage(stage))
+                }
+            }.onFailure { error ->
+                val current = _runtimeState.value.incident?.stage ?: EventStage.ACCEPTED
+                publishStage(eventId, current, 0, "取消未获 Orin 确认：${error.message ?: "网络错误"}")
+            }
         }
     }
 

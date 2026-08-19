@@ -51,4 +51,3 @@ fun FallGuardTheme(
         content = content,
     )
 }
-

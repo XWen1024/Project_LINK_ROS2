@@ -3,26 +3,34 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from typing import Any
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.time import Time
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
+
+from project_link_emergency_interfaces.srv import CaptureStill
 
 
 class FrontCameraNode(Node):
     def __init__(self) -> None:
         super().__init__("project_link_front_camera")
         self.declare_parameter("camera_device", "/dev/project_link_front_camera")
-        self.declare_parameter("camera_width", 640)
-        self.declare_parameter("camera_height", 480)
+        self.declare_parameter("camera_width", 1280)
+        self.declare_parameter("camera_height", 720)
         self.declare_parameter("camera_fps", 15.0)
         self.declare_parameter("preview_fps", 8.0)
+        self.declare_parameter("preview_width", 640)
+        self.declare_parameter("preview_height", 360)
         self.declare_parameter("jpeg_quality", 65)
-        self.declare_parameter("rotation_degrees", 90)
+        self.declare_parameter("still_jpeg_quality", 85)
+        self.declare_parameter("max_still_age_sec", 0.5)
+        self.declare_parameter("rotation_degrees", 0)
         self.declare_parameter("frame_id", "front_camera_optical_frame")
         self.declare_parameter("reopen_interval_sec", 2.0)
 
@@ -31,6 +39,10 @@ class FrontCameraNode(Node):
         self._last_open_attempt = 0.0
         self._last_status = ""
         self._frames = 0
+        self._frame_lock = threading.Lock()
+        self._latest_frame: Any = None
+        self._latest_frame_monotonic = 0.0
+        self._latest_stamp_ns = 0
         image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         self._image_pub = self.create_publisher(
             CompressedImage,
@@ -38,6 +50,7 @@ class FrontCameraNode(Node):
             image_qos,
         )
         self._status_pub = self.create_publisher(String, "/front_camera/status", 10)
+        self.create_service(CaptureStill, "/front_camera/capture_still", self._capture_still)
         period = 1.0 / max(1.0, float(self.get_parameter("preview_fps").value))
         self.create_timer(period, self._capture)
         self.create_timer(1.0, self._publish_periodic_status)
@@ -109,6 +122,15 @@ class FrontCameraNode(Node):
             self._publish_status("unavailable", "frame_read_failed")
             return
         frame = self._rotate(frame)
+        stamp_ns = self.get_clock().now().nanoseconds
+        with self._frame_lock:
+            self._latest_frame = frame.copy()
+            self._latest_frame_monotonic = time.monotonic()
+            self._latest_stamp_ns = stamp_ns
+        preview_width = max(1, int(self.get_parameter("preview_width").value))
+        preview_height = max(1, int(self.get_parameter("preview_height").value))
+        if frame.shape[1] != preview_width or frame.shape[0] != preview_height:
+            frame = self._cv2.resize(frame, (preview_width, preview_height), interpolation=self._cv2.INTER_AREA)
         quality = int(self.get_parameter("jpeg_quality").value)
         encoded_ok, encoded = self._cv2.imencode(
             ".jpg",
@@ -119,12 +141,49 @@ class FrontCameraNode(Node):
             self._publish_status("fault", "jpeg_encode_failed")
             return
         message = CompressedImage()
-        message.header.stamp = self.get_clock().now().to_msg()
+        message.header.stamp = Time(nanoseconds=stamp_ns).to_msg()
         message.header.frame_id = str(self.get_parameter("frame_id").value)
         message.format = "jpeg"
         message.data = encoded.tobytes()
         self._image_pub.publish(message)
         self._frames += 1
+
+    def _capture_still(
+        self,
+        _request: CaptureStill.Request,
+        response: CaptureStill.Response,
+    ) -> CaptureStill.Response:
+        with self._frame_lock:
+            frame = None if self._latest_frame is None else self._latest_frame.copy()
+            captured_at = self._latest_frame_monotonic
+            stamp_ns = self._latest_stamp_ns
+        if frame is None:
+            response.success = False
+            response.message = "front camera has no cached frame"
+            return response
+        age = time.monotonic() - captured_at
+        if age > max(0.05, float(self.get_parameter("max_still_age_sec").value)):
+            response.success = False
+            response.message = f"front camera frame is stale: {age:.3f}s"
+            return response
+        quality = max(50, min(100, int(self.get_parameter("still_jpeg_quality").value)))
+        encoded_ok, encoded = self._cv2.imencode(
+            ".jpg",
+            frame,
+            [int(self._cv2.IMWRITE_JPEG_QUALITY), quality],
+        )
+        if not encoded_ok:
+            response.success = False
+            response.message = "failed to encode front camera still"
+            return response
+        height, width = frame.shape[:2]
+        response.success = True
+        response.message = "captured cached high-resolution front camera frame"
+        response.jpeg_data = list(encoded.tobytes())
+        response.width = int(width)
+        response.height = int(height)
+        response.stamp = Time(nanoseconds=stamp_ns).to_msg()
+        return response
 
     def _publish_periodic_status(self) -> None:
         self._last_status = ""

@@ -1,8 +1,8 @@
 # Navigation Two 交接文档
 
-Status: current; transport and hardware-alias field gates pending
+Status: current; hardware aliases and no-motion sensor gates passed; supervised motion pending
 Last verified: 2026-08-19
-Verified code: `main@c37bdfc`
+Verified code: `main@c081309`
 
 本文档是 Project LINK 当前 Point-LIO + slam_toolbox + Navigation2 路线的
 长期调试入口。内容从 `AGENTS.md`、`PROGRESS.md` 和已完成的 Orin 实机验证中

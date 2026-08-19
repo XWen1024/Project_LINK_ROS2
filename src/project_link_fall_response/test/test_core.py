@@ -6,11 +6,26 @@ import pytest
 from project_link_fall_response.core import (
     FallAssessmentError,
     FeishuBotClient,
+    OpenAICompatibleVisionClient,
     feishu_signature,
     image_message_content,
     parse_fall_assessment_json,
     redact_secrets,
 )
+
+
+def test_openai_compatible_client_uses_provider_neutral_api_key(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    client = OpenAICompatibleVisionClient.from_environment(
+        base_url="https://example.invalid/v1",
+        model="vision-model",
+        request_timeout_sec=20,
+        system_prompt="system",
+        user_prompt="user",
+    )
+    assert client._api_key == "test-key"
+    assert client._base_url == "https://example.invalid/v1"
+    assert client._model == "vision-model"
 
 
 def test_parse_valid_fall_assessment():

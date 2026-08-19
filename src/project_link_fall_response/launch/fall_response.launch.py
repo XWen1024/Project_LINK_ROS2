@@ -14,17 +14,8 @@ def generate_launch_description():
         "fall_response.yaml",
     )
     config = LaunchConfiguration("config")
-    camera_device = LaunchConfiguration("camera_device")
     return LaunchDescription([
         DeclareLaunchArgument("config", default_value=default_config),
-        DeclareLaunchArgument("camera_device", default_value="/dev/FallCam"),
-        Node(
-            package="project_link_fall_response",
-            executable="fall_camera_node",
-            name="fall_camera_node",
-            output="screen",
-            parameters=[config, {"camera_device": camera_device}],
-        ),
         Node(
             package="project_link_fall_response",
             executable="fall_response_node",

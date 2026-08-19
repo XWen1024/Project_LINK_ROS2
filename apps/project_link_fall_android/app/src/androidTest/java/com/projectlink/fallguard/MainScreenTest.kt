@@ -38,4 +38,3 @@ class MainScreenTest {
         composeRule.onNodeWithText("模拟跌倒").assertIsDisplayed().performClick()
     }
 }
-

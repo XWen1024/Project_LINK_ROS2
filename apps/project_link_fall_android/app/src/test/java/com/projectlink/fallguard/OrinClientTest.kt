@@ -14,4 +14,3 @@ class OrinClientTest {
         assertNull(stageFromWire("unknown"))
     }
 }
-

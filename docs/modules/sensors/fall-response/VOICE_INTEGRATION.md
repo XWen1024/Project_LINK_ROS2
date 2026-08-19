@@ -11,8 +11,9 @@ fall-response module after wake-word detection and sound-source steering.
   and never controls the arm.
 - The audio project should call the fall Action only after the robot has turned
   toward the source and is stable.
-- The fall module uses the second camera device, default `/dev/FallCam`. It does
-  not share the visual-grasp camera at `/dev/RgbCam`.
+- The fall module reuses the Orin-owned chassis-front camera service
+  `/front_camera/capture_still`. The single V4L2 owner uses
+  `/dev/project_link_front_camera`; the arm camera remains exclusive to visual grasp.
 - A suspected fall causes the fall module to publish the fixed Chinese TTS text
   on `/voice/tts_text`, then wait 15 seconds for confirmation or cancellation.
   If no valid response arrives within 15 seconds, it automatically pushes a
@@ -25,19 +26,22 @@ Start the local TTS bridge and fall-response nodes:
 ```bash
 source /home/wte/wheeltec_robot/scripts/project_link_env.sh
 ros2 launch project_link_voice voice_direct_drive.launch.py enable_motion:=false
-ros2 launch project_link_fall_response fall_response.launch.py camera_device:=/dev/FallCam
+systemctl --user start project-link-front-camera.service
+ros2 launch project_link_fall_response fall_response.launch.py
 ```
 
 The launch file starts:
 
-- `fall_camera_node`: provides `/fall_detection/capture_still`
+- `project_link_front_camera`: provides `/front_camera/capture_still`
 - `fall_response_node`: provides `/fall_detection/assess_fall` and
   `/fall_detection/confirm_alert`
 
 Required environment variables for a real Feishu push:
 
 ```bash
-export SILICONFLOW_API_KEY=...
+export OPENAI_API_KEY=...
+export OPENAI_BASE_URL=https://ws-f79uecupn4b5efpv.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+export OPENAI_MODEL=qwen3.8-27b
 export FEISHU_BOT_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/...
 # Optional, only if signature verification is enabled in the bot security settings.
 export FEISHU_BOT_SECRET=...

@@ -1,0 +1,24 @@
+string event_id
+string mode
+int64 occurred_at_ms
+bool has_imu
+float32 peak_accel_g
+float32 orientation_change_deg
+int64 inactivity_ms
+---
+string final_status
+bool degraded
+float32 local_confidence
+float32 vlm_confidence
+string reason
+bool notification_attempted
+bool notification_success
+string message
+---
+string stage
+uint16 scan_step
+uint16 scan_total
+float32 local_confidence
+float32 vlm_confidence
+bool degraded
+string message

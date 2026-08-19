@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 import uuid
@@ -17,7 +18,7 @@ from std_msgs.msg import String
 from project_link_emergency_interfaces.action import AssessFall
 from project_link_emergency_interfaces.srv import CaptureStill, ConfirmFallAlert
 
-from .core import FallAssessmentError, FeishuBotClient, SiliconFlowVisionClient
+from .core import FallAssessmentError, FeishuBotClient, OpenAICompatibleVisionClient
 
 
 SYSTEM_PROMPT = (
@@ -70,7 +71,7 @@ class FallResponseNode(Node):
 
     def _declare_parameters(self) -> None:
         self.declare_parameter("assess_action", "/fall_detection/assess_fall")
-        self.declare_parameter("capture_service", "/fall_detection/capture_still")
+        self.declare_parameter("capture_service", "/front_camera/capture_still")
         self.declare_parameter("confirm_service", "/fall_detection/confirm_alert")
         self.declare_parameter("tts_topic", "/voice/tts_text")
         self.declare_parameter(
@@ -80,19 +81,29 @@ class FallResponseNode(Node):
         self.declare_parameter("confirmation_timeout_sec", 15.0)
         self.declare_parameter("confidence_threshold", 0.70)
         self.declare_parameter("capture_timeout_sec", 3.0)
-        self.declare_parameter("siliconflow_base_url", "https://api.siliconflow.cn/v1")
-        self.declare_parameter("siliconflow_model", "Qwen/Qwen2.5-VL-72B-Instruct")
-        self.declare_parameter("siliconflow_request_timeout_sec", 20.0)
-        self.declare_parameter("siliconflow_system_prompt", SYSTEM_PROMPT)
-        self.declare_parameter("siliconflow_user_prompt", USER_PROMPT)
+        self.declare_parameter(
+            "openai_base_url",
+            "https://ws-f79uecupn4b5efpv.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        )
+        self.declare_parameter("openai_model", "qwen3.8-27b")
+        self.declare_parameter("openai_request_timeout_sec", 20.0)
+        self.declare_parameter("openai_system_prompt", SYSTEM_PROMPT)
+        self.declare_parameter("openai_user_prompt", USER_PROMPT)
 
-    def _make_vision_client(self) -> SiliconFlowVisionClient:
-        return SiliconFlowVisionClient.from_environment(
-            base_url=str(self.get_parameter("siliconflow_base_url").value),
-            model=str(self.get_parameter("siliconflow_model").value),
-            request_timeout_sec=float(self.get_parameter("siliconflow_request_timeout_sec").value),
-            system_prompt=str(self.get_parameter("siliconflow_system_prompt").value),
-            user_prompt=str(self.get_parameter("siliconflow_user_prompt").value),
+    def _make_vision_client(self) -> OpenAICompatibleVisionClient:
+        return OpenAICompatibleVisionClient.from_environment(
+            base_url=os.environ.get(
+                "OPENAI_BASE_URL", str(self.get_parameter("openai_base_url").value)
+            ),
+            model=os.environ.get("OPENAI_MODEL", str(self.get_parameter("openai_model").value)),
+            request_timeout_sec=float(
+                os.environ.get(
+                    "OPENAI_TIMEOUT_SEC",
+                    str(self.get_parameter("openai_request_timeout_sec").value),
+                )
+            ),
+            system_prompt=str(self.get_parameter("openai_system_prompt").value),
+            user_prompt=str(self.get_parameter("openai_user_prompt").value),
         )
 
     def _accept_goal(self, _goal: AssessFall.Goal) -> GoalResponse:
@@ -199,7 +210,13 @@ class FallResponseNode(Node):
         return response
 
     def _assess_image(self, goal_handle, alert_id: str, jpeg_data: bytes):
-        self._publish_feedback(goal_handle, alert_id, "vision_request", 0.0, "calling SiliconFlow vision model")
+        self._publish_feedback(
+            goal_handle,
+            alert_id,
+            "vision_request",
+            0.0,
+            "calling OpenAI-compatible vision model",
+        )
         assessment = self._vision_client.assess(jpeg_data)
         self._publish_feedback(goal_handle, alert_id, "vision_result", assessment.confidence, assessment.reason)
         return assessment

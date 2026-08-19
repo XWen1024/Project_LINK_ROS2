@@ -16,7 +16,6 @@ interface FallGateway {
     suspend fun status(eventId: String): EventStage
     suspend fun cancel(eventId: String): EventStage
 }
-
 object FallGatewayFactory {
     fun create(settings: AppSettings): FallGateway = if (settings.simulationEnabled) {
         FakeOrinClient

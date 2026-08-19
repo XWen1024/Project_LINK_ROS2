@@ -17,12 +17,15 @@ setup(
     zip_safe=True,
     maintainer="Project LINK",
     maintainer_email="wte@example.com",
-    description="Second-camera fall assessment and guarded emergency voice-call response nodes.",
+    description="Static Android and legacy voice fall-assessment response nodes.",
     license="MIT",
     entry_points={
         "console_scripts": [
-            "fall_camera_node = project_link_fall_response.fall_camera_node:main",
             "fall_response_node = project_link_fall_response.fall_response_node:main",
+            "fall_http_gateway = project_link_fall_response.fall_http_gateway:main",
+            "mobile_fall_coordinator = project_link_fall_response.mobile_coordinator_node:main",
+            "wechat_notifier_node = project_link_fall_response.wechat_notifier_node:main",
+            "wechatbot_bind = project_link_fall_response.wechat_bind:main",
         ],
     },
 )

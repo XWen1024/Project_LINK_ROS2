@@ -114,10 +114,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             FallDetectionService.cancel(getApplication(), incident.eventId)
             return
         }
-        demoJob?.cancel()
         viewModelScope.launch {
-            runCatching { activeDemoGateway?.cancel(incident.eventId) }
-            publishDemoStage(EventStage.CANCELLED, 0, "已在通知联系人前取消")
+            val result = runCatching { activeDemoGateway?.cancel(incident.eventId) ?: error("Orin 客户端不可用") }
+            result.onSuccess { stage ->
+                if (stage == EventStage.CANCELLED) {
+                    demoJob?.cancel()
+                    publishDemoStage(stage, 0, "已在通知联系人前取消")
+                } else {
+                    publishDemoStage(stage, 0, stage.message())
+                }
+            }.onFailure { error ->
+                publishDemoStage(
+                    incident.stage,
+                    incident.cancelSecondsRemaining,
+                    "取消未获 Orin 确认：${error.message ?: "网络错误"}",
+                )
+            }
         }
     }
 

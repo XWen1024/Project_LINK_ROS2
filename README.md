@@ -16,6 +16,9 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
   but must never run simultaneously.
 - UWB: code is preserved, but the page is hidden and the module is outside the current MVP.
+- Fall response: the Android client and Orin no-motion backend are implemented
+  with Token-authenticated HTTP, SQLite idempotency/cancellation, the shared
+  front camera, YOLO/VLM assessment and a single-contact WeChat notifier.
 - Console: typed interfaces, headless agent, versioned systemd user units and the
   PySide6 pages are implemented. The visible Ubuntu GUI includes navigation with
   a distinct chassis-front camera preview, manipulation with its independent arm
@@ -23,9 +26,11 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
   The window is desktop-bounded, the sidebar can
   collapse to icons, and real mode is single-instance to avoid duplicate ROS
   nodes. Live hardware loops remain supervised field items.
-- Transport: DDS Router v2.2.0 is source-locked and verified on Orin ARM64. The
-  loopback-only Orin listener and Ubuntu-to-Orin SSH tunnel are working; Ubuntu
-  x86_64 Router build and full domain-142 cutover remain.
+- Transport: the MVP uses verified native DDS Peer on ROS domain 42, while SSH
+  owns service lifecycle, configuration and secrets. DDS Router v2.2.0 is built
+  on both hosts and preserved as an experiment, but the 2026-08-19 domain-142/42
+  WAN field gate failed to pass even a typed `std_msgs/String` endpoint and is
+  therefore not the default console path.
 
 See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware gates.
 
@@ -39,6 +44,7 @@ See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware g
 - [Voice overview](docs/modules/voice/OVERVIEW.md)
 - [UWB handoff](docs/modules/uwb/HANDOFF.md)
 - [VL53L0X handoff](docs/modules/sensors/vl53l0x/HANDOFF.md)
+- [Fall-response handoff](docs/modules/sensors/fall-response/HANDOFF.md)
 
 The previous detailed README is preserved at
 `docs/archive/handoffs/README_DETAIL_20260815.md`.

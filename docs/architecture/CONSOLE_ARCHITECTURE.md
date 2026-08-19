@@ -30,10 +30,12 @@ Ubuntu validation uses `/home/xwen/wheeltec_robot` and pinned user-local PySide6
 from `src/project_link_console_gui/requirements-ubuntu.txt`. ROS 2 Humble remains
 system-installed; the GUI dependency is not represented as a Jammy apt rosdep key.
 
-The GUI subscribes to ROS maps, costmaps, scans, paths, images and module status
-on local domain 142. DDS Router forwards an allowlisted set through an SSH
-loopback tunnel to Orin domain 42. Process lifecycle is requested through the console agent, which
-controls an allowlisted set of `systemd --user` units. Secrets are edited through
+The MVP GUI subscribes to ROS maps, costmaps, scans, paths, images and module
+status through native DDS Peer on domain 42. Process lifecycle is requested
+through the console agent, which controls an allowlisted set of `systemd --user`
+units. Configuration and secrets use SSH. The preserved DDS Router domain-142/42
+path is experimental after its 2026-08-19 typed endpoint field gate failed.
+Secrets are edited through
 an SSH-invoked allowlisted configuration helper and are never transported as ROS
 messages.
 
@@ -71,7 +73,9 @@ requests to the Orin agent. The agent publishes only in mapping mode and stops
 within 250 ms when the dead-man key, GUI focus, heartbeat, ROS connection or
 mode gate is lost. Starting Nav2 disables teleoperation before activation.
 
-The Ubuntu sidebar reports tunnel/router state separately from the Orin ROS
-heartbeat. `deploy/dds-router/bin/project-link-console` starts only the local
-transport services, sets domain 142 and launches the GUI. The tunnel
-idempotently starts the Orin loopback Router over SSH; it starts no hardware.
+The Ubuntu sidebar can report tunnel/router state when experimental mode is
+explicitly enabled. `deploy/dds-router/bin/project-link-console` now defaults to
+domain 42 and starts no Router service. Setting
+`PROJECT_LINK_ENABLE_EXPERIMENTAL_DDS_ROUTER=1` restores the domain-142 launcher
+for diagnostics only; it remains blocked from production use until a new
+end-to-end Topic/Service/Action gate passes.

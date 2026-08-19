@@ -1,13 +1,14 @@
 # Android 跌倒守护与 Orin 后端对接 Handoff
 
-验证日期：2026-08-19  
-Android 分支：`codex/android-fall-guard-mvp`  
-Android 实现基线：`fec990d`（本 handoff 之前的应用代码）  
+验证日期：2026-08-19
+Android 分支：`codex/android-fall-guard-mvp`
+Android 实现基线：`fec990d`（本 handoff 之前的应用代码）
 Android 工程：`apps/project_link_fall_android/`
 
 ## 当前结论
 
-手机端 MVP 已完成，可以开始实现 Orin HTTP 后端。当前 App 支持：
+手机端 MVP 已完成，Orin 静态无运动后端已在 `main` 工作树实现，等待 Orin
+构建、模型安装、微信绑定和端到端验收。当前 App 支持：
 
 - 真实模式：前台服务以约 50 Hz 读取加速度计、陀螺仪和旋转矢量，生成疑似跌倒事件。
 - 演示模式：强确认后倒计时 5 秒，不伪造 IMU 数据，直接提交演示事件。
@@ -194,10 +195,10 @@ Gateway 重启后：终态原样恢复；非终态统一恢复为 `failed`，MVP
 
 仓库已有：
 
-- `/fall_detection/capture_still`
+- `/front_camera/capture_still`
 - `/fall_detection/assess_fall`
 - `/fall_detection/confirm_alert`
-- SiliconFlow VLM 严格 JSON 解析
+- OpenAI-compatible VLM 严格 JSON 解析；端点与模型由 `.env` 配置
 - 飞书 webhook 通知适配器
 
 现有 `AssessFall` 是为“唤醒词 + 声源转向 + 语音确认”设计的，不能原样暴露给手机：它会发布 TTS，并在视觉确认后重新开始一个 15 秒语音确认窗口。手机事件的取消窗口从 HTTP 接收时开始，且不依赖语音。
@@ -307,11 +308,11 @@ curl -X POST \
 
 ## 剩余 Gate
 
-- P0：实现并持久化 Orin HTTP Gateway，完成 Token、幂等和取消事务。
-- P0：真实通知启用前修复 Android“取消请求传输失败时显示已取消”的失败关闭逻辑。
-- P0：完成 ClawBot Python SDK 扫码登录、`context_token` 持久化和唯一联系人绑定。
-- P1：把 fall camera 旧 alias 迁移到 `/dev/project_link_front_camera`。
-- P1：选择并验证本地 YOLO 跌倒模型，接入高分辨率 VLM 二次研判。
+- P0：在 Orin 普通 colcon 构建并执行 HTTP/SQLite/ROS 自动化测试。
+- P0：安装固定版本 ClawBot Python SDK，完成扫码登录和唯一联系人绑定。
+- P0：安装并记录 `yolov8n-pose.pt` 的 SHA-256，验证五帧静态推理。
+- P0：手机与真实 Orin 联调 Token、幂等、状态轮询和取消竞态。
+- P1：验证确认告警与视觉失败降级告警的微信文字/图片结果。
 - P2：在单一 `/cmd_vel` 所有权下实现可取消的受控视觉扫圈。
 
 相关文档：
@@ -319,4 +320,3 @@ curl -X POST \
 - Android 工程说明：`apps/project_link_fall_android/README.md`
 - 旧语音触发契约：`docs/modules/sensors/fall-response/VOICE_INTEGRATION.md`
 - 系统硬件和安全边界：`AGENTS.md`
-

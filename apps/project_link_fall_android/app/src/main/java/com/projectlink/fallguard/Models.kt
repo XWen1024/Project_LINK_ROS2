@@ -33,7 +33,6 @@ data class ImuThresholds(
     val orientationChangeDeg: Float = 55f,
     val stillnessSeconds: Float = 2f,
 )
-
 data class AppSettings(
     val orinBaseUrl: String = "http://192.168.1.100:8765",
     val deviceName: String = "demo-phone",
