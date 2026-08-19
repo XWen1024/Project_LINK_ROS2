@@ -37,12 +37,20 @@ def test_global_get_masks_secret_values(tmp_path):
     assert value["files"]["voice_api"]["PROJECT_LINK_ASR_PROVIDER"]["value"] == "volcano"
 
 
-def test_lidar_mount_yaw_is_allowlisted_bounded_and_round_trips(tmp_path):
+def test_lidar_mount_rpy_is_allowlisted_bounded_and_round_trips(tmp_path):
     saved = _run(
         tmp_path,
         "set",
         "global",
-        {"files": {"console": {"LIDAR_MOUNT_YAW_RAD": "1.2345"}}},
+        {
+            "files": {
+                "console": {
+                    "LIDAR_MOUNT_ROLL_RAD": "0.12",
+                    "LIDAR_MOUNT_PITCH_RAD": "1.48",
+                    "LIDAR_MOUNT_YAW_RAD": "1.2345",
+                }
+            }
+        },
     )
     assert saved["restart_required"] is True
     loaded = _run(tmp_path, "get", "global")
@@ -50,6 +58,8 @@ def test_lidar_mount_yaw_is_allowlisted_bounded_and_round_trips(tmp_path):
         loaded["files"]["console"]["LIDAR_MOUNT_YAW_RAD"]["value"]
         == "1.2345"
     )
+    assert loaded["files"]["console"]["LIDAR_MOUNT_ROLL_RAD"]["value"] == "0.12"
+    assert loaded["files"]["console"]["LIDAR_MOUNT_PITCH_RAD"]["value"] == "1.48"
 
     environment = os.environ.copy()
     environment["HOME"] = str(tmp_path)
@@ -64,7 +74,7 @@ def test_lidar_mount_yaw_is_allowlisted_bounded_and_round_trips(tmp_path):
         check=False,
     )
     assert result.returncode != 0
-    assert "lidar_mount_yaw_out_of_range" in result.stderr
+    assert "lidar_mount_angle_out_of_range:LIDAR_MOUNT_YAW_RAD" in result.stderr
 
 
 def test_voice_and_uwb_runtime_overrides_round_trip(tmp_path):

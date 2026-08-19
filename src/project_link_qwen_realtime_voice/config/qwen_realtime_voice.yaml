@@ -14,6 +14,7 @@ qwen_realtime_voice_node:
     nav2_cmd_vel_topic: /cmd_vel
     nav2_allowed_cmd_vel_publishers:
       - velocity_smoother
+      - behavior_server
     navigation_timeout_sec: 180.0
     confirmation_timeout_sec: 30.0
     visual_grasp_timeout_sec: 45.0

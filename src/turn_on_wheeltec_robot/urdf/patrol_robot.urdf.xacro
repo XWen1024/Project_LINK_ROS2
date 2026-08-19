@@ -1,6 +1,8 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="patrol_robot_vertical">
 
+  <xacro:arg name="lidar_mount_roll_rad" default="0.0"/>
+  <xacro:arg name="lidar_mount_pitch_rad" default="1.5708"/>
   <xacro:arg name="lidar_mount_yaw_rad" default="3.14159"/>
 
   <!-- Conservative measured outer envelope, including protruding hardware. -->
@@ -15,7 +17,7 @@
 
   <!-- Mechanical mounting frame fixed to the chassis. The yaw is operator
        calibrated from the Ubuntu console and stored in the Orin allowlist. -->
-  <xacro:property name="lidar_mount_rpy" value="0.0 1.5708 $(arg lidar_mount_yaw_rad)"/>
+  <xacro:property name="lidar_mount_rpy" value="$(arg lidar_mount_roll_rad) $(arg lidar_mount_pitch_rad) $(arg lidar_mount_yaw_rad)"/>
 
   <!-- Verified Unitree driver-frame correction: roll=pi, yaw=115.234 deg. -->
   <xacro:property name="lidar_driver_rpy" value="3.14159 0.0 2.0112063268"/>

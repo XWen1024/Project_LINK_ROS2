@@ -186,6 +186,7 @@ class StackProgressDialog(QDialog):
 
 class NavigationPage(QWidget):
     launch_rviz_requested = Signal()
+    launch_lidar_calibration_rviz_requested = Signal()
 
     MODE_OFF = 0
     MODE_MAPPING = 1
@@ -203,8 +204,8 @@ class NavigationPage(QWidget):
         self._last_state: dict = {}
         self._progress_dialog: StackProgressDialog | None = None
         self._camera_frames: deque[float] = deque(maxlen=120)
-        self._lidar_saved_yaw_rad = math.pi
-        self._lidar_pending_yaw_rad: float | None = None
+        self._lidar_saved_rpy_rad = (0.0, 1.5708, math.pi)
+        self._lidar_pending_rpy_rad: tuple[float, float, float] | None = None
         self._lidar_restart_pending = False
 
         root = QVBoxLayout(self)
@@ -377,34 +378,48 @@ class NavigationPage(QWidget):
 
         lidar_calibration = QGroupBox("雷达方向可视化标定")
         lidar_layout = QGridLayout(lidar_calibration)
-        self.lidar_preview_slider = QSlider(Qt.Horizontal)
-        self.lidar_preview_slider.setRange(-1800, 1800)
-        self.lidar_preview_slider.setSingleStep(10)
-        self.lidar_preview_degrees = QDoubleSpinBox()
-        self.lidar_preview_degrees.setRange(-180.0, 180.0)
-        self.lidar_preview_degrees.setDecimals(1)
-        self.lidar_preview_degrees.setSingleStep(1.0)
-        self.lidar_preview_degrees.setSuffix(" °")
-        self.lidar_preview_slider.valueChanged.connect(
-            lambda value: self._set_lidar_preview(value / 10.0, source="slider")
-        )
-        self.lidar_preview_degrees.valueChanged.connect(
-            lambda value: self._set_lidar_preview(value, source="spin")
-        )
+        self.lidar_axis_sliders: dict[str, QSlider] = {}
+        self.lidar_axis_degrees: dict[str, QDoubleSpinBox] = {}
+        for row, (axis, label) in enumerate(
+            (("roll", "横滚 Roll"), ("pitch", "俯仰 Pitch"), ("yaw", "航向 Yaw"))
+        ):
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(-1800, 1800)
+            slider.setSingleStep(10)
+            degrees = QDoubleSpinBox()
+            degrees.setRange(-180.0, 180.0)
+            degrees.setDecimals(1)
+            degrees.setSingleStep(1.0)
+            degrees.setSuffix(" °")
+            slider.valueChanged.connect(
+                lambda value, name=axis: self._set_lidar_axis(
+                    name, value / 10.0, source="slider"
+                )
+            )
+            degrees.valueChanged.connect(
+                lambda value, name=axis: self._set_lidar_axis(
+                    name, value, source="spin"
+                )
+            )
+            self.lidar_axis_sliders[axis] = slider
+            self.lidar_axis_degrees[axis] = degrees
+            lidar_layout.addWidget(QLabel(label), row * 2, 0)
+            lidar_layout.addWidget(degrees, row * 2, 1)
+            lidar_layout.addWidget(slider, row * 2 + 1, 0, 1, 2)
         self.lidar_reset_preview = QPushButton("恢复已保存方向")
+        self.lidar_open_rviz = QPushButton("打开 RViz2 三轴实时标定")
         self.lidar_save_apply = QPushButton("保存并应用方向")
-        self.lidar_reset_preview.clicked.connect(lambda: self._set_lidar_preview(0.0))
+        self.lidar_reset_preview.clicked.connect(self._reset_lidar_preview)
+        self.lidar_open_rviz.clicked.connect(self._open_lidar_calibration_rviz)
         self.lidar_save_apply.clicked.connect(self._save_lidar_calibration)
         self.lidar_calibration_status = QLabel(
-            "向右为正、向左为负；拖动只改变 Ubuntu 预览，不会控制机器人。"
+            "拖动三轴参数只改变 Ubuntu 的独立预览 TF，不会修改生产 TF 或控制机器人。"
         )
         self.lidar_calibration_status.setWordWrap(True)
-        lidar_layout.addWidget(QLabel("相对当前方向"), 0, 0)
-        lidar_layout.addWidget(self.lidar_preview_degrees, 0, 1)
-        lidar_layout.addWidget(self.lidar_preview_slider, 1, 0, 1, 2)
-        lidar_layout.addWidget(self.lidar_reset_preview, 2, 0)
-        lidar_layout.addWidget(self.lidar_save_apply, 2, 1)
-        lidar_layout.addWidget(self.lidar_calibration_status, 3, 0, 1, 2)
+        lidar_layout.addWidget(self.lidar_open_rviz, 6, 0, 1, 2)
+        lidar_layout.addWidget(self.lidar_reset_preview, 7, 0)
+        lidar_layout.addWidget(self.lidar_save_apply, 7, 1)
+        lidar_layout.addWidget(self.lidar_calibration_status, 8, 0, 1, 2)
         advanced_layout.addWidget(lidar_calibration, 8, 0, 1, 2)
         self.advanced_group.setVisible(False)
         side_layout.addWidget(self.advanced_group)
@@ -462,69 +477,105 @@ class NavigationPage(QWidget):
                 self._config_client.load("global")
         self._render_status()
 
-    def _set_lidar_preview(self, clockwise_degrees: float, source: str = "button") -> None:
-        value = max(-180.0, min(180.0, float(clockwise_degrees)))
+    def _set_lidar_axis(self, axis: str, value_degrees: float, source: str) -> None:
+        value = max(-180.0, min(180.0, float(value_degrees)))
+        slider = self.lidar_axis_sliders[axis]
+        degrees = self.lidar_axis_degrees[axis]
         if source != "slider":
-            self.lidar_preview_slider.blockSignals(True)
-            self.lidar_preview_slider.setValue(round(value * 10.0))
-            self.lidar_preview_slider.blockSignals(False)
+            slider.blockSignals(True)
+            slider.setValue(round(value * 10.0))
+            slider.blockSignals(False)
         if source != "spin":
-            self.lidar_preview_degrees.blockSignals(True)
-            self.lidar_preview_degrees.setValue(value)
-            self.lidar_preview_degrees.blockSignals(False)
-        self._bridge.set_lidar_preview_rotation(value)
-        candidate = self._normalize_yaw(
-            self._lidar_saved_yaw_rad - math.radians(value)
+            degrees.blockSignals(True)
+            degrees.setValue(value)
+            degrees.blockSignals(False)
+        self._update_lidar_preview()
+
+    def _current_lidar_rpy(self) -> tuple[float, float, float]:
+        return tuple(
+            math.radians(self.lidar_axis_degrees[axis].value())
+            for axis in ("roll", "pitch", "yaw")
         )
+
+    def _update_lidar_preview(self) -> None:
+        roll, pitch, yaw = self._current_lidar_rpy()
+        self._bridge.set_lidar_preview_rpy(roll, pitch, yaw)
         self.lidar_calibration_status.setText(
-            f"仅预览：向右 {value:+.1f}°；保存后内部 yaw={candidate:.4f} rad"
+            "仅预览 · "
+            f"Roll {math.degrees(roll):+.1f}° / "
+            f"Pitch {math.degrees(pitch):+.1f}° / "
+            f"Yaw {math.degrees(yaw):+.1f}°"
         )
 
     @staticmethod
-    def _normalize_yaw(value: float) -> float:
+    def _normalize_angle(value: float) -> float:
         while value <= -math.pi:
             value += math.tau
         while value > math.pi:
             value -= math.tau
         return value
 
-    def _lidar_config_loaded(self, section: str, data: dict) -> None:
-        if section != "global" or self._lidar_pending_yaw_rad is not None:
-            return
-        value = (
-            data.get("files", {})
-            .get("console", {})
-            .get("LIDAR_MOUNT_YAW_RAD", {})
-            .get("value", "3.14159")
+    def _set_lidar_controls(self, values: tuple[float, float, float]) -> None:
+        for axis, radians_value in zip(("roll", "pitch", "yaw"), values):
+            degrees_value = math.degrees(radians_value)
+            self._set_lidar_axis(axis, degrees_value, source="config")
+
+    def _reset_lidar_preview(self) -> None:
+        self._set_lidar_controls(self._lidar_saved_rpy_rad)
+        self.lidar_calibration_status.setText("已恢复当前保存的三轴方向")
+
+    def _open_lidar_calibration_rviz(self) -> None:
+        self._bridge.set_lidar_calibration_enabled(True)
+        self._update_lidar_preview()
+        self.launch_lidar_calibration_rviz_requested.emit()
+        self.lidar_calibration_status.setText(
+            "RViz2 标定已打开：红色为当前生产点云，绿色为三轴预览点云"
         )
+
+    def _lidar_config_loaded(self, section: str, data: dict) -> None:
+        if section != "global" or self._lidar_pending_rpy_rad is not None:
+            return
+        console = data.get("files", {}).get("console", {})
         try:
-            self._lidar_saved_yaw_rad = self._normalize_yaw(float(value))
+            self._lidar_saved_rpy_rad = tuple(
+                self._normalize_angle(float(console[key].get("value", default)))
+                for key, default in (
+                    ("LIDAR_MOUNT_ROLL_RAD", "0.0"),
+                    ("LIDAR_MOUNT_PITCH_RAD", "1.5708"),
+                    ("LIDAR_MOUNT_YAW_RAD", "3.14159"),
+                )
+            )
         except (TypeError, ValueError):
             self.lidar_calibration_status.setText("Orin 雷达方向配置无效")
             return
-        self._set_lidar_preview(0.0)
+        self._set_lidar_controls(self._lidar_saved_rpy_rad)
         self.lidar_calibration_status.setText(
-            f"已读取当前方向：内部 yaw={self._lidar_saved_yaw_rad:.4f} rad；可拖动预览"
+            "已读取 Orin 当前三轴方向；打开 RViz2 后可实时拖动预览"
         )
 
     def _save_lidar_calibration(self) -> None:
         if self._config_client is None:
             self.lidar_calibration_status.setText("配置通道不可用")
             return
-        clockwise = self.lidar_preview_degrees.value()
-        candidate = self._normalize_yaw(
-            self._lidar_saved_yaw_rad - math.radians(clockwise)
-        )
-        self._lidar_pending_yaw_rad = candidate
+        candidate = tuple(self._normalize_angle(value) for value in self._current_lidar_rpy())
+        self._lidar_pending_rpy_rad = candidate
         self.lidar_save_apply.setEnabled(False)
         self.lidar_calibration_status.setText("正在保存到 Orin 白名单配置…")
         self._config_client.save(
             "global",
-            {"files": {"console": {"LIDAR_MOUNT_YAW_RAD": f"{candidate:.10f}"}}},
+            {
+                "files": {
+                    "console": {
+                        "LIDAR_MOUNT_ROLL_RAD": f"{candidate[0]:.10f}",
+                        "LIDAR_MOUNT_PITCH_RAD": f"{candidate[1]:.10f}",
+                        "LIDAR_MOUNT_YAW_RAD": f"{candidate[2]:.10f}",
+                    }
+                }
+            },
         )
 
     def _lidar_config_saved(self, section: str, _data: dict) -> None:
-        if section != "global" or self._lidar_pending_yaw_rad is None:
+        if section != "global" or self._lidar_pending_rpy_rad is None:
             return
         if self._mode == self.MODE_NAVIGATION:
             self._lidar_restart_pending = True
@@ -538,9 +589,9 @@ class NavigationPage(QWidget):
             self._finish_lidar_apply("已保存；下次启动建图或导航时生效")
 
     def _lidar_config_failed(self, section: str, message: str) -> None:
-        if section != "global" or self._lidar_pending_yaw_rad is None:
+        if section != "global" or self._lidar_pending_rpy_rad is None:
             return
-        self._lidar_pending_yaw_rad = None
+        self._lidar_pending_rpy_rad = None
         self.lidar_save_apply.setEnabled(True)
         self.lidar_calibration_status.setText(f"保存失败：{message}")
 
@@ -555,10 +606,10 @@ class NavigationPage(QWidget):
             self.lidar_calibration_status.setText("方向已保存，但节点重启失败；预览修正仍保留")
 
     def _finish_lidar_apply(self, message: str) -> None:
-        if self._lidar_pending_yaw_rad is not None:
-            self._lidar_saved_yaw_rad = self._lidar_pending_yaw_rad
-        self._lidar_pending_yaw_rad = None
-        self._set_lidar_preview(0.0)
+        if self._lidar_pending_rpy_rad is not None:
+            self._lidar_saved_rpy_rad = self._lidar_pending_rpy_rad
+        self._lidar_pending_rpy_rad = None
+        self._set_lidar_controls(self._lidar_saved_rpy_rad)
         self.lidar_save_apply.setEnabled(True)
         self.lidar_calibration_status.setText(message)
 

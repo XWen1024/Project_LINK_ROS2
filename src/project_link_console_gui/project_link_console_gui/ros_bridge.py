@@ -22,6 +22,35 @@ def _yaw_from_quaternion(quaternion) -> float:
     )
 
 
+def _quaternion_from_rpy(roll: float, pitch: float, yaw: float) -> tuple[float, float, float, float]:
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    return (
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    )
+
+
+def _multiply_quaternions(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    lx, ly, lz, lw = left
+    rx, ry, rz, rw = right
+    return (
+        lw * rx + lx * rw + ly * rz - lz * ry,
+        lw * ry - lx * rz + ly * rw + lz * rx,
+        lw * rz + lx * ry - ly * rx + lz * rw,
+        lw * rw - lx * rx - ly * ry - lz * rz,
+    )
+
+
 class RosBridge(QObject):
     system_state = Signal(dict)
     console_event = Signal(dict)
@@ -61,8 +90,9 @@ class RosBridge(QObject):
         self._connected = False
         self._connection_text = "等待 Orin console agent"
         self._cloud_enabled = False
-        self._lidar_preview_right_rad = 0.0
-        self._last_robot_pose: Pose2D | None = None
+        self._lidar_calibration_enabled = False
+        self._lidar_preview_rpy = (0.0, 1.5708, 3.14159)
+        self._lidar_preview_frame = "project_link_lidar_calibration"
         self._front_camera_lock = threading.Lock()
         self._pending_front_camera: bytes | None = None
         self._front_camera_timer = QTimer(self)
@@ -75,7 +105,7 @@ class RosBridge(QObject):
 
     def start(self) -> None:
         import rclpy
-        from geometry_msgs.msg import PoseStamped
+        from geometry_msgs.msg import PoseStamped, TransformStamped
         from nav2_msgs.action import NavigateToPose
         from nav_msgs.msg import OccupancyGrid, Path
         from project_link_console_interfaces.action import ManageStack, SwitchVoice
@@ -91,7 +121,7 @@ class RosBridge(QObject):
         from sensor_msgs_py import point_cloud2
         from std_msgs.msg import String
         from std_srvs.srv import Trigger
-        from tf2_ros import Buffer, TransformException, TransformListener
+        from tf2_ros import Buffer, TransformBroadcaster, TransformException, TransformListener
 
         self._rclpy = rclpy
         self._teleop_type = TeleopCommand
@@ -101,6 +131,8 @@ class RosBridge(QObject):
         self._trigger_type = Trigger
         self._time_type = Time
         self._point_cloud2 = point_cloud2
+        self._point_cloud_type = PointCloud2
+        self._transform_stamped_type = TransformStamped
         self._parameter_type = Parameter
         self._get_parameters_type = GetParameters
         self._set_parameters_type = SetParameters
@@ -143,7 +175,13 @@ class RosBridge(QObject):
             )
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self._node)
+        self._lidar_preview_tf = TransformBroadcaster(self._node)
         self._transform_exception = TransformException
+        self._lidar_preview_pub = self._node.create_publisher(
+            PointCloud2,
+            "/project_link/lidar_calibration/cloud",
+            qos_profile_sensor_data,
+        )
 
         self._node.create_subscription(
             SystemState, "/project_link/console/system_state", self._on_system_state, 10
@@ -277,25 +315,11 @@ class RosBridge(QObject):
     def set_cloud_enabled(self, enabled: bool) -> None:
         self._cloud_enabled = bool(enabled)
 
-    def set_lidar_preview_rotation(self, clockwise_degrees: float) -> None:
-        self._lidar_preview_right_rad = math.radians(float(clockwise_degrees))
+    def set_lidar_preview_rpy(self, roll: float, pitch: float, yaw: float) -> None:
+        self._lidar_preview_rpy = (float(roll), float(pitch), float(yaw))
 
-    def _apply_lidar_preview(
-        self, points: list[tuple[float, float]]
-    ) -> list[tuple[float, float]]:
-        pose = self._last_robot_pose
-        angle = -self._lidar_preview_right_rad
-        if pose is None or abs(angle) < 1.0e-8:
-            return points
-        cosine = math.cos(angle)
-        sine = math.sin(angle)
-        return [
-            (
-                pose.x + cosine * (x - pose.x) - sine * (y - pose.y),
-                pose.y + sine * (x - pose.x) + cosine * (y - pose.y),
-            )
-            for x, y in points
-        ]
+    def set_lidar_calibration_enabled(self, enabled: bool) -> None:
+        self._lidar_calibration_enabled = bool(enabled)
 
     def _process_commands(self) -> None:
         latest_teleop = None
@@ -751,9 +775,7 @@ class RosBridge(QObject):
             float(translation.y),
             _yaw_from_quaternion(transform.transform.rotation),
         )
-        self.scan_updated.emit(
-            self._apply_lidar_preview(transform_points(local_points, pose))
-        )
+        self.scan_updated.emit(transform_points(local_points, pose))
 
     def _on_path(self, message) -> None:
         self.path_updated.emit(
@@ -761,6 +783,7 @@ class RosBridge(QObject):
         )
 
     def _on_cloud(self, message) -> None:
+        self._publish_lidar_calibration_cloud(message)
         if not self._cloud_enabled:
             return
         transform = None
@@ -794,7 +817,40 @@ class RosBridge(QObject):
             points.append((x, y))
             if len(points) >= 4000:
                 break
-        self.cloud_updated.emit(self._apply_lidar_preview(points))
+        self.cloud_updated.emit(points)
+
+    def _publish_lidar_calibration_cloud(self, message) -> None:
+        if not self._lidar_calibration_enabled:
+            return
+        roll, pitch, yaw = self._lidar_preview_rpy
+        mount = _quaternion_from_rpy(roll, pitch, yaw)
+        driver = _quaternion_from_rpy(math.pi, 0.0, 2.0112063268)
+        qx, qy, qz, qw = _multiply_quaternions(mount, driver)
+        transform = self._transform_stamped_type()
+        transform.header.stamp = message.header.stamp
+        transform.header.frame_id = "base_link"
+        transform.child_frame_id = self._lidar_preview_frame
+        transform.transform.translation.x = 0.190
+        transform.transform.translation.y = 0.0
+        transform.transform.translation.z = 0.550
+        transform.transform.rotation.x = qx
+        transform.transform.rotation.y = qy
+        transform.transform.rotation.z = qz
+        transform.transform.rotation.w = qw
+        self._lidar_preview_tf.sendTransform(transform)
+
+        preview = self._point_cloud_type()
+        preview.header.stamp = message.header.stamp
+        preview.header.frame_id = self._lidar_preview_frame
+        preview.height = message.height
+        preview.width = message.width
+        preview.fields = message.fields
+        preview.is_bigendian = message.is_bigendian
+        preview.point_step = message.point_step
+        preview.row_step = message.row_step
+        preview.data = message.data
+        preview.is_dense = message.is_dense
+        self._lidar_preview_pub.publish(preview)
 
     def _publish_robot_pose(self) -> None:
         try:
@@ -802,13 +858,13 @@ class RosBridge(QObject):
         except self._transform_exception:
             return
         translation = transform.transform.translation
-        pose = Pose2D(
-            float(translation.x),
-            float(translation.y),
-            _yaw_from_quaternion(transform.transform.rotation),
+        self.robot_updated.emit(
+            Pose2D(
+                float(translation.x),
+                float(translation.y),
+                _yaw_from_quaternion(transform.transform.rotation),
+            )
         )
-        self._last_robot_pose = pose
-        self.robot_updated.emit(pose)
 
     def stop(self) -> None:
         self._front_camera_timer.stop()

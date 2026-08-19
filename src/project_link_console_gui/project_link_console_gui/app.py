@@ -208,6 +208,9 @@ class ConsoleWindow(QMainWindow):
         self.navigation.setCurrentRow(0)
         self.advanced_toggle.toggled.connect(self._set_advanced)
         self.navigation_page.launch_rviz_requested.connect(self._launch_rviz)
+        self.navigation_page.launch_lidar_calibration_rviz_requested.connect(
+            self._launch_lidar_calibration_rviz
+        )
 
         bridge.connection_changed.connect(self._connection_changed)
         bridge.system_state.connect(self._system_state_changed)
@@ -408,11 +411,21 @@ class ConsoleWindow(QMainWindow):
         self.log.appendPlainText(f"{timestamp}  {message}")
 
     def _launch_rviz(self) -> None:
+        self._launch_rviz_config("console.rviz")
+
+    def _launch_lidar_calibration_rviz(self) -> None:
+        self._launch_rviz_config("lidar_calibration.rviz")
+
+    def _launch_rviz_config(self, config_name: str) -> None:
         arguments: list[str] = []
         try:
             from ament_index_python.packages import get_package_share_directory
 
-            config = Path(get_package_share_directory("project_link_console_gui")) / "config" / "console.rviz"
+            config = (
+                Path(get_package_share_directory("project_link_console_gui"))
+                / "config"
+                / config_name
+            )
             if config.is_file():
                 arguments = ["-d", str(config)]
         except Exception:

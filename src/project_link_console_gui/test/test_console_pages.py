@@ -59,11 +59,15 @@ def test_lidar_direction_calibration_is_preview_first_and_allowlisted():
     ).read_text(encoding="utf-8")
     assert 'QGroupBox("雷达方向可视化标定")' in page
     assert 'QPushButton("保存并应用方向")' in page
-    assert "set_lidar_preview_rotation" in page
+    assert "set_lidar_preview_rpy" in page
+    assert '"LIDAR_MOUNT_ROLL_RAD"' in page
+    assert '"LIDAR_MOUNT_PITCH_RAD"' in page
     assert '"LIDAR_MOUNT_YAW_RAD"' in page
     assert '"/unilidar/cloud"' in bridge
+    assert '"/project_link/lidar_calibration/cloud"' in bridge
     assert '"LIDAR_MOUNT_YAW_RAD": False' in helper
-    assert "lidar_mount_yaw_out_of_range" in helper
+    assert "lidar_mount_angle_out_of_range" in helper
+    assert "lidar_calibration.rviz" in _source("app.py")
 
 
 def test_navigation_lifecycle_has_chinese_status_and_progress_dialog():

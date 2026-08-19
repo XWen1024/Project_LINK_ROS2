@@ -44,6 +44,8 @@ def generate_launch_description():
     det_range = LaunchConfiguration("det_range")
     enable_slam_toolbox = LaunchConfiguration("enable_slam_toolbox")
     use_imu_as_input = LaunchConfiguration("use_imu_as_input")
+    lidar_mount_roll_rad = LaunchConfiguration("lidar_mount_roll_rad")
+    lidar_mount_pitch_rad = LaunchConfiguration("lidar_mount_pitch_rad")
     lidar_mount_yaw_rad = LaunchConfiguration("lidar_mount_yaw_rad")
     point_lio_node = Node(
         package="point_lio",
@@ -88,6 +90,12 @@ def generate_launch_description():
         parameters=[
             projection_config_file,
             {
+                "lidar_mount_roll": ParameterValue(
+                    lidar_mount_roll_rad, value_type=float
+                ),
+                "lidar_mount_pitch": ParameterValue(
+                    lidar_mount_pitch_rad, value_type=float
+                ),
                 "lidar_mount_yaw_rad": ParameterValue(
                     lidar_mount_yaw_rad, value_type=float
                 )
@@ -144,6 +152,16 @@ def generate_launch_description():
                 "projection_config_file",
                 default_value=default_projection_config,
                 description="Planar Point-LIO base projection configuration.",
+            ),
+            DeclareLaunchArgument(
+                "lidar_mount_roll_rad",
+                default_value="0.0",
+                description="Calibrated chassis-to-lidar mounting roll in radians.",
+            ),
+            DeclareLaunchArgument(
+                "lidar_mount_pitch_rad",
+                default_value="1.5708",
+                description="Calibrated chassis-to-lidar mounting pitch in radians.",
             ),
             DeclareLaunchArgument(
                 "lidar_mount_yaw_rad",

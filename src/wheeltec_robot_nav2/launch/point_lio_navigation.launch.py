@@ -12,11 +12,10 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from nav2_common.launch import RewrittenYaml
-from launch_ros.actions import SetRemap
 
 
 def generate_launch_description():
@@ -60,27 +59,18 @@ def generate_launch_description():
             DeclareLaunchArgument("autostart", default_value="true"),
             DeclareLaunchArgument("use_respawn", default_value="false"),
             DeclareLaunchArgument("log_level", default_value="info"),
-            GroupAction(
-                [
-                    # Controller and recovery behaviors share the bounded Nav2
-                    # input. Only velocity_smoother may publish final /cmd_vel.
-                    SetRemap(src="cmd_vel", dst="cmd_vel_nav"),
-                    IncludeLaunchDescription(
-                        PythonLaunchDescriptionSource(
-                            os.path.join(
-                                nav2_bringup_dir, "launch", "navigation_launch.py"
-                            )
-                        ),
-                        launch_arguments={
-                            "use_sim_time": use_sim_time,
-                            "params_file": configured_params,
-                            "autostart": autostart,
-                            "use_composition": "False",
-                            "use_respawn": use_respawn,
-                            "log_level": log_level,
-                        }.items(),
-                    ),
-                ]
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(nav2_bringup_dir, "launch", "navigation_launch.py")
+                ),
+                launch_arguments={
+                    "use_sim_time": use_sim_time,
+                    "params_file": configured_params,
+                    "autostart": autostart,
+                    "use_composition": "False",
+                    "use_respawn": use_respawn,
+                    "log_level": log_level,
+                }.items(),
             ),
         ]
     )

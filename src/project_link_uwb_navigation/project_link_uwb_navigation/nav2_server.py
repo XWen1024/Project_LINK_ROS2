@@ -144,7 +144,7 @@ class UwbNav2Server(Node):
         self.declare_parameter("sensor_translation_x_m", 0.0)
         self.declare_parameter("sensor_translation_y_m", 0.0)
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
-        self.declare_parameter("allowed_cmd_vel_publishers", ["velocity_smoother"])
+        self.declare_parameter("allowed_cmd_vel_publishers", ["velocity_smoother", "behavior_server"])
 
     def _policy_config(self) -> PolicyConfig:
         return PolicyConfig(

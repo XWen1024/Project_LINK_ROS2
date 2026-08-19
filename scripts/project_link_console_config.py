@@ -74,6 +74,8 @@ ENV_FILES = {
             "UNILIDAR_WS": False,
             "CHASSIS_DEVICE": False,
             "UNILIDAR_PORT": False,
+            "LIDAR_MOUNT_ROLL_RAD": False,
+            "LIDAR_MOUNT_PITCH_RAD": False,
             "LIDAR_MOUNT_YAW_RAD": False,
             "FRONT_CAMERA_DEVICE": False,
             "FRONT_CAMERA_ROTATION_DEGREES": False,
@@ -134,6 +136,8 @@ ENV_DEFAULTS = {
         "UNILIDAR_WS": "/home/wte/unilidar_sdk/unitree_lidar_ros2",
         "CHASSIS_DEVICE": "/dev/project_link_chassis",
         "UNILIDAR_PORT": "/dev/project_link_lidar",
+        "LIDAR_MOUNT_ROLL_RAD": "0.0",
+        "LIDAR_MOUNT_PITCH_RAD": "1.5708",
         "LIDAR_MOUNT_YAW_RAD": "3.14159",
         "FRONT_CAMERA_DEVICE": "/dev/project_link_front_camera",
         "FRONT_CAMERA_ROTATION_DEGREES": "0",
@@ -361,13 +365,17 @@ def set_global(payload: dict[str, Any]) -> dict[str, Any]:
             text = str(value).strip()
             if len(text) > 4096 or "\n" in text or "\r" in text:
                 raise ValueError(f"invalid_env_value:{key}")
-            if key == "LIDAR_MOUNT_YAW_RAD":
+            if key in {
+                "LIDAR_MOUNT_ROLL_RAD",
+                "LIDAR_MOUNT_PITCH_RAD",
+                "LIDAR_MOUNT_YAW_RAD",
+            }:
                 try:
                     yaw = float(text)
                 except ValueError as exc:
-                    raise ValueError("invalid_lidar_mount_yaw") from exc
+                    raise ValueError(f"invalid_lidar_mount_angle:{key}") from exc
                 if not math.isfinite(yaw) or not -3.1415926536 <= yaw <= 3.1415926536:
-                    raise ValueError("lidar_mount_yaw_out_of_range")
+                    raise ValueError(f"lidar_mount_angle_out_of_range:{key}")
             values[key] = text
         write_env(path, values, shell_export=name != "console")
     return {"success": True, "restart_required": True}

@@ -15,6 +15,8 @@ def generate_launch_description():
         "patrol_robot.urdf.xacro",
     )
     urdf_xacro = LaunchConfiguration("urdf_xacro")
+    lidar_mount_roll_rad = LaunchConfiguration("lidar_mount_roll_rad")
+    lidar_mount_pitch_rad = LaunchConfiguration("lidar_mount_pitch_rad")
     lidar_mount_yaw_rad = LaunchConfiguration("lidar_mount_yaw_rad")
 
     return LaunchDescription([
@@ -22,6 +24,16 @@ def generate_launch_description():
             "urdf_xacro",
             default_value=default_xacro,
             description="Canonical Project LINK robot xacro file.",
+        ),
+        DeclareLaunchArgument(
+            "lidar_mount_roll_rad",
+            default_value="0.0",
+            description="Calibrated chassis-to-lidar mounting roll in radians.",
+        ),
+        DeclareLaunchArgument(
+            "lidar_mount_pitch_rad",
+            default_value="1.5708",
+            description="Calibrated chassis-to-lidar mounting pitch in radians.",
         ),
         DeclareLaunchArgument(
             "lidar_mount_yaw_rad",
@@ -39,6 +51,10 @@ def generate_launch_description():
                         Command([
                             "xacro ",
                             urdf_xacro,
+                            " lidar_mount_roll_rad:=",
+                            lidar_mount_roll_rad,
+                            " lidar_mount_pitch_rad:=",
+                            lidar_mount_pitch_rad,
                             " lidar_mount_yaw_rad:=",
                             lidar_mount_yaw_rad,
                         ]),

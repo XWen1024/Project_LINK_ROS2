@@ -1,4 +1,5 @@
 import os
+import math
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -75,12 +76,17 @@ def test_lidar_calibration_slider_only_changes_demo_preview():
     page = window.navigation_page
 
     page.set_advanced(True)
-    page.lidar_preview_degrees.setValue(37.5)
-    assert page.lidar_preview_slider.value() == 375
+    page.lidar_axis_degrees["roll"].setValue(4.5)
+    page.lidar_axis_degrees["pitch"].setValue(82.0)
+    page.lidar_axis_degrees["yaw"].setValue(137.5)
+    assert page.lidar_axis_sliders["roll"].value() == 45
+    assert page.lidar_axis_sliders["pitch"].value() == 820
+    assert page.lidar_axis_sliders["yaw"].value() == 1375
     assert "仅预览" in page.lidar_calibration_status.text()
-    assert bridge._lidar_preview_right_rad > 0.0
+    assert bridge._lidar_preview_rpy[0] > 0.0
 
     page.lidar_reset_preview.click()
-    assert page.lidar_preview_degrees.value() == 0.0
-    assert bridge._lidar_preview_right_rad == 0.0
+    assert page.lidar_axis_degrees["roll"].value() == 0.0
+    assert math.isclose(page.lidar_axis_degrees["pitch"].value(), 90.0002, abs_tol=0.1)
+    assert math.isclose(abs(page.lidar_axis_degrees["yaw"].value()), 180.0, abs_tol=0.1)
     window.close()
