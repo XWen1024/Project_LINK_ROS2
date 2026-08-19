@@ -204,7 +204,11 @@ class NavigationPage(QWidget):
         self._last_state: dict = {}
         self._progress_dialog: StackProgressDialog | None = None
         self._camera_frames: deque[float] = deque(maxlen=120)
-        self._lidar_saved_rpy_rad = (0.0, 1.5708, math.pi)
+        self._lidar_saved_rpy_rad = (
+            -math.pi / 2.0,
+            -0.0383972435,
+            math.pi / 2.0,
+        )
         self._lidar_pending_rpy_rad: tuple[float, float, float] | None = None
         self._lidar_restart_pending = False
 
@@ -540,9 +544,9 @@ class NavigationPage(QWidget):
             self._lidar_saved_rpy_rad = tuple(
                 self._normalize_angle(float(console[key].get("value", default)))
                 for key, default in (
-                    ("LIDAR_MOUNT_ROLL_RAD", "0.0"),
-                    ("LIDAR_MOUNT_PITCH_RAD", "1.5708"),
-                    ("LIDAR_MOUNT_YAW_RAD", "3.14159"),
+                    ("LIDAR_MOUNT_ROLL_RAD", "-1.5707963268"),
+                    ("LIDAR_MOUNT_PITCH_RAD", "-0.0383972435"),
+                    ("LIDAR_MOUNT_YAW_RAD", "1.5707963268"),
                 )
             )
         except (TypeError, ValueError):

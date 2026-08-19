@@ -64,6 +64,12 @@ are evidence snapshots, not current operating instructions.
   `/dev/project_link_lidar`, `/dev/project_link_so101` and
   `/dev/project_link_wakeup`. Exact USB identities and host MAC addresses are
   recorded in `configs/hardware/orin-production.yaml`.
+- The verified Unitree L1 chassis mount calibration is roll
+  `-1.5707963268 rad`, pitch `-0.0383972435 rad`, yaw `1.5707963268 rad`.
+  The canonical translation remains `x=0.190 m`, `y=0.000 m`, `z=0.550 m`.
+  Keep these values synchronized across the canonical xacro, Point-LIO planar
+  projection, console preview and systemd defaults; runtime overrides live in
+  the allowlisted Orin `console.env`.
 - Udev must match exact USB serials. A VID/PID-only chassis rule is forbidden:
   the voice wake board shares `1a86:55d4` and can otherwise be misidentified as
   the motor controller.

@@ -27,17 +27,17 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "lidar_mount_roll_rad",
-            default_value="0.0",
+            default_value="-1.5707963268",
             description="Calibrated chassis-to-lidar mounting roll in radians.",
         ),
         DeclareLaunchArgument(
             "lidar_mount_pitch_rad",
-            default_value="1.5708",
+            default_value="-0.0383972435",
             description="Calibrated chassis-to-lidar mounting pitch in radians.",
         ),
         DeclareLaunchArgument(
             "lidar_mount_yaw_rad",
-            default_value="3.14159",
+            default_value="1.5707963268",
             description="Calibrated chassis-to-lidar mounting yaw in radians.",
         ),
         Node(

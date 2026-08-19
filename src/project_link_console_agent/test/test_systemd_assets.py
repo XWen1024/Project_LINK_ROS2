@@ -99,16 +99,16 @@ def test_lidar_mount_yaw_is_allowlisted_and_shared_by_tf_and_lio_projection():
     component = (
         REPOSITORY_ROOT / "deploy" / "systemd" / "bin" / "project-link-component"
     ).read_text(encoding="utf-8")
-    assert '<xacro:arg name="lidar_mount_roll_rad" default="0.0"/>' in urdf
-    assert '<xacro:arg name="lidar_mount_pitch_rad" default="1.5708"/>' in urdf
-    assert '<xacro:arg name="lidar_mount_yaw_rad" default="3.14159"/>' in urdf
+    assert '<xacro:arg name="lidar_mount_roll_rad" default="-1.5707963268"/>' in urdf
+    assert '<xacro:arg name="lidar_mount_pitch_rad" default="-0.0383972435"/>' in urdf
+    assert '<xacro:arg name="lidar_mount_yaw_rad" default="1.5707963268"/>' in urdf
     assert '$(arg lidar_mount_roll_rad)' in urdf
     assert '$(arg lidar_mount_pitch_rad)' in urdf
     assert '$(arg lidar_mount_yaw_rad)' in urdf
     assert "derive_lio_to_base_from_mount: true" in projection
-    assert 'lidar_mount_roll_rad:="${LIDAR_MOUNT_ROLL_RAD:-0.0}"' in component
-    assert 'lidar_mount_pitch_rad:="${LIDAR_MOUNT_PITCH_RAD:-1.5708}"' in component
-    assert 'lidar_mount_yaw_rad:="${LIDAR_MOUNT_YAW_RAD:-3.14159}"' in component
+    assert 'lidar_mount_roll_rad:="${LIDAR_MOUNT_ROLL_RAD:--1.5707963268}"' in component
+    assert 'lidar_mount_pitch_rad:="${LIDAR_MOUNT_PITCH_RAD:--0.0383972435}"' in component
+    assert 'lidar_mount_yaw_rad:="${LIDAR_MOUNT_YAW_RAD:-1.5707963268}"' in component
 
 
 def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():

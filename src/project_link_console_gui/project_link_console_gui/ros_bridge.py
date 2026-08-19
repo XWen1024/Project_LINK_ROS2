@@ -91,7 +91,7 @@ class RosBridge(QObject):
         self._connection_text = "等待 Orin console agent"
         self._cloud_enabled = False
         self._lidar_calibration_enabled = False
-        self._lidar_preview_rpy = (0.0, 1.5708, 3.14159)
+        self._lidar_preview_rpy = (-1.5707963268, -0.0383972435, 1.5707963268)
         self._lidar_preview_frame = "project_link_lidar_calibration"
         self._front_camera_lock = threading.Lock()
         self._pending_front_camera: bytes | None = None

@@ -11,7 +11,9 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
 
 - Canonical branch: `main`; no active feature or experiment branches.
 - Navigation: supervised Point-LIO Phase B, slam_toolbox and Nav2 stack is the
-  primary route; rf2o remains a fallback.
+  primary route; rf2o remains a fallback. The Unitree L1 mount is calibrated to
+  roll `-90°`, pitch `-2.2°`, yaw `90°`, with the production and console-preview
+  point clouds verified to overlap.
 - Manipulation: headless YOLO World + SO-101 + optional ToF with Ubuntu remote GUI.
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
   but must never run simultaneously.

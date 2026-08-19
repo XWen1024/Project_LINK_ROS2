@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="patrol_robot_vertical">
 
-  <xacro:arg name="lidar_mount_roll_rad" default="0.0"/>
-  <xacro:arg name="lidar_mount_pitch_rad" default="1.5708"/>
-  <xacro:arg name="lidar_mount_yaw_rad" default="3.14159"/>
+  <xacro:arg name="lidar_mount_roll_rad" default="-1.5707963268"/>
+  <xacro:arg name="lidar_mount_pitch_rad" default="-0.0383972435"/>
+  <xacro:arg name="lidar_mount_yaw_rad" default="1.5707963268"/>
 
   <!-- Conservative measured outer envelope, including protruding hardware. -->
   <xacro:property name="base_length" value="0.510"/>

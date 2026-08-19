@@ -49,10 +49,12 @@ public:
       const double lidar_offset_x = declare_parameter<double>("lidar_offset_x", 0.190);
       const double lidar_offset_y = declare_parameter<double>("lidar_offset_y", 0.0);
       const double lidar_offset_z = declare_parameter<double>("lidar_offset_z", 0.550);
-      const double lidar_mount_roll = declare_parameter<double>("lidar_mount_roll", 0.0);
-      const double lidar_mount_pitch = declare_parameter<double>("lidar_mount_pitch", 1.5708);
+      const double lidar_mount_roll =
+        declare_parameter<double>("lidar_mount_roll", -1.5707963268);
+      const double lidar_mount_pitch =
+        declare_parameter<double>("lidar_mount_pitch", -0.0383972435);
       const double lidar_mount_yaw =
-        declare_parameter<double>("lidar_mount_yaw_rad", 3.14159);
+        declare_parameter<double>("lidar_mount_yaw_rad", 1.5707963268);
       const double lidar_driver_roll = declare_parameter<double>("lidar_driver_roll", 3.14159);
       const double lidar_driver_pitch = declare_parameter<double>("lidar_driver_pitch", 0.0);
       const double lidar_driver_yaw =

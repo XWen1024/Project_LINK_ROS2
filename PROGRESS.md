@@ -1,6 +1,6 @@
 # Project LINK Progress
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 Canonical branch: `main`
 
 ## Current Milestone
@@ -97,6 +97,12 @@ Archive tags:
   voltage was `23.98 V`, `/cmd_vel` had zero publishers, Unitree L1 cloud was
   about `9.1-9.2 Hz`, L1 IMU about `238 Hz`, and the arm camera captured a frame.
   SO-101 was identity-checked only; no torque or motion command was sent.
+- Unitree L1 three-axis installation calibration was completed from a stationary
+  cloud using the physical constraints that raw forward maps to chassis `+X`
+  and the measured floor lies at `z≈0`. The saved mount is roll `-90°`, pitch
+  `-2.2°`, yaw `90°`; red production and green preview clouds overlap in RViz2.
+  The mapping target, Point-LIO, `/odom_lio`, `/scan_accumulated` and `/map`
+  returned ready without publishing velocity or sending a navigation goal.
 - The front-camera path now uses native 1280x720 MJPEG pass-through at about
   `29.8 FPS`. Fixed exposure `300` and gain `32` preserve that rate; the navigation
   page exposes runtime automatic/manual exposure controls only in advanced mode.
