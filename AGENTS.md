@@ -11,8 +11,11 @@ context belongs in `docs/modules/`; historical context belongs in `docs/archive/
   1. Build and verify the console interfaces, agent and GUI on Ubuntu/Orin.
   2. Install precise production hardware aliases and validate every connected device without motion.
   3. Add the Orin-owned front-camera stream to the navigation page.
-  4. Replace direct cross-machine Wi-Fi DDS with DDS Router over an SSH tunnel.
-  5. Complete one repeatable Qwen Realtime to Nav2 field loop.
+  4. Use verified native DDS Peer on domain 42 for the MVP while lifecycle,
+     configuration and secrets continue over SSH.
+  5. Replace the failed DDS Router WAN experiment with a typed, allowlisted
+     console bridge over an SSH tunnel after the MVP field loop.
+  6. Complete one repeatable Qwen Realtime to Nav2 field loop.
 - UWB is outside the current MVP. Keep its code and archived evidence, but hide
   the console page by default and do not spend MVP validation time on it.
 - Keep existing scripts as fallback until systemd passes two complete supervised
@@ -46,10 +49,13 @@ are evidence snapshots, not current operating instructions.
   Ubuntu Humble build has no `rclpy.parameter_client`; GUI parameter access uses
   explicit `rcl_interfaces/srv/GetParameters` and `SetParameters` clients. Do
   not reintroduce a newer-distro import without verifying it on `ssh seewo`.
-- Both computers use ROS 2 Humble. Orin robot services remain on domain 42.
-  The production Ubuntu console runs on domain 142 and reaches domain 42 only
-  through the loopback DDS Router + SSH tunnel. Direct Ubuntu domain-42 DDS is
-  a temporary compatibility fallback until the transport field gate is complete.
+- Both computers use ROS 2 Humble. The current MVP uses native DDS Peer on
+  domain 42 for ROS topics, services and actions; SSH separately owns lifecycle,
+  configuration and secrets. DDS Router domain 142/42 assets remain an explicit
+  experiment only: 2026-08-19 field validation could establish the SSH tunnel
+  and loopback listeners but could not pass a typed ROS endpoint across the WAN
+  participants. Do not enable it as the default console path without a new
+  successful end-to-end gate.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
 - The production cameras have separate roles: `/dev/project_link_front_camera`
   is the chassis-front preview and `/dev/project_link_arm_camera` is the
@@ -150,6 +156,11 @@ are evidence snapshots, not current operating instructions.
   generalizable, update this file or the relevant runbook in the same coherent
   change so future agents use the proven command pattern. Do not document one-off
   noise that has no reusable lesson.
+- ROS 2 CLI daemon state is keyed by domain/local-discovery assumptions. After
+  changing `ROS_DOMAIN_ID` or `ROS_LOCALHOST_ONLY`, stop the stale daemon with
+  `ros2 daemon stop` before readiness checks, or use the verb's `--no-daemon`
+  option. A stale daemon can report missing topics or `!rclpy.ok()` even while
+  the target node is healthy.
 - Orin Python ROS packages in this repository must be built with normal colcon
   installation unless the package is already proven editable-safe. The installed
   setuptools rejects ament's `--editable` path for packages such as

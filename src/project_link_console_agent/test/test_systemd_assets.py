@@ -55,6 +55,13 @@ def test_console_agent_unit_retries_ros_discovery_before_ready():
     assert "project-link-wait topic /project_link/console/system_state 20" in unit
 
 
+def test_topic_readiness_ignores_stale_ros2_cli_daemon_state():
+    wait_helper = (DEPLOY_ROOT / "bin" / "project-link-wait").read_text(
+        encoding="utf-8"
+    )
+    assert "ros2 topic echo --no-daemon --once" in wait_helper
+
+
 def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():
     component = (DEPLOY_ROOT / "bin" / "project-link-component").read_text(encoding="utf-8")
     assert "PROJECT_LINK_VOICE_PROFILE" in component

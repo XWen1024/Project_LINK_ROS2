@@ -14,8 +14,13 @@ def test_dds_router_versions_are_commit_locked_and_user_isolated():
     assert ".local/opt/project-link-dds-router/2.2.0" in versions
     assert "git -C \"$path\" checkout --detach \"$commit\"" in build
     assert "sudo" not in build
+    assert "PROJECT_LINK_ENABLE_EXPERIMENTAL_DDS_ROUTER" in launcher
+    assert "ROS_DOMAIN_ID=\"${PROJECT_LINK_CONSOLE_DOMAIN_ID:-42}\"" in launcher
     assert "ROS_DOMAIN_ID=\"${PROJECT_LINK_CONSOLE_DOMAIN_ID:-142}\"" in launcher
     assert "project-link-dds-router-ubuntu.service" in launcher
+    assert launcher.index("PROJECT_LINK_ENABLE_EXPERIMENTAL_DDS_ROUTER") < launcher.index(
+        "systemctl --user start project-link-dds-router-ubuntu.service"
+    )
 
 
 def test_transport_is_loopback_tcp_domain_isolated_and_uwb_free():

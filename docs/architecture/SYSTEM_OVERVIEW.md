@@ -9,13 +9,9 @@ Nano owns hardware access and robot control. The Ubuntu 22.04 laptop owns all
 operator rendering and GUI interaction.
 
 ```text
-Ubuntu laptop: PySide6 console and ROS domain 142
-        |
-Ubuntu DDS Router -> TCP 127.0.0.1:11666
-        |
-SSH LocalForward (authentication, encryption, reconnect)
-        |
-Orin DDS Router <- TCP 127.0.0.1:11666
+Ubuntu laptop: PySide6 console, ROS domain 42 for the MVP
+        | native DDS Peer for ROS Topic / Service / Action
+        | SSH for lifecycle, configuration and secrets
         v
 Jetson Orin Nano: ROS domain 42
   base + lidar + Point-LIO + slam_toolbox + Nav2
@@ -31,9 +27,18 @@ Orin publishes the chassis-front camera as `/front_camera/image/compressed` and
 the independent arm camera as `/visual_grasp/image/compressed`. Ubuntu only
 decodes and renders these streams; it never opens either V4L2 device.
 
-Router participants are restricted with `whitelist-interfaces` to loopback. The
-Orin listener was verified as `127.0.0.1:11666`, not `0.0.0.0`. UWB and raw
-high-bandwidth Point-LIO/lidar streams are excluded from the MVP allowlist.
+The Android fall guard talks directly to the Orin's authenticated LAN HTTP
+gateway. Its first production gate is static and no-motion: SQLite event state,
+the shared `/front_camera/capture_still` service, local YOLO pose selection,
+SiliconFlow VLM and a single bound WeChat contact. This stack does not start
+Nav2 and never publishes `/cmd_vel`.
+
+The source-locked DDS Router experiment remains under `deploy/dds-router/` but is
+not production-enabled. On 2026-08-19 both binaries, loopback listeners, SSH
+forwarding and typed endpoint probes were verified individually, yet no ROS
+endpoint crossed the WAN participants. The MVP therefore keeps the already
+working native DDS Peer path. The planned robust replacement is a typed,
+allowlisted console bridge over SSH with explicit reconnect/state resync.
 
 ## Operator Access
 

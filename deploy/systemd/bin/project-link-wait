@@ -14,7 +14,7 @@ deadline=$((SECONDS + timeout_sec))
 while (( SECONDS < deadline )); do
   case "$kind" in
     topic)
-      if timeout 3 ros2 topic echo --once "$name" >/dev/null 2>&1; then
+      if timeout 3 ros2 topic echo --no-daemon --once "$name" >/dev/null 2>&1; then
         echo "Ready topic: $name"
         exit 0
       fi
