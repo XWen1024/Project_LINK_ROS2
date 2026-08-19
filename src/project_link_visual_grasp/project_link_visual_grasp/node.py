@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import csv
 from collections import deque
+import json
+import shutil
 import socket
 from pathlib import Path
 from statistics import median
+import subprocess
+import threading
 import time
 from typing import Any
 
@@ -18,11 +22,13 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Range
+from std_msgs.msg import String
 from std_srvs.srv import SetBool, Trigger
 from wheeltec_robot_msg.action import TrackAndGrasp
 from wheeltec_robot_msg.msg import VisualGraspStatus
 from wheeltec_robot_msg.srv import SetGripper, SetTarget
 
+from .camera import native_mjpeg_command, pop_native_jpeg
 from .core import (
     ALL_JOINTS,
     Detection,
@@ -40,8 +46,10 @@ PARAMETER_DEFAULTS: dict[str, Any] = {
     "camera_device": "/dev/project_link_arm_camera",
     "camera_width": 1280,
     "camera_height": 720,
-    "camera_fps": 15.0,
-    "preview_fps": 10.0,
+    "camera_fps": 30.0,
+    "preview_fps": 30.0,
+    "prefer_native_mjpeg": True,
+    "camera_reopen_interval_sec": 2.0,
     "jpeg_quality": 75,
     "model_path": "/home/wte/models/yolov8s-worldv2.pt",
     "yolo_conf_threshold": 0.15,
@@ -143,10 +151,22 @@ class VisualGraspNode(Node):
         self._host = socket.gethostname()
         self._ip = self._local_ip()
         self._camera: Any = None
+        self._native_process: subprocess.Popen[bytes] | None = None
+        self._capture_thread: threading.Thread | None = None
+        self._capture_stop = threading.Event()
+        self._frame_lock = threading.Lock()
+        self._latest_frame: Any = None
+        self._latest_jpeg: bytes | None = None
+        self._latest_capture_sequence = 0
+        self._latest_capture_monotonic = 0.0
+        self._capture_times: deque[float] = deque(maxlen=120)
+        self._last_tracking_sequence = 0
+        self._last_preview_sequence = 0
+        self._last_preview_time = 0.0
+        self._capture_mode = "starting"
         self._camera_ready = False
         self._frame_size = (int(self._values["camera_width"]), int(self._values["camera_height"]))
         self._last_detection: Detection | None = None
-        self._last_preview_time = 0.0
         self._last_message = "Starting"
         self._tof_samples = deque(maxlen=int(self._values["tof_filter_window"]))
         self._tof_last_monotonic: float | None = None
@@ -166,7 +186,16 @@ class VisualGraspNode(Node):
             self._connect_arm()
 
         image_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
-        self._image_pub = self.create_publisher(CompressedImage, "/visual_grasp/image/compressed", image_qos)
+        self._image_pub = self.create_publisher(
+            CompressedImage,
+            "/visual_grasp/image/compressed",
+            image_qos,
+        )
+        self._camera_status_pub = self.create_publisher(
+            String,
+            "/visual_grasp/camera_status",
+            10,
+        )
         self._status_pub = self.create_publisher(VisualGraspStatus, "/visual_grasp/status", 10)
         self._discovery_pub = self.create_publisher(
             VisualGraspStatus,
@@ -185,7 +214,10 @@ class VisualGraspNode(Node):
         )
         period = 1.0 / max(float(self._values["move_fps"]), 1.0)
         self._tick_timer = self.create_timer(period, self._tick)
+        preview_period = 0.5 / max(float(self._values["preview_fps"]), 1.0)
+        self._preview_timer = self.create_timer(preview_period, self._publish_preview)
         self._status_timer = self.create_timer(0.5, self._publish_status)
+        self._camera_status_timer = self.create_timer(1.0, self._publish_camera_status)
         self._calibration_timer = self.create_timer(0.05, self._arm.calibration_sample)
         self.get_logger().info("Visual grasp node started without GUI")
 
@@ -205,6 +237,9 @@ class VisualGraspNode(Node):
             if parameter.name in {
                 "camera_width",
                 "camera_height",
+                "camera_fps",
+                "preview_fps",
+                "camera_reopen_interval_sec",
                 "jpeg_quality",
                 "tof_filter_window",
                 "tof_min_valid_samples",
@@ -251,8 +286,21 @@ class VisualGraspNode(Node):
         if hasattr(self, "_tracker"):
             self._tracker.update_config(changed)
             self._controller.update_config(changed)
-            if {"camera_device", "camera_width", "camera_height", "camera_fps"} & changed.keys():
+            if {
+                "camera_device",
+                "camera_width",
+                "camera_height",
+                "camera_fps",
+                "prefer_native_mjpeg",
+            } & changed.keys():
                 self._reopen_camera()
+            if "preview_fps" in changed and hasattr(self, "_preview_timer"):
+                self.destroy_timer(self._preview_timer)
+                preview_period = 0.5 / max(float(self._values["preview_fps"]), 1.0)
+                self._preview_timer = self.create_timer(
+                    preview_period,
+                    self._publish_preview,
+                )
             if "tof_filter_window" in changed:
                 existing = list(self._tof_samples)
                 self._tof_samples = deque(
@@ -549,95 +597,251 @@ class VisualGraspNode(Node):
         return result
 
     def _open_camera(self) -> None:
+        stop_event = threading.Event()
+        self._capture_stop = stop_event
+        self._camera_ready = False
+        self._capture_mode = "starting"
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop,
+            args=(stop_event,),
+            name="visual-grasp-camera",
+            daemon=True,
+        )
+        self._capture_thread.start()
+
+    def _capture_loop(self, stop_event: threading.Event) -> None:
+        native_allowed = bool(self._values["prefer_native_mjpeg"])
+        native_allowed = native_allowed and shutil.which("v4l2-ctl") is not None
+        if native_allowed:
+            try:
+                self._native_mjpeg_loop(stop_event)
+                return
+            except Exception as exc:
+                if not stop_event.is_set():
+                    self.get_logger().warning(
+                        f"Native arm-camera MJPEG failed; using OpenCV fallback: {exc}"
+                    )
+        if not stop_event.is_set():
+            self._decoded_capture_loop(stop_event)
+
+    def _native_mjpeg_loop(self, stop_event: threading.Event) -> None:
+        device = str(self._values["camera_device"])
+        width = int(self._values["camera_width"])
+        height = int(self._values["camera_height"])
+        fps = float(self._values["camera_fps"])
+        process = subprocess.Popen(
+            native_mjpeg_command(device, width, height, fps),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=0,
+        )
+        self._native_process = process
+        if process.stdout is None:
+            raise RuntimeError("v4l2-ctl did not expose the arm-camera stream")
+        self._capture_mode = "native_mjpeg"
+        self.get_logger().info(
+            f"Opened camera {device} as native MJPEG {width}x{height} @ {fps:.1f} FPS"
+        )
+        buffer = bytearray()
+        while not stop_event.is_set():
+            chunk = process.stdout.read(65536)
+            if not chunk:
+                if process.poll() is not None:
+                    raise RuntimeError(f"v4l2-ctl exited with {process.returncode}")
+                continue
+            buffer.extend(chunk)
+            while True:
+                jpeg = pop_native_jpeg(buffer)
+                if jpeg is None:
+                    break
+                self._store_capture(jpeg=jpeg, frame=None, width=width, height=height)
+
+    def _open_decoded_camera(self) -> bool:
         try:
             import cv2
 
-            camera = cv2.VideoCapture(str(self._values["camera_device"]), cv2.CAP_V4L2)
+            device = str(self._values["camera_device"])
+            camera = cv2.VideoCapture(device, cv2.CAP_V4L2)
+            camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             camera.set(cv2.CAP_PROP_FRAME_WIDTH, int(self._values["camera_width"]))
             camera.set(cv2.CAP_PROP_FRAME_HEIGHT, int(self._values["camera_height"]))
             camera.set(cv2.CAP_PROP_FPS, float(self._values["camera_fps"]))
             if not camera.isOpened():
-                raise RuntimeError("Unable to open V4L2 camera")
+                camera.release()
+                return False
             self._camera = camera
-            self._camera_ready = True
-            self.get_logger().info(f"Opened camera {self._values['camera_device']}")
+            self._capture_mode = "opencv_mjpeg"
+            width = int(camera.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = float(camera.get(cv2.CAP_PROP_FPS))
+            self.get_logger().info(
+                f"Opened camera {device} through OpenCV MJPEG {width}x{height} @ {fps:.1f} FPS"
+            )
+            return True
         except Exception as exc:
             self._camera = None
-            self._camera_ready = False
             self._last_message = f"Camera unavailable: {exc}"
             self.get_logger().error(self._last_message)
+            return False
 
-    def _reopen_camera(self) -> None:
+    def _decoded_capture_loop(self, stop_event: threading.Event) -> None:
+        retry = max(0.1, float(self._values["camera_reopen_interval_sec"]))
+        while not stop_event.is_set():
+            if self._camera is None and not self._open_decoded_camera():
+                stop_event.wait(retry)
+                continue
+            ok, frame = self._camera.read()
+            if not ok or frame is None:
+                self._camera.release()
+                self._camera = None
+                self._camera_ready = False
+                self._last_message = "Camera frame read failed; reopening"
+                continue
+            height, width = frame.shape[:2]
+            self._store_capture(jpeg=None, frame=frame, width=width, height=height)
+
+    def _store_capture(self, jpeg, frame, width: int, height: int) -> None:
+        with self._frame_lock:
+            self._latest_jpeg = jpeg
+            self._latest_frame = frame
+            self._latest_capture_sequence += 1
+            self._latest_capture_monotonic = time.monotonic()
+            self._capture_times.append(self._latest_capture_monotonic)
+            self._frame_size = (int(width), int(height))
+        self._camera_ready = True
+
+    def _stop_camera(self) -> None:
+        self._capture_stop.set()
+        process = self._native_process
+        if process is not None and process.poll() is None:
+            process.terminate()
         if self._camera is not None:
             self._camera.release()
-        self._camera = None
+            self._camera = None
+        thread = self._capture_thread
+        if thread is not None:
+            thread.join(timeout=1.5)
+        if process is not None and process.poll() is None:
+            process.kill()
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
+        self._native_process = None
+        self._capture_thread = None
         self._camera_ready = False
+
+    def _reopen_camera(self) -> None:
+        self._stop_camera()
+        with self._frame_lock:
+            self._latest_frame = None
+            self._latest_jpeg = None
+            self._latest_capture_sequence = 0
+            self._latest_capture_monotonic = 0.0
+            self._capture_times.clear()
+            self._last_tracking_sequence = 0
+            self._last_preview_sequence = 0
         self._open_camera()
 
     def _tick(self) -> None:
-        if not self._camera_ready or self._camera is None:
+        if not self._camera_ready:
             return
-        ok, frame = self._camera.read()
-        if not ok or frame is None:
-            self._camera_ready = False
-            self._last_message = "Camera frame read failed"
-            return
-        height, width = frame.shape[:2]
-        self._frame_size = (width, height)
-        detection = self._tracker.submit(frame)
-        self._last_detection = detection
+        if self._tracker.target:
+            with self._frame_lock:
+                sequence = self._latest_capture_sequence
+                jpeg = self._latest_jpeg
+                frame = None if self._latest_frame is None else self._latest_frame.copy()
+            if sequence != self._last_tracking_sequence:
+                if frame is None and jpeg is not None:
+                    try:
+                        import cv2
+                        import numpy as np
+
+                        frame = cv2.imdecode(
+                            np.frombuffer(jpeg, dtype=np.uint8),
+                            cv2.IMREAD_COLOR,
+                        )
+                    except Exception as exc:
+                        self._last_message = f"Tracking frame decode failed: {exc}"
+                if frame is not None:
+                    height, width = frame.shape[:2]
+                    self._frame_size = (width, height)
+                    self._last_detection = self._tracker.submit(frame)
+                    self._last_tracking_sequence = sequence
         self._controller.update(
-            detection,
+            self._last_detection,
             self._frame_size,
             self._current_tof_reading(),
         )
-        self._publish_preview(frame, detection)
 
-    def _publish_preview(self, frame, detection: Detection | None) -> None:
+    def _publish_preview(self) -> None:
         now = time.monotonic()
-        if now - self._last_preview_time < 1.0 / max(float(self._values["preview_fps"]), 1.0):
+        preview_fps = max(float(self._values["preview_fps"]), 1.0)
+        camera_fps = max(float(self._values["camera_fps"]), 1.0)
+        if preview_fps < camera_fps:
+            minimum_interval = 0.9 / preview_fps
+            if now - self._last_preview_time < minimum_interval:
+                return
+        with self._frame_lock:
+            sequence = self._latest_capture_sequence
+            if sequence == 0 or sequence == self._last_preview_sequence:
+                return
+            jpeg = self._latest_jpeg
+            frame = None if self._latest_frame is None else self._latest_frame.copy()
+        if jpeg is None and frame is None:
             return
-        self._last_preview_time = now
         try:
-            import cv2
+            if jpeg is None:
+                import cv2
 
-            annotated = frame.copy()
-            if detection is not None:
-                x, y, width, height = detection.bbox
-                cv2.rectangle(annotated, (x, y), (x + width, y + height), (0, 220, 0), 2)
-                cv2.putText(
-                    annotated,
-                    f"{self._tracker.target} {detection.confidence:.2f}",
-                    (x, max(25, y - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 220, 0),
-                    2,
+                ok, encoded = cv2.imencode(
+                    ".jpg",
+                    frame,
+                    [int(cv2.IMWRITE_JPEG_QUALITY), int(self._values["jpeg_quality"])],
                 )
-            cv2.putText(
-                annotated,
-                self._controller.state.value,
-                (12, 28),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (30, 30, 255),
-                2,
-            )
-            ok, encoded = cv2.imencode(
-                ".jpg",
-                annotated,
-                [int(cv2.IMWRITE_JPEG_QUALITY), int(self._values["jpeg_quality"])],
-            )
-            if ok:
-                message = CompressedImage()
-                message.header.stamp = self.get_clock().now().to_msg()
-                message.format = "jpeg"
-                message.data = encoded.tobytes()
-                self._image_pub.publish(message)
+                if not ok:
+                    raise RuntimeError("OpenCV JPEG encoding failed")
+                jpeg = encoded.tobytes()
+            message = CompressedImage()
+            message.header.stamp = self.get_clock().now().to_msg()
+            message.format = "jpeg"
+            message.data = jpeg
+            self._image_pub.publish(message)
+            self._last_preview_sequence = sequence
+            self._last_preview_time = now
         except Exception as exc:
             self._last_message = f"Preview encoding failed: {exc}"
 
+    def _publish_camera_status(self) -> None:
+        with self._frame_lock:
+            times = list(self._capture_times)
+            width, height = self._frame_size
+            age = (
+                time.monotonic() - self._latest_capture_monotonic
+                if self._latest_capture_monotonic > 0.0
+                else -1.0
+            )
+        capture_fps = 0.0
+        if len(times) >= 2:
+            capture_fps = (len(times) - 1) / max(0.001, times[-1] - times[0])
+        message = String()
+        message.data = json.dumps(
+            {
+                "ready": bool(self._camera_ready),
+                "capture_mode": self._capture_mode,
+                "width": int(width),
+                "height": int(height),
+                "capture_fps": capture_fps,
+                "frame_age_sec": age,
+            },
+            ensure_ascii=False,
+        )
+        self._camera_status_pub.publish(message)
+
     def _publish_status(self) -> None:
+        if (
+            self._latest_capture_monotonic > 0.0
+            and time.monotonic() - self._latest_capture_monotonic > 1.0
+        ):
+            self._camera_ready = False
         tof_reading = self._current_tof_reading()
         message = VisualGraspStatus()
         message.stamp = self.get_clock().now().to_msg()
@@ -685,8 +889,7 @@ class VisualGraspNode(Node):
             return ""
 
     def destroy_node(self) -> bool:
-        if self._camera is not None:
-            self._camera.release()
+        self._stop_camera()
         self._tracker.stop()
         self._arm.disconnect()
         self._action_server.destroy()

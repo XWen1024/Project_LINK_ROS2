@@ -21,6 +21,7 @@ def test_visual_grasp_client_exposes_an_embeddable_panel():
     assert "future.result().results" in source
     assert "if not rclpy.ok():" in source
     assert "qos_profile_sensor_data" in source
+    assert '"context is not valid" in str(exc)' in source
 
 
 def test_console_manipulation_page_only_constructs_a_remote_client():
@@ -51,5 +52,24 @@ def test_visual_grasp_server_declares_every_gui_parameter_and_uses_rclpy_logging
     ).read_text(encoding="utf-8")
     assert '"grasp_timeout_sec": 20.0' in node
     assert '"joint_command_limit": 95.0' in node
-    assert 'get_logger().info(f"Opened camera' in node
+    assert 'f"Opened camera' in node
     assert 'get_logger().info("Opened camera %s"' not in node
+    assert '"camera_fps": 30.0' in node
+    assert '"preview_fps": 30.0' in node
+    assert '"prefer_native_mjpeg": True' in node
+    assert "native_mjpeg_command" in node
+    assert '"/visual_grasp/camera_status"' in node
+    assert 'message.format = "jpeg"' in node
+
+
+def test_visual_grasp_gui_reports_resolution_fps_and_native_mjpeg_mode():
+    source = (
+        REPOSITORY_ROOT
+        / "src"
+        / "project_link_visual_grasp_gui"
+        / "project_link_visual_grasp_gui"
+        / "app.py"
+    ).read_text(encoding="utf-8")
+    assert "QImage.fromData(bytes(message.data))" in source
+    assert '"原生 MJPEG 直传"' in source
+    assert "self.video_status.setText" in source

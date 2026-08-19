@@ -1,22 +1,24 @@
 """Plain PySide6 remote GUI for the headless Project LINK visual grasp node."""
 from __future__ import annotations
 
+from collections import deque
+import json
 import sys
+import time
 
-import cv2
-import numpy as np
 import rclpy
 from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import String
 from std_srvs.srv import SetBool, Trigger
 from wheeltec_robot_msg.msg import VisualGraspStatus
 from wheeltec_robot_msg.srv import SetGripper, SetTarget
 
 from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -37,11 +39,13 @@ from PySide6.QtWidgets import (
 )
 
 PARAMETERS = {
-    "camera_device": "/dev/RgbCam",
+    "camera_device": "/dev/project_link_arm_camera",
     "camera_width": 1280,
     "camera_height": 720,
-    "camera_fps": 15.0,
-    "preview_fps": 10.0,
+    "camera_fps": 30.0,
+    "preview_fps": 30.0,
+    "prefer_native_mjpeg": True,
+    "camera_reopen_interval_sec": 2.0,
     "jpeg_quality": 75,
     "model_path": "/home/wte/models/yolov8s-worldv2.pt",
     "yolo_conf_threshold": 0.15,
@@ -52,7 +56,7 @@ PARAMETERS = {
     "yolo_max_area_change_ratio": 1.8,
     "yolo_outlier_hold_frames": 4,
     "yolo_track_iou_weight": 0.5,
-    "robot_port": "/dev/so101",
+    "robot_port": "/dev/project_link_so101",
     "robot_id": "so101_slave",
     "pan_gain": 25.0,
     "tilt_gain": 15.0,
@@ -145,6 +149,7 @@ class RemoteClient(Node):
         self.devices: dict[str, VisualGraspStatus] = {}
         self.status: VisualGraspStatus | None = None
         self.image: CompressedImage | None = None
+        self.camera_status: dict = {}
         self._status_sub = self.create_subscription(
             VisualGraspStatus,
             "/visual_grasp/status",
@@ -156,6 +161,12 @@ class RemoteClient(Node):
             "/visual_grasp/image/compressed",
             self._on_image,
             qos_profile_sensor_data,
+        )
+        self._camera_status_sub = self.create_subscription(
+            String,
+            "/visual_grasp/camera_status",
+            self._on_camera_status,
+            10,
         )
         self._discovery_sub = self.create_subscription(
             VisualGraspStatus,
@@ -199,6 +210,14 @@ class RemoteClient(Node):
     def _on_image(self, message: CompressedImage) -> None:
         self.image = message
 
+    def _on_camera_status(self, message: String) -> None:
+        try:
+            payload = json.loads(message.data)
+        except (TypeError, ValueError):
+            return
+        if isinstance(payload, dict):
+            self.camera_status = payload
+
     def _on_discovery(self, message: VisualGraspStatus) -> None:
         self.devices[message.robot_namespace] = message
 
@@ -211,6 +230,7 @@ class VisualGraspPanel(QWidget):
         self.client = client
         self.parameter_widgets: dict[str, QWidget] = {}
         self._last_image_stamp = None
+        self._image_times: deque[float] = deque(maxlen=120)
         self._show_advanced_parameters = bool(show_advanced_parameters)
         self._build_ui()
         self._timer = QTimer(self)
@@ -229,6 +249,9 @@ class VisualGraspPanel(QWidget):
         self.video.setFrameShape(QLabel.Box)
         body.addWidget(self.video, 3)
 
+        self.video_status = QLabel("等待 /visual_grasp/image/compressed")
+        self.video_status.setStyleSheet("color: #8e98a5;")
+
         control_widget = QWidget()
         controls = QVBoxLayout(control_widget)
         controls.addWidget(self._status_box())
@@ -244,6 +267,7 @@ class VisualGraspPanel(QWidget):
         control_scroll.setMinimumWidth(340)
         body.addWidget(control_scroll, 2)
         layout.addLayout(body)
+        layout.addWidget(self.video_status)
 
         self.parameter_scroll = QScrollArea()
         self.parameter_scroll.setWidgetResizable(True)
@@ -404,7 +428,13 @@ class VisualGraspPanel(QWidget):
         if not rclpy.ok():
             self._timer.stop()
             return
-        rclpy.spin_once(self.client, timeout_sec=0.0)
+        try:
+            rclpy.spin_once(self.client, timeout_sec=0.0)
+        except Exception as exc:
+            if not rclpy.ok() or "context is not valid" in str(exc):
+                self._timer.stop()
+                return
+            raise
         self._refresh_devices()
         self._refresh_status()
         self._refresh_image()
@@ -455,13 +485,62 @@ class VisualGraspPanel(QWidget):
         if message is None or message.header.stamp == self._last_image_stamp:
             return
         self._last_image_stamp = message.header.stamp
-        frame = cv2.imdecode(np.frombuffer(message.data, dtype=np.uint8), cv2.IMREAD_COLOR)
-        if frame is None:
+        image = QImage.fromData(bytes(message.data))
+        if image.isNull():
+            self.video_status.setText("机械臂相机图像解码失败")
             return
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0], QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(image.copy())
-        self.video.setPixmap(pixmap.scaled(self.video.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        status = self.client.status
+        if (
+            status is not None
+            and status.target
+            and status.bbox_width > 0
+            and status.bbox_height > 0
+        ):
+            image = image.convertToFormat(QImage.Format_RGB888)
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            painter.setPen(QPen(QColor(0, 220, 90), 3))
+            painter.drawRect(
+                status.bbox_x,
+                status.bbox_y,
+                status.bbox_width,
+                status.bbox_height,
+            )
+            painter.drawText(
+                status.bbox_x,
+                max(22, status.bbox_y - 8),
+                f"{status.target} {status.confidence:.2f}",
+            )
+            painter.end()
+        pixmap = QPixmap.fromImage(image)
+        self.video.setPixmap(
+            pixmap.scaled(
+                self.video.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+        now = time.monotonic()
+        self._image_times.append(now)
+        while self._image_times and now - self._image_times[0] > 2.0:
+            self._image_times.popleft()
+        fps = 0.0
+        if len(self._image_times) >= 2:
+            fps = (len(self._image_times) - 1) / max(
+                0.001,
+                self._image_times[-1] - self._image_times[0],
+            )
+        camera_status = self.client.camera_status
+        capture_mode = (
+            "原生 MJPEG 直传"
+            if camera_status.get("capture_mode") == "native_mjpeg"
+            else "MJPEG 兼容模式"
+        )
+        source_fps = float(camera_status.get("capture_fps", 0.0))
+        self.video_status.setText(
+            f"已连接 · {image.width()}×{image.height()} · 显示 {fps:.1f} FPS · "
+            f"采集 {source_fps:.1f} FPS · {capture_mode}"
+        )
 
     def _select_discovered_device(self, index: int) -> None:
         namespace = self.device_combo.itemData(index)

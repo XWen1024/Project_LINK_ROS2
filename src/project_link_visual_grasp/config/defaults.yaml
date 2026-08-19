@@ -4,8 +4,10 @@ visual_grasp:
     camera_device: /dev/project_link_arm_camera
     camera_width: 1280
     camera_height: 720
-    camera_fps: 15.0
-    preview_fps: 10.0
+    camera_fps: 30.0
+    preview_fps: 30.0
+    prefer_native_mjpeg: true
+    camera_reopen_interval_sec: 2.0
     jpeg_quality: 75
     model_path: /home/wte/models/yolov8s-worldv2.pt
     yolo_conf_threshold: 0.15
