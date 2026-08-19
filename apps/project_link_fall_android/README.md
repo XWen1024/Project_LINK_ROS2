@@ -35,9 +35,12 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`。
 
 Orin 必须把 `event_id` 作为幂等键，并在请求中的 `cancel_window_ms` 结束前禁止向紧急联系人发送通知。
 
+完整 Orin 后端实现契约见：`docs/modules/sensors/fall-response/ANDROID_ORIN_HANDOFF.md`。
+
 ## 当前验证边界
 
 - Windows 已验证编译、单元测试和 Lint。
-- 真机必须验证通知权限、锁屏后台采样和厂商电池优化策略。
+- 小米 2304FPN6DC（Android 16 / API 36）已完成安装、冷启动和主要按钮手工验收。
+- 仍需验证通知权限后的长时间锁屏后台采样和 MIUI 电池优化策略。
 - IMU 阈值是原型初值，不能作为医疗级跌倒检测依据。
 - 人员不要通过真实摔倒测试；使用软垫、假人或受控放置手机。
