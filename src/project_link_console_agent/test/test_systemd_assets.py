@@ -120,6 +120,15 @@ def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():
     assert "enable_motion:=false" in component
 
 
+def test_nav2_component_relies_on_systemd_mapping_gate_without_duplicate_cli_waits():
+    component = (DEPLOY_ROOT / "bin" / "project-link-component").read_text(
+        encoding="utf-8"
+    )
+    nav2_block = component.split("  nav2)", 1)[1].split("    ;;", 1)[0]
+    assert "project-link-wait" not in nav2_block
+    assert "exec ros2 launch wheeltec_nav2 point_lio_navigation.launch.py" in nav2_block
+
+
 def test_front_camera_component_uses_the_stable_alias():
     component = (REPOSITORY_ROOT / "deploy/systemd/bin/project-link-component").read_text(
         encoding="utf-8"

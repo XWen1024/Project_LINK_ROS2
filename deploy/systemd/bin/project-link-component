@@ -110,10 +110,10 @@ case "$component" in
       echo "A competing direct-drive or keyboard teleop process is running." >&2
       exit 1
     fi
-    "$workspace/deploy/systemd/bin/project-link-wait" topic /map 30
-    "$workspace/deploy/systemd/bin/project-link-wait" topic /odom_lio 30
-    "$workspace/deploy/systemd/bin/project-link-wait" topic /odom 30
-    "$workspace/deploy/systemd/bin/project-link-wait" topic /scan_accumulated 30
+    # project-link-mapping.target and project-link-point-lio-map.service already
+    # gate /map, /odom_lio and /scan_accumulated. Repeating ROS CLI waits here
+    # races the service's ExecStartPost discovery probes and can restart Nav2
+    # before the launch process is ever executed.
     exec ros2 launch wheeltec_nav2 point_lio_navigation.launch.py
     ;;
   rf2o-fallback)
