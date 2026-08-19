@@ -67,14 +67,22 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
 
 ## Remaining gates
 
-- Orin build and automated tests passed at commit `9bb061f`: 56 tests passed,
-  generated ROS interfaces were discoverable, and all new systemd units verified.
+- Orin build and automated tests passed through commit `e415791`: 57 tests
+  passed, including the authenticated HTTP create/query/idempotency/cancel
+  lifecycle; generated ROS interfaces were discoverable and all new systemd
+  units verified.
 - `yolov8n-pose.pt` is installed with SHA-256
   `c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212`.
   CPU Torch inference measured about 5.49 FPS on 1280x720 blank frames, below
   the 8 FPS optimization gate. TensorRT 10.3 is present, but a CUDA-enabled
   Torch environment must be isolated and validated before engine export.
-- Real camera focus/orientation and five-frame inference validation.
+- A real `/front_camera/capture_still` call passed at 1280x720 with a 57,996-byte
+  JPEG while Nav2 and both fall services stayed inactive. Focus/orientation and
+  representative-person five-frame inference still require supervised review.
+- A loopback Gateway/Action smoke persisted an event and finished it as
+  `cancelled`; no camera, notification or motion service was started.
+- `wechatbot-sdk==0.3.0` and its required user-level cryptography runtime are
+  installed. The user units are installed but disabled/inactive.
 - User-owned WeChat QR login and single-contact binding.
 - Android-to-Orin LAN smoke test and 14.9-second cancellation race.
 - Confirmed and degraded notification delivery to the real contact.
