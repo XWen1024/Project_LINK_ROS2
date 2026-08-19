@@ -168,10 +168,12 @@ class PersistentWeChatBot:
 
         if not self.cred_path.is_file():
             raise RuntimeError(f"WeChat credentials are missing: {self.cred_path}")
+        self.cred_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.bot = WeChatBot(cred_path=str(self.cred_path))
         if not hasattr(self.bot, "_context_tokens"):
             raise RuntimeError("wechatbot-sdk contract changed: _context_tokens is unavailable")
         await self.bot.login()
+        self.cred_path.chmod(0o600)
         binding = self.binding.load()
         if binding:
             self.bot._context_tokens[binding["user_id"]] = binding["context_token"]

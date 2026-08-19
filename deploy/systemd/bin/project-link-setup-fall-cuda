@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+venv="${FALL_CUDA_VENV:-$HOME/.local/share/project-link/venvs/fall-cuda}"
+torch_index="${FALL_TORCH_INDEX:-https://pypi.jetson-ai-lab.io/jp6/cu126}"
+torch_version="${FALL_TORCH_VERSION:-2.8.0}"
+torchvision_version="${FALL_TORCHVISION_VERSION:-0.23.0}"
+ultralytics_version="${FALL_ULTRALYTICS_VERSION:-8.4.32}"
+
+python3 -m venv --system-site-packages "$venv"
+export PYTHONNOUSERSITE=1
+"$venv/bin/python" -m pip install --upgrade pip
+"$venv/bin/python" -m pip install \
+  --index-url "$torch_index" \
+  "torch==$torch_version" \
+  "torchvision==$torchvision_version"
+"$venv/bin/python" -m pip install --no-deps "ultralytics==$ultralytics_version"
+"$venv/bin/python" -m pip install "polars==1.39.3" "ultralytics-thop==2.0.18"
+
+"$venv/bin/python" - <<'PY'
+import torch
+from ultralytics import YOLO
+
+if not torch.cuda.is_available():
+    raise SystemExit("isolated Torch installed, but CUDA is unavailable")
+print(f"torch={torch.__version__} cuda={torch.version.cuda} device={torch.cuda.get_device_name(0)}")
+print(f"ultralytics_import={YOLO.__module__}")
+PY
+
+printf 'FALL_PYTHON_SITE=%s/lib/python3.10/site-packages\n' "$venv"

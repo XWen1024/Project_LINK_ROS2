@@ -198,7 +198,7 @@ Gateway 重启后：终态原样恢复；非终态统一恢复为 `failed`，MVP
 - `/front_camera/capture_still`
 - `/fall_detection/assess_fall`
 - `/fall_detection/confirm_alert`
-- SiliconFlow VLM 严格 JSON 解析
+- OpenAI-compatible VLM 严格 JSON 解析；端点与模型由 `.env` 配置
 - 飞书 webhook 通知适配器
 
 现有 `AssessFall` 是为“唤醒词 + 声源转向 + 语音确认”设计的，不能原样暴露给手机：它会发布 TTS，并在视觉确认后重新开始一个 15 秒语音确认窗口。手机事件的取消窗口从 HTTP 接收时开始，且不依赖语音。

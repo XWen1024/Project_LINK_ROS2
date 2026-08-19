@@ -167,7 +167,11 @@ class FallGatewayApp:
                 "service": "project-link-fall-gateway",
                 "camera_ready": readiness["camera_ready"],
                 "model_ready": self.model_path.is_file(),
-                "vision_ready": readiness["camera_ready"] and self.model_path.is_file(),
+                "vision_ready": (
+                    readiness["camera_ready"]
+                    and self.model_path.is_file()
+                    and bool(os.environ.get("OPENAI_API_KEY"))
+                ),
                 "notification_ready": readiness["notification_ready"],
                 "coordinator_ready": readiness["coordinator_ready"],
                 "active_event": active["event_id"] if active else None,

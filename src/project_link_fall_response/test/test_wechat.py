@@ -1,5 +1,15 @@
-from project_link_fall_response.wechat import BindingStore, NotificationLedger, format_alert
+import asyncio
+import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+from project_link_fall_response.wechat import (
+    BindingStore,
+    NotificationLedger,
+    PersistentWeChatBot,
+    format_alert,
+)
 
 
 def test_binding_is_persisted_mode_0600(tmp_path):
@@ -36,3 +46,30 @@ def test_wechat_sdk_private_context_contract_is_version_pinned():
     assert "wechatbot-sdk==0.3.0" in requirements
     assert "_context_tokens" in source
     assert "message._context_token" in source
+
+
+def test_wechat_restart_restores_bound_contact_context(monkeypatch, tmp_path):
+    credentials = tmp_path / "credentials.json"
+    credentials.write_text(json.dumps({"token": "stored"}), encoding="utf-8")
+    binding = tmp_path / "binding.json"
+    BindingStore(binding).save("contact", "persisted-context")
+
+    class FakeWeChatBot:
+        def __init__(self, *, cred_path):
+            self.cred_path = cred_path
+            self._context_tokens = {}
+            self.handlers = []
+
+        async def login(self):
+            return SimpleNamespace(user_id="bot")
+
+        def on_message(self, handler):
+            self.handlers.append(handler)
+            return handler
+
+    monkeypatch.setitem(sys.modules, "wechatbot", SimpleNamespace(WeChatBot=FakeWeChatBot))
+    bot = PersistentWeChatBot(credentials, binding, tmp_path / "notifications.sqlite3")
+    asyncio.run(bot.start())
+
+    assert bot.ready is True
+    assert bot.bot._context_tokens == {"contact": "persisted-context"}

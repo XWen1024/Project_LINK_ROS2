@@ -1,4 +1,4 @@
-"""Cancelable aiohttp client for SiliconFlow fall assessment."""
+"""Cancelable OpenAI-compatible vision client for fall assessment."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import aiohttp
 from .core import FallAssessment, FallAssessmentError, parse_fall_assessment_json
 
 
-class AsyncSiliconFlowVisionClient:
+class AsyncOpenAICompatibleVisionClient:
     def __init__(
         self,
         *,
@@ -34,7 +34,7 @@ class AsyncSiliconFlowVisionClient:
 
     async def assess(self, jpeg_data: bytes) -> FallAssessment:
         if not self.api_key:
-            raise FallAssessmentError("SILICONFLOW_API_KEY is not configured")
+            raise FallAssessmentError("OPENAI_API_KEY is not configured")
         encoded = base64.b64encode(jpeg_data).decode("ascii")
         payload = {
             "model": self.model,
@@ -72,3 +72,6 @@ class AsyncSiliconFlowVisionClient:
         if not isinstance(content, str):
             raise FallAssessmentError("vision model content is not text")
         return parse_fall_assessment_json(content)
+
+
+AsyncSiliconFlowVisionClient = AsyncOpenAICompatibleVisionClient

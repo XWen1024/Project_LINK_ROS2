@@ -5,6 +5,8 @@ log/
 .vscode/
 .idea/
 .venv-qwen-realtime/
+.venv-fall-cuda/
+deploy/systemd/fall_response.env
 
 # Independent upstream reference checkouts (keep their own Git history).
 # The ESP32-C3 bridge below is repository-owned firmware, not an upstream checkout.

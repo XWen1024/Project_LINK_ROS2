@@ -7,7 +7,7 @@ Verification date: 2026-08-19
 The first delivery is a static, no-motion closed loop. The Android app submits
 an authenticated event to the Orin, the Orin persists it in SQLite, captures
 five frames from the single front-camera owner, runs local YOLO pose scoring and
-SiliconFlow VLM confirmation, then sends one text and at most one image to the
+OpenAI-compatible VLM confirmation, then sends one text and at most one image to the
 single bound WeChat contact. No component in this flow publishes `/cmd_vel` or
 starts Nav2.
 
@@ -46,7 +46,9 @@ Runtime state defaults to:
 /home/wte/models/project_link/yolov8n-pose.pt
 ```
 
-All credentials, binding state and SQLite files must be mode 0600. The YOLO
+All credentials, binding state and SQLite files must be mode 0600. The VLM
+defaults to the configurable Aliyun compatible endpoint and `qwen3.8-27b` via
+`OPENAI_BASE_URL` and `OPENAI_MODEL`; the user supplies `OPENAI_API_KEY`. The YOLO
 model is installed explicitly and never downloaded during service startup.
 
 ## Deployment gates
@@ -74,8 +76,9 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
 - `yolov8n-pose.pt` is installed with SHA-256
   `c6fa93dd1ee4a2c18c900a45c1d864a1c6f7aba75d84f91648a30b7fb641d212`.
   CPU Torch inference measured about 5.49 FPS on 1280x720 blank frames, below
-  the 8 FPS optimization gate. TensorRT 10.3 is present, but a CUDA-enabled
-  Torch environment must be isolated and validated before engine export.
+  the 8 FPS optimization gate. JetPack CUDA inference is installed only in
+  `~/.local/share/project-link/venvs/fall-cuda`; the service disables user site
+  packages and prepends that environment, preserving LeRobot's existing Torch.
 - A real `/front_camera/capture_still` call passed at 1280x720 with a 57,996-byte
   JPEG while Nav2 and both fall services stayed inactive. Focus/orientation and
   representative-person five-frame inference still require supervised review.
@@ -83,7 +86,9 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
   `cancelled`; no camera, notification or motion service was started.
 - `wechatbot-sdk==0.3.0` and its required user-level cryptography runtime are
   installed. The user units are installed but disabled/inactive.
-- User-owned WeChat QR login and single-contact binding.
+- User-owned WeChat QR login and single-contact binding. The pinned SDK persists
+  login credentials in mode-0600 `credentials.json`; the project separately
+  persists and reinjects the bound contact context token after every restart.
 - Android-to-Orin LAN smoke test and 14.9-second cancellation race.
 - Confirmed and degraded notification delivery to the real contact.
 - Only after two static supervised cycles: add the separately gated Nav2 Spin

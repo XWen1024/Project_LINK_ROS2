@@ -39,6 +39,12 @@ install -m 0600 deploy/systemd/fall_response.env.example \
 systemctl --user start project-link-emergency.target
 ```
 
+Generate the Android shared token with
+`python3 scripts/generate_fall_guard_token.py`. The VLM uses the provider-neutral
+`OPENAI_API_KEY`, `OPENAI_BASE_URL` and `OPENAI_MODEL` settings. On JetPack 6,
+`deploy/systemd/bin/project-link-setup-fall-cuda` creates an isolated CUDA Torch
+environment for fall inference; it does not replace LeRobot's user-level Torch.
+
 Starting the emergency target starts only the front camera, HTTP/visual
 coordinator and WeChat notifier. It does not start the base, lidar or Nav2.
 

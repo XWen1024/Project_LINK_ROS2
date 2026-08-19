@@ -17,7 +17,7 @@ from rclpy.node import Node
 from project_link_emergency_interfaces.action import RespondToFall
 from project_link_emergency_interfaces.srv import CaptureStill, SendFallNotification
 
-from .async_vision import AsyncSiliconFlowVisionClient
+from .async_vision import AsyncOpenAICompatibleVisionClient
 from .core import FallAssessmentError
 from .event_store import EventStore, now_ms
 from .fall_response_node import SYSTEM_PROMPT, USER_PROMPT
@@ -41,18 +41,24 @@ class MobileFallCoordinator(Node):
         )
         self._store = EventStore(str(self.get_parameter("event_db_path").value))
         self._detector = YoloPoseDetector(
-            str(self.get_parameter("model_path").value),
+            os.environ.get("FALL_YOLO_MODEL", str(self.get_parameter("model_path").value)),
             detection_threshold=float(self.get_parameter("detection_threshold").value),
             keypoint_threshold=float(self.get_parameter("keypoint_threshold").value),
             candidate_threshold=float(self.get_parameter("candidate_threshold").value),
             stable_frames=int(self.get_parameter("stable_frames").value),
-            device=str(self.get_parameter("yolo_device").value),
+            device=os.environ.get("FALL_YOLO_DEVICE", str(self.get_parameter("yolo_device").value)),
         )
-        self._vision = AsyncSiliconFlowVisionClient(
-            api_key=os.environ.get("SILICONFLOW_API_KEY", ""),
-            base_url=str(self.get_parameter("siliconflow_base_url").value),
-            model=str(self.get_parameter("siliconflow_model").value),
-            timeout_sec=float(self.get_parameter("siliconflow_timeout_sec").value),
+        self._vision = AsyncOpenAICompatibleVisionClient(
+            api_key=os.environ.get("OPENAI_API_KEY", ""),
+            base_url=os.environ.get(
+                "OPENAI_BASE_URL", str(self.get_parameter("openai_base_url").value)
+            ),
+            model=os.environ.get("OPENAI_MODEL", str(self.get_parameter("openai_model").value)),
+            timeout_sec=float(
+                os.environ.get(
+                    "OPENAI_TIMEOUT_SEC", str(self.get_parameter("openai_timeout_sec").value)
+                )
+            ),
             system_prompt=SYSTEM_PROMPT,
             user_prompt=USER_PROMPT,
         )
@@ -90,9 +96,12 @@ class MobileFallCoordinator(Node):
         self.declare_parameter("stable_frames", 3)
         self.declare_parameter("yolo_device", "")
         self.declare_parameter("vlm_threshold", 0.70)
-        self.declare_parameter("siliconflow_base_url", "https://api.siliconflow.cn/v1")
-        self.declare_parameter("siliconflow_model", "Qwen/Qwen2.5-VL-72B-Instruct")
-        self.declare_parameter("siliconflow_timeout_sec", 20.0)
+        self.declare_parameter(
+            "openai_base_url",
+            "https://ws-f79uecupn4b5efpv.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        )
+        self.declare_parameter("openai_model", "qwen3.8-27b")
+        self.declare_parameter("openai_timeout_sec", 20.0)
         self.declare_parameter("notification_timeout_sec", 90.0)
 
     def _run_async_loop(self) -> None:
@@ -288,7 +297,12 @@ class MobileFallCoordinator(Node):
             )
             jpeg_data = frames[0] if frames else b""
             if not degraded:
-                self._feedback(goal_handle, "vlm_request", "requesting SiliconFlow visual confirmation", local=local_confidence)
+                self._feedback(
+                    goal_handle,
+                    "vlm_request",
+                    "requesting OpenAI-compatible visual confirmation",
+                    local=local_confidence,
+                )
                 try:
                     assessment = self._assess_vlm(jpeg_data, goal_handle)
                     vlm_confidence = assessment.confidence

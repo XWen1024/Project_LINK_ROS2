@@ -19,8 +19,11 @@ async def bind(args) -> None:
     print(f"扫码登录后，请由唯一紧急联系人发送：/bind {code}")
     done = asyncio.Event()
     store = BindingStore(args.binding_path)
-    bot = WeChatBot(cred_path=str(Path(args.credentials_path).expanduser()))
+    credentials_path = Path(args.credentials_path).expanduser()
+    credentials_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    bot = WeChatBot(cred_path=str(credentials_path))
     await bot.login()
+    credentials_path.chmod(0o600)
 
     @bot.on_message
     async def on_message(message) -> None:

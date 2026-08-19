@@ -8,9 +8,9 @@ fall_response_node:
     confirmation_timeout_sec: 15.0
     confidence_threshold: 0.70
     capture_timeout_sec: 3.0
-    siliconflow_base_url: https://api.siliconflow.cn/v1
-    siliconflow_model: Qwen/Qwen2.5-VL-72B-Instruct
-    siliconflow_request_timeout_sec: 20.0
+    openai_base_url: https://ws-f79uecupn4b5efpv.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+    openai_model: qwen3.8-27b
+    openai_request_timeout_sec: 20.0
 
 mobile_fall_coordinator:
   ros__parameters:
@@ -28,9 +28,9 @@ mobile_fall_coordinator:
     stable_frames: 3
     yolo_device: ""
     vlm_threshold: 0.70
-    siliconflow_base_url: https://api.siliconflow.cn/v1
-    siliconflow_model: Qwen/Qwen2.5-VL-72B-Instruct
-    siliconflow_timeout_sec: 20.0
+    openai_base_url: https://ws-f79uecupn4b5efpv.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+    openai_model: qwen3.8-27b
+    openai_timeout_sec: 20.0
     notification_timeout_sec: 90.0
 
 wechat_notifier_node:

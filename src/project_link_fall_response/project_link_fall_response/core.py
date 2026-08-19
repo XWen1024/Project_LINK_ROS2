@@ -69,7 +69,7 @@ def image_message_content(jpeg_data: bytes, prompt: str) -> list[dict[str, Any]]
     ]
 
 
-class SiliconFlowVisionClient:
+class OpenAICompatibleVisionClient:
     def __init__(
         self,
         api_key: str | None,
@@ -94,9 +94,9 @@ class SiliconFlowVisionClient:
         request_timeout_sec: float,
         system_prompt: str,
         user_prompt: str,
-    ) -> "SiliconFlowVisionClient":
+    ) -> "OpenAICompatibleVisionClient":
         return cls(
-            api_key=os.environ.get("SILICONFLOW_API_KEY"),
+            api_key=os.environ.get("OPENAI_API_KEY"),
             base_url=base_url,
             model=model,
             request_timeout_sec=request_timeout_sec,
@@ -106,7 +106,7 @@ class SiliconFlowVisionClient:
 
     def assess(self, jpeg_data: bytes) -> FallAssessment:
         if not self._api_key:
-            raise FallAssessmentError("SILICONFLOW_API_KEY is not configured")
+            raise FallAssessmentError("OPENAI_API_KEY is not configured")
         payload = {
             "model": self._model,
             "messages": [
@@ -140,6 +140,9 @@ class SiliconFlowVisionClient:
         if not isinstance(content, str):
             raise FallAssessmentError("vision model content is not text")
         return parse_fall_assessment_json(content)
+
+
+SiliconFlowVisionClient = OpenAICompatibleVisionClient
 
 
 def missing_values(names: list[str], env: dict[str, str] | None = None) -> list[str]:

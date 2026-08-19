@@ -57,6 +57,14 @@ case "$component" in
   fall-response)
     source_main
     source_optional_env "${PROJECT_LINK_FALL_ENV:-$HOME/.config/project_link/fall_response.env}"
+    if [[ -n "${FALL_PYTHON_SITE:-}" ]]; then
+      [[ -d "$FALL_PYTHON_SITE" ]] || {
+        echo "Configured FALL_PYTHON_SITE does not exist: $FALL_PYTHON_SITE" >&2
+        exit 1
+      }
+      export PYTHONNOUSERSITE=1
+      export PYTHONPATH="$FALL_PYTHON_SITE${PYTHONPATH:+:$PYTHONPATH}"
+    fi
     exec ros2 launch project_link_fall_response mobile_fall_response.launch.py
     ;;
   wechatbot)
