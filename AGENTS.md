@@ -16,6 +16,8 @@ context belongs in `docs/modules/`; historical context belongs in `docs/archive/
   5. Replace the failed DDS Router WAN experiment with a typed, allowlisted
      console bridge over an SSH tunnel after the MVP field loop.
   6. Complete one repeatable Qwen Realtime to Nav2 field loop.
+  7. Build and validate the dedicated fall-response console page in static mode,
+     then complete the supervised Nav2 Spin sequence with notification disabled.
 - UWB is outside the current MVP. Keep its code and archived evidence, but hide
   the console page by default and do not spend MVP validation time on it.
 - Keep existing scripts as fallback until systemd passes two complete supervised
@@ -210,6 +212,9 @@ are evidence snapshots, not current operating instructions.
   microphone, speaker and robot tools.
 - LLMs choose registered tools only. Python owns confirmation, validation,
   ROS Actions, cancellation and all robot execution.
+- Fall response defaults to `static`. Real scanning may use only the allowlisted
+  Nav2 `/spin` Action after TF/odom/costmap/cmd_vel/arm preflight; it must never
+  publish Twist, start motion on service startup or bypass failed safety gates.
 - UWB remains code-preserved and shadow-only when explicitly enabled, but it is
   hidden and excluded from the current MVP.
 - Orin exclusively owns the SO-101, both RGB cameras and VL53L0X serial ports.

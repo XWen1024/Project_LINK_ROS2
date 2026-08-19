@@ -13,8 +13,12 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Bool
+from std_srvs.srv import Trigger
 
 from project_link_emergency_interfaces.action import RespondToFall
+from project_link_emergency_interfaces.msg import FallResponseStatus
 from project_link_emergency_interfaces.srv import CaptureStill, SendFallNotification
 
 from .async_scan import AsyncScanOrchestrator
@@ -23,6 +27,7 @@ from .core import FallAssessmentError
 from .event_store import EventStore, now_ms
 from .fall_models import SpecializedFallDetector, YoloWorldPersonDetector
 from .fall_response_node import SYSTEM_PROMPT, USER_PROMPT
+from .nav2_spin import Nav2SpinAdapter
 
 
 class MobileFallCoordinator(Node):
@@ -30,6 +35,9 @@ class MobileFallCoordinator(Node):
         super().__init__("mobile_fall_coordinator")
         self._declare_parameters()
         self._callbacks = ReentrantCallbackGroup()
+        self._scan_mode = str(self.get_parameter("scan_mode").value).strip().lower()
+        if self._scan_mode not in {"static", "nav2_spin"}:
+            raise ValueError(f"unsupported fall scan mode: {self._scan_mode}")
         self._capture = self.create_client(
             CaptureStill,
             str(self.get_parameter("capture_service").value),
@@ -39,6 +47,20 @@ class MobileFallCoordinator(Node):
             SendFallNotification,
             str(self.get_parameter("notification_service").value),
             callback_group=self._callbacks,
+        )
+        self._notification_ready = False
+        self.create_subscription(
+            Bool,
+            "/fall_detection/notification_ready",
+            self._on_notification_ready,
+            10,
+            callback_group=self._callbacks,
+        )
+        self._status_pub = self.create_publisher(
+            FallResponseStatus, "/fall_detection/status", 10
+        )
+        self._evidence_pub = self.create_publisher(
+            CompressedImage, "/fall_detection/evidence/compressed", 5
         )
         self._store = EventStore(str(self.get_parameter("event_db_path").value))
         device = os.environ.get("FALL_YOLO_DEVICE", str(self.get_parameter("yolo_device").value))
@@ -92,6 +114,14 @@ class MobileFallCoordinator(Node):
         self._active_lock = threading.Lock()
         self._reserved = False
         self._cancel = threading.Event()
+        self._active_event_id = ""
+        self._active_stage = "idle"
+        self._active_step = 0
+        self._active_total = steps
+        self._active_local_confidence = 0.0
+        self._active_vlm_confidence = 0.0
+        self._active_message = "waiting for a fall event"
+        self._nav2 = Nav2SpinAdapter(self, self._callbacks)
         try:
             self._fall_detector.warmup()
             self.get_logger().info("Specialized fall model warmed up")
@@ -108,14 +138,24 @@ class MobileFallCoordinator(Node):
             cancel_callback=self._cancel_goal,
             callback_group=self._callbacks,
         )
+        self.create_service(
+            Trigger,
+            "/fall_detection/run_preflight",
+            self._run_preflight,
+            callback_group=self._callbacks,
+        )
+        self.create_timer(1.0, self._publish_status, callback_group=self._callbacks)
         self.get_logger().warn(
-            "Mobile fall coordinator is in ASYNC SCAN SIMULATION mode; no Nav2 or motion is used"
+            "Mobile fall coordinator scan mode is " + self._scan_mode
+            + "; startup never initiates motion"
         )
 
     def _declare_parameters(self) -> None:
         self.declare_parameter("respond_action", "/fall_detection/respond_to_fall")
         self.declare_parameter("capture_service", "/front_camera/capture_still")
         self.declare_parameter("notification_service", "/fall_detection/send_notification")
+        self.declare_parameter("scan_mode", "static")
+        self.declare_parameter("notification_enabled", True)
         self.declare_parameter(
             "event_db_path", os.path.expanduser("~/.local/state/project-link/fall-response/events.sqlite3")
         )
@@ -144,10 +184,134 @@ class MobileFallCoordinator(Node):
         self.declare_parameter("openai_model", "qwen3.8-27b")
         self.declare_parameter("openai_timeout_sec", 20.0)
         self.declare_parameter("notification_timeout_sec", 90.0)
+        self.declare_parameter("spin_action", "/spin")
+        self.declare_parameter("odom_topic", "/odom")
+        self.declare_parameter("local_costmap_topic", "/local_costmap/costmap")
+        self.declare_parameter("cmd_vel_topic", "/cmd_vel")
+        self.declare_parameter("odom_frame", "odom")
+        self.declare_parameter("base_frame", "base_footprint")
+        self.declare_parameter("arm_status_topic", "/visual_grasp/status")
+        self.declare_parameter(
+            "nav2_lifecycle_services",
+            [
+                "/behavior_server/get_state",
+                "/controller_server/get_state",
+                "/bt_navigator/get_state",
+            ],
+        )
+        self.declare_parameter(
+            "competing_action_cancel_services",
+            [
+                "/navigate_to_pose/_action/cancel_goal",
+                "/navigate_through_poses/_action/cancel_goal",
+            ],
+        )
+        self.declare_parameter("cancel_competing_actions", True)
+        self.declare_parameter(
+            "allowed_cmd_vel_publishers", ["velocity_smoother", "behavior_server"]
+        )
+        self.declare_parameter("require_arm_torque_off", True)
+        self.declare_parameter("tf_ttl_sec", 0.50)
+        self.declare_parameter("odom_ttl_sec", 0.50)
+        self.declare_parameter("costmap_ttl_sec", 1.50)
+        self.declare_parameter("rotation_clearance_radius_m", 0.42)
+        self.declare_parameter("rotation_obstacle_cost_threshold", 80)
+        self.declare_parameter("stop_angular_velocity_rps", 0.03)
+        self.declare_parameter("stop_stable_sec", 0.25)
+        self.declare_parameter("stop_timeout_sec", 3.0)
+        self.declare_parameter("spin_cancel_timeout_sec", 2.0)
+        self.declare_parameter("spin_timeout_sec", 12.0)
 
     def _run_async_loop(self) -> None:
         asyncio.set_event_loop(self._async_loop)
         self._async_loop.run_forever()
+
+    def _on_notification_ready(self, message: Bool) -> None:
+        self._notification_ready = bool(message.data)
+
+    def _publish_status(self) -> None:
+        event = self._store.active_event()
+        preflight = self._nav2.last_preflight
+        message = FallResponseStatus()
+        message.stamp = self.get_clock().now().to_msg()
+        message.scan_mode = self._scan_mode
+        message.service_ready = True
+        message.event_active = event is not None
+        message.active_event_id = "" if event is None else str(event["event_id"])
+        message.stage = (
+            self._active_stage if event is not None else "idle"
+        )
+        message.scan_step = int(self._active_step if event is not None else 0)
+        message.scan_total = int(self._active_total)
+        message.current_heading_deg = float(self._nav2.current_heading_deg)
+        message.target_heading_deg = float(self._nav2.target_heading_deg)
+        message.local_confidence = float(
+            self._active_local_confidence if event is not None else 0.0
+        )
+        message.vlm_confidence = float(
+            self._active_vlm_confidence if event is not None else 0.0
+        )
+        message.motion_active = bool(self._nav2.motion_active)
+        message.camera_ready = bool(self._capture.service_is_ready())
+        message.specialized_model_ready = bool(self._fall_detector.ready)
+        message.world_model_ready = bool(self._person_detector.ready)
+        message.vlm_ready = bool(os.environ.get("OPENAI_API_KEY", ""))
+        message.notification_ready = bool(
+            self._notify.service_is_ready() and self._notification_ready
+        )
+        message.nav2_action_ready = bool(self._nav2.action_ready())
+        message.nav2_lifecycle_ready = bool(preflight.lifecycle_ready)
+        message.tf_ready = bool(preflight.tf_ready)
+        message.odom_ready = bool(preflight.odom_ready)
+        message.costmap_ready = bool(preflight.costmap_ready)
+        message.rotation_clear = bool(preflight.rotation_clear)
+        message.cmd_vel_clear = bool(preflight.cmd_vel_clear)
+        message.arm_safe = bool(preflight.arm_safe)
+        message.message = (
+            self._active_message if event is not None else preflight.message
+        )
+        self._status_pub.publish(message)
+
+    def _set_active_progress(
+        self,
+        stage: str,
+        message: str,
+        *,
+        step: int | None = None,
+        total: int | None = None,
+        local: float | None = None,
+        vlm: float | None = None,
+    ) -> None:
+        self._active_stage = stage
+        self._active_message = message
+        if step is not None:
+            self._active_step = int(step)
+        if total is not None:
+            self._active_total = int(total)
+        if local is not None:
+            self._active_local_confidence = float(local)
+        if vlm is not None:
+            self._active_vlm_confidence = float(vlm)
+
+    def _publish_evidence(self, jpeg_data: bytes) -> None:
+        if not jpeg_data:
+            return
+        message = CompressedImage()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.header.frame_id = "front_camera"
+        message.format = "jpeg"
+        message.data = jpeg_data
+        self._evidence_pub.publish(message)
+
+    def _run_preflight(self, _request, response):
+        if self._scan_mode != "nav2_spin":
+            response.success = True
+            response.message = "static mode selected; no robot motion will be used"
+            return response
+        snapshot = self._nav2.preflight(lambda: False, cancel_competing=False)
+        response.success = bool(snapshot.ready)
+        response.message = snapshot.message
+        return response
 
     def _goal(self, request: RespondToFall.Goal) -> GoalResponse:
         event = self._store.get(request.event_id)
@@ -158,6 +322,14 @@ class MobileFallCoordinator(Node):
                 return GoalResponse.REJECT
             self._reserved = True
         self._cancel.clear()
+        self._active_event_id = request.event_id
+        self._set_active_progress(
+            "accepted",
+            "fall event accepted",
+            step=0,
+            local=0.0,
+            vlm=0.0,
+        )
         return GoalResponse.ACCEPT
 
     def _cancel_goal(self, _goal_handle) -> CancelResponse:
@@ -185,6 +357,14 @@ class MobileFallCoordinator(Node):
         step: int = 0,
         total: int = 0,
     ) -> None:
+        self._set_active_progress(
+            stage,
+            message,
+            step=step,
+            total=total if total else None,
+            local=local,
+            vlm=vlm,
+        )
         feedback = RespondToFall.Feedback()
         feedback.stage = stage
         feedback.message = message
@@ -215,6 +395,13 @@ class MobileFallCoordinator(Node):
         total: int,
         confidence: float,
     ) -> None:
+        self._set_active_progress(
+            stage,
+            message,
+            step=step,
+            total=total,
+            local=confidence,
+        )
         self._store.update(
             event_id,
             status="scanning",
@@ -259,7 +446,7 @@ class MobileFallCoordinator(Node):
             self._feedback(
                 goal_handle,
                 stage,
-                f"captured frame {index + 1}/{count} at simulated angle {angle_deg:.0f} degrees",
+                f"captured frame {index + 1}/{count} at angle {angle_deg:.0f} degrees",
                 step=step,
                 total=total,
             )
@@ -335,19 +522,36 @@ class MobileFallCoordinator(Node):
         reason = ""
         notification_image = b""
         degraded = False
+        candidate_heading = None
         try:
+            preflight_message = (
+                "validating Nav2 Spin, localization, costmap and motion ownership"
+                if self._scan_mode == "nav2_spin"
+                else "starting static asynchronous scan fallback"
+            )
             self._store.update(
                 event_id,
                 status="scanning",
                 stage="preflight",
-                message="asynchronous 12-angle scan simulation preflight",
+                message=preflight_message,
             )
             self._feedback(
                 goal_handle,
                 "preflight",
-                "starting asynchronous no-motion scan simulation",
+                preflight_message,
             )
             try:
+                move_to_heading = None
+                if self._scan_mode == "nav2_spin":
+                    preflight = self._nav2.preflight(
+                        lambda: self._cancelled(goal_handle),
+                        cancel_competing=True,
+                    )
+                    if not preflight.ready:
+                        raise RuntimeError(
+                            "Nav2 Spin preflight failed: " + preflight.message
+                        )
+                    move_to_heading = self._nav2.go_to_heading
                 outcome = self._scan.run(
                     capture=lambda angle, count, stage, step, total: self._capture_frames(
                         goal_handle, angle, count, stage, step, total
@@ -358,20 +562,25 @@ class MobileFallCoordinator(Node):
                     feedback=lambda stage, message, step, total, confidence: self._scan_feedback(
                         goal_handle, event_id, stage, message, step, total, confidence
                     ),
+                    move_to_heading=move_to_heading,
                 )
                 if outcome.kind == "cancelled":
+                    self._nav2.cancel_current_segment_and_wait()
                     event = self._store.get(event_id)
                     goal_handle.canceled()
                     return self._result(event, local=0.0, vlm=0.0, reason="cancelled")
                 local_confidence = outcome.confidence
                 reason = outcome.reason
                 notification_image = outcome.notification_image
+                candidate_heading = outcome.angle_deg
+                self._publish_evidence(notification_image)
                 if outcome.kind == "degraded":
                     degraded = True
                     vlm_images: list[tuple[str, bytes]] = []
                 else:
                     vlm_images = list(outcome.vlm_images)
             except Exception as exc:
+                self._nav2.cancel_current_segment_and_wait()
                 if self._cancelled(goal_handle):
                     event = self._store.get(event_id)
                     goal_handle.canceled()
@@ -400,9 +609,24 @@ class MobileFallCoordinator(Node):
                     assessment = self._assess_vlm(vlm_images, goal_handle)
                     vlm_confidence = assessment.confidence
                     reason = assessment.reason
+                    self._active_vlm_confidence = float(vlm_confidence)
                     if not assessment.fall_suspected or assessment.confidence < float(
                         self.get_parameter("vlm_threshold").value
                     ):
+                        if self._scan_mode == "nav2_spin" and candidate_heading is not None:
+                            self._feedback(
+                                goal_handle,
+                                "return_to_start",
+                                "VLM did not confirm a fall; restoring the initial heading",
+                                local=local_confidence,
+                                vlm=vlm_confidence,
+                            )
+                            if not self._nav2.return_to_start(
+                                lambda: self._cancelled(goal_handle)
+                            ):
+                                raise RuntimeError(
+                                    "initial heading could not be restored after VLM rejection"
+                                )
                         event = self._store.update(
                             event_id,
                             status="not_fall",
@@ -431,6 +655,28 @@ class MobileFallCoordinator(Node):
                         degraded=1,
                         degraded_reason=reason,
                     )
+
+            if not bool(self.get_parameter("notification_enabled").value):
+                event = self._store.update(
+                    event_id,
+                    status="failed",
+                    stage="notification_suppressed",
+                    message=(
+                        "assessment completed, but real-contact notification is disabled"
+                    ),
+                    local_confidence=local_confidence,
+                    vlm_confidence=vlm_confidence,
+                    assessment_reason=reason,
+                    degraded=int(degraded),
+                    degraded_reason=reason if degraded else "",
+                )
+                goal_handle.abort()
+                return self._result(
+                    event,
+                    local=local_confidence,
+                    vlm=vlm_confidence,
+                    reason=reason,
+                )
 
             if not self._wait_until_notification(event_id, goal_handle):
                 event = self._store.get(event_id)
@@ -493,11 +739,23 @@ class MobileFallCoordinator(Node):
             goal_handle.abort()
             return self._result(event, local=local_confidence, vlm=vlm_confidence, reason=reason)
         finally:
+            if self._nav2.motion_active:
+                self._nav2.cancel_current_segment_and_wait()
             with self._active_lock:
                 self._reserved = False
             self._cancel.clear()
+            self._active_event_id = ""
+            self._set_active_progress(
+                "idle",
+                "waiting for a fall event",
+                step=0,
+                local=0.0,
+                vlm=0.0,
+            )
 
     def destroy_node(self):
+        self._cancel.set()
+        self._nav2.shutdown()
         self._async_loop.call_soon_threadsafe(self._async_loop.stop)
         self._async_thread.join(timeout=2.0)
         return super().destroy_node()

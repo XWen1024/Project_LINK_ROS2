@@ -9,7 +9,9 @@ import json
 import os
 from pathlib import Path
 import threading
+import time
 from typing import Any
+import uuid
 
 from aiohttp import web
 import rclpy
@@ -18,12 +20,20 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import Bool
+from std_srvs.srv import Trigger
 
 from project_link_emergency_interfaces.action import RespondToFall
-from project_link_emergency_interfaces.srv import CaptureStill, SendFallNotification
+from project_link_emergency_interfaces.msg import FallResponseStatus
+from project_link_emergency_interfaces.srv import (
+    CaptureStill,
+    GetFallEvent,
+    ListFallEvents,
+    SendFallNotification,
+)
 
 from .event_store import BusyEventError, EventStore, TERMINAL_STATUSES
 from .gateway_contract import ContractError, public_event, validate_event
+from .ros_contract import event_message, transition_message
 
 
 MAX_BODY_BYTES = 16 * 1024
@@ -51,16 +61,63 @@ class GatewayRosBridge(Node):
         self._lock = threading.Lock()
         self._goals: dict[str, Any] = {}
         self._notification_ready = False
+        self._coordinator_status = None
         self.create_subscription(Bool, "/fall_detection/notification_ready", self._on_notification_ready, 10)
+        self.create_subscription(
+            FallResponseStatus,
+            "/fall_detection/status",
+            self._on_coordinator_status,
+            10,
+        )
+        self.create_service(
+            Trigger,
+            "/fall_detection/cancel_active",
+            self._cancel_active,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            Trigger,
+            "/fall_detection/create_demo_event",
+            self._create_demo_event,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            GetFallEvent,
+            "/fall_detection/get_event",
+            self._get_event,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            ListFallEvents,
+            "/fall_detection/list_events",
+            self._list_events,
+            callback_group=self._callbacks,
+        )
 
     def _on_notification_ready(self, message: Bool) -> None:
         self._notification_ready = bool(message.data)
+
+    def _on_coordinator_status(self, message: FallResponseStatus) -> None:
+        self._coordinator_status = message
 
     def readiness(self) -> dict[str, bool]:
         return {
             "coordinator_ready": self._action.wait_for_server(timeout_sec=0.0),
             "camera_ready": self._capture.service_is_ready(),
             "notification_ready": self._notify.service_is_ready() and self._notification_ready,
+        }
+
+    def coordinator_snapshot(self) -> dict[str, Any]:
+        message = self._coordinator_status
+        if message is None:
+            return {}
+        return {
+            "scan_mode": message.scan_mode,
+            "nav2_action_ready": bool(message.nav2_action_ready),
+            "nav2_lifecycle_ready": bool(message.nav2_lifecycle_ready),
+            "rotation_clear": bool(message.rotation_clear),
+            "cmd_vel_clear": bool(message.cmd_vel_clear),
+            "arm_safe": bool(message.arm_safe),
         }
 
     def dispatch(self, event: dict[str, Any], attempt: int = 0) -> bool:
@@ -108,7 +165,11 @@ class GatewayRosBridge(Node):
         with self._lock:
             self._goals[event_id] = handle
         result_future = handle.get_result_async()
-        result_future.add_done_callback(lambda completed, current_id=event_id: self._goal_result(current_id, completed))
+        result_future.add_done_callback(
+            lambda completed, current_id=event_id: self._goal_result(
+                current_id, completed
+            )
+        )
 
     def _goal_result(self, event_id: str, future) -> None:
         with self._lock:
@@ -129,6 +190,83 @@ class GatewayRosBridge(Node):
             handle = self._goals.get(event_id)
         if handle is not None:
             handle.cancel_goal_async()
+
+    def _cancel_active(self, _request, response):
+        event = self._store.active_event()
+        if event is None:
+            response.success = False
+            response.message = "no active fall event"
+            return response
+        updated, cancelled = self._store.cancel(
+            str(event["event_id"]), "cancelled by Ubuntu console"
+        )
+        if cancelled and updated is not None:
+            self.cancel(str(updated["event_id"]))
+        response.success = bool(cancelled)
+        response.message = (
+            "active fall response cancelled"
+            if cancelled
+            else "notification already claimed or event already finished"
+        )
+        return response
+
+    def _create_demo_event(self, _request, response):
+        if not self._action.wait_for_server(timeout_sec=0.0):
+            response.success = False
+            response.message = "fall coordinator is not ready"
+            return response
+        received = time.time_ns() // 1_000_000
+        payload = {
+            "event_id": str(uuid.uuid4()),
+            "mode": "demo",
+            "occurred_at_ms": received,
+            "device_name": "Ubuntu console",
+            "cancel_window_ms": 15000,
+            "imu": None,
+        }
+        try:
+            result = self._store.create_event(payload, received_at_ms=received)
+        except BusyEventError as exc:
+            response.success = False
+            response.message = f"another fall event is active: {exc}"
+            return response
+        if not self.dispatch(result.event):
+            self._store.update(
+                result.event["event_id"],
+                status="failed",
+                stage="dispatch_failed",
+                message="coordinator became unavailable",
+            )
+            response.success = False
+            response.message = "coordinator became unavailable"
+            return response
+        response.success = True
+        response.message = str(result.event["event_id"])
+        return response
+
+    def _get_event(self, request, response):
+        event = self._store.get(request.event_id)
+        if event is None:
+            response.success = False
+            response.message = "unknown event_id"
+            return response
+        response.success = True
+        response.event = event_message(event)
+        response.transitions = [
+            transition_message(row)
+            for row in self._store.transitions(request.event_id)
+        ]
+        response.message = "ok"
+        return response
+
+    def _list_events(self, request, response):
+        response.success = True
+        response.events = [
+            event_message(row)
+            for row in self._store.list_recent(request.limit or 20)
+        ]
+        response.message = "ok"
+        return response
 
 
 class FallGatewayApp:
@@ -168,6 +306,11 @@ class FallGatewayApp:
 
     async def health(self, _request: web.Request) -> web.Response:
         readiness = self.bridge.readiness()
+        coordinator = (
+            self.bridge.coordinator_snapshot()
+            if hasattr(self.bridge, "coordinator_snapshot")
+            else {}
+        )
         active = self.store.active_event()
         return web.json_response(
             {
@@ -185,6 +328,7 @@ class FallGatewayApp:
                 ),
                 "notification_ready": readiness["notification_ready"],
                 "coordinator_ready": readiness["coordinator_ready"],
+                **coordinator,
                 "active_event": active["event_id"] if active else None,
             }
         )
@@ -206,12 +350,19 @@ class FallGatewayApp:
         try:
             result = self.store.create_event(payload)
         except BusyEventError:
-            return web.json_response({"error": "another fall event is active"}, status=503, headers={"Retry-After": "2"})
+            return web.json_response(
+                {"error": "another fall event is active"},
+                status=503,
+                headers={"Retry-After": "2"},
+            )
         if result.preempted_event_id:
             self.bridge.cancel(result.preempted_event_id)
         if result.created and not self.bridge.dispatch(result.event):
             event = self.store.update(
-                result.event["event_id"], status="failed", stage="dispatch_failed", message="coordinator became unavailable"
+                result.event["event_id"],
+                status="failed",
+                stage="dispatch_failed",
+                message="coordinator became unavailable",
             )
             return web.json_response(public_event(event), status=503, headers={"Retry-After": "2"})
         return web.json_response(public_event(result.event), status=202 if result.created else 200)

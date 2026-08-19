@@ -71,6 +71,12 @@ class RosBridge(QObject):
     voice_operation = Signal(str)
     manipulation_control_available = Signal(bool, str)
     manipulation_operation = Signal(str)
+    fall_status = Signal(dict)
+    fall_events = Signal(list)
+    fall_event_detail = Signal(dict)
+    fall_evidence_image = Signal(bytes)
+    fall_operation = Signal(str)
+    fall_control_available = Signal(bool, str)
     uwb_observation = Signal(dict)
     uwb_status = Signal(str)
     uwb_goal = Signal(dict)
@@ -101,6 +107,7 @@ class RosBridge(QObject):
         self._front_camera_timer.start()
         self._voice_control_ready: bool | None = None
         self._manipulation_control_ready: bool | None = None
+        self._fall_control_ready: bool | None = None
         self._uwb_enabled = os.environ.get("PROJECT_LINK_SHOW_UWB_PAGE", "0") == "1"
 
     def start(self) -> None:
@@ -110,6 +117,8 @@ class RosBridge(QObject):
         from nav_msgs.msg import OccupancyGrid, Path
         from project_link_console_interfaces.action import ManageStack, SwitchVoice
         from project_link_console_interfaces.msg import ConsoleEvent, SystemState, TeleopCommand
+        from project_link_emergency_interfaces.msg import FallResponseStatus
+        from project_link_emergency_interfaces.srv import GetFallEvent, ListFallEvents
         from rcl_interfaces.srv import GetParameters, SetParameters
         from rclpy.action import ActionClient
         from rclpy.executors import MultiThreadedExecutor
@@ -136,6 +145,8 @@ class RosBridge(QObject):
         self._parameter_type = Parameter
         self._get_parameters_type = GetParameters
         self._set_parameters_type = SetParameters
+        self._get_fall_event_type = GetFallEvent
+        self._list_fall_events_type = ListFallEvents
         if not rclpy.ok():
             rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
         self._node = rclpy.create_node("project_link_console_gui")
@@ -166,6 +177,33 @@ class RosBridge(QObject):
         self._stop_visual_grasp_client = self._node.create_client(
             Trigger, "/project_link/console/stop_visual_grasp"
         )
+        self._start_fall_client = self._node.create_client(
+            Trigger, "/project_link/console/start_fall_response"
+        )
+        self._stop_fall_client = self._node.create_client(
+            Trigger, "/project_link/console/stop_fall_response"
+        )
+        self._restart_fall_client = self._node.create_client(
+            Trigger, "/project_link/console/restart_fall_response"
+        )
+        self._restart_wechat_client = self._node.create_client(
+            Trigger, "/project_link/console/restart_wechatbot"
+        )
+        self._cancel_fall_client = self._node.create_client(
+            Trigger, "/fall_detection/cancel_active"
+        )
+        self._create_fall_demo_client = self._node.create_client(
+            Trigger, "/fall_detection/create_demo_event"
+        )
+        self._fall_preflight_client = self._node.create_client(
+            Trigger, "/fall_detection/run_preflight"
+        )
+        self._get_fall_event_client = self._node.create_client(
+            GetFallEvent, "/fall_detection/get_event"
+        )
+        self._list_fall_events_client = self._node.create_client(
+            ListFallEvents, "/fall_detection/list_events"
+        )
         if self._uwb_enabled:
             self._start_uwb_client = self._node.create_client(
                 Trigger, "/project_link/console/start_uwb_shadow"
@@ -190,6 +228,12 @@ class RosBridge(QObject):
             ConsoleEvent, "/project_link/console/events", self._on_console_event, 20
         )
         self._node.create_subscription(String, "/voice/status", self._on_voice_status, 10)
+        self._node.create_subscription(
+            FallResponseStatus,
+            "/fall_detection/status",
+            self._on_fall_status,
+            10,
+        )
         if self._uwb_enabled:
             from project_link_uwb_interfaces.msg import UwbObservation
 
@@ -232,6 +276,12 @@ class RosBridge(QObject):
             qos_profile_sensor_data,
         )
         self._node.create_subscription(
+            CompressedImage,
+            "/fall_detection/evidence/compressed",
+            lambda message: self.fall_evidence_image.emit(bytes(message.data)),
+            qos_profile_sensor_data,
+        )
+        self._node.create_subscription(
             PointCloud2,
             "/unilidar/cloud",
             self._on_cloud,
@@ -246,6 +296,7 @@ class RosBridge(QObject):
         self.connection_changed.emit(False, self._connection_text)
         self.voice_control_available.emit(False, "等待发现 Orin 语音控制")
         self.manipulation_control_available.emit(False, "等待发现 Orin 机械臂控制")
+        self.fall_control_available.emit(False, "等待发现 Orin 跌倒检测控制")
         self._executor = MultiThreadedExecutor(num_threads=3)
         self._executor.add_node(self._node)
         self._thread = threading.Thread(target=self._executor.spin, name="console-ros", daemon=True)
@@ -300,6 +351,33 @@ class RosBridge(QObject):
     def stop_visual_grasp(self) -> None:
         self._put(("visual_grasp", False))
 
+    def start_fall_response(self) -> None:
+        self._put(("fall_lifecycle", "start"))
+
+    def stop_fall_response(self) -> None:
+        self._put(("fall_lifecycle", "stop"))
+
+    def restart_fall_response(self) -> None:
+        self._put(("fall_lifecycle", "restart"))
+
+    def restart_wechatbot(self) -> None:
+        self._put(("fall_lifecycle", "restart_wechat"))
+
+    def cancel_fall_response(self) -> None:
+        self._put(("fall_cancel",))
+
+    def create_fall_demo_event(self) -> None:
+        self._put(("fall_demo",))
+
+    def run_fall_preflight(self) -> None:
+        self._put(("fall_preflight",))
+
+    def request_fall_events(self, limit: int = 20) -> None:
+        self._put(("fall_events", int(limit)))
+
+    def request_fall_event(self, event_id: str) -> None:
+        self._put(("fall_event", str(event_id)))
+
     def request_front_camera_parameters(self) -> None:
         self._put(("front_camera_get",))
 
@@ -342,6 +420,18 @@ class RosBridge(QObject):
                 self._probe_voice_control()
             elif command[0] == "visual_grasp":
                 self._set_visual_grasp(command[1])
+            elif command[0] == "fall_lifecycle":
+                self._set_fall_lifecycle(command[1])
+            elif command[0] == "fall_cancel":
+                self._call_fall_trigger(self._cancel_fall_client, "取消跌倒处置")
+            elif command[0] == "fall_demo":
+                self._call_fall_trigger(self._create_fall_demo_client, "创建演示事件")
+            elif command[0] == "fall_preflight":
+                self._call_fall_trigger(self._fall_preflight_client, "运行 Nav2 预检")
+            elif command[0] == "fall_events":
+                self._request_fall_events(command[1])
+            elif command[0] == "fall_event":
+                self._request_fall_event(command[1])
             elif command[0] == "front_camera_get":
                 self._get_front_camera_parameters()
             elif command[0] == "front_camera_set":
@@ -402,6 +492,121 @@ class RosBridge(QObject):
         self.manipulation_operation.emit(message)
         self.operation_event.emit(message)
         self.lifecycle_completed.emit(action, success)
+
+    def _set_fall_lifecycle(self, operation: str) -> None:
+        clients = {
+            "start": self._start_fall_client,
+            "stop": self._stop_fall_client,
+            "restart": self._restart_fall_client,
+            "restart_wechat": self._restart_wechat_client,
+        }
+        client = clients.get(operation)
+        if client is None or not client.wait_for_service(timeout_sec=0.25):
+            message = "Orin 跌倒检测生命周期控制尚未连接"
+            self.fall_control_available.emit(False, message)
+            self.fall_operation.emit(message)
+            return
+        self.fall_control_available.emit(True, "Orin 跌倒检测控制已连接")
+        client.call_async(self._trigger_type.Request()).add_done_callback(
+            lambda future: self._fall_trigger_done(future, "fall")
+        )
+
+    def _call_fall_trigger(self, client, description: str) -> None:
+        if not client.wait_for_service(timeout_sec=0.25):
+            self.fall_operation.emit(description + "失败：服务尚未连接")
+            return
+        client.call_async(self._trigger_type.Request()).add_done_callback(
+            lambda future: self._fall_trigger_done(future, "fall")
+        )
+
+    def _fall_trigger_done(self, future, area: str) -> None:
+        try:
+            response = future.result()
+            success = bool(response.success)
+            message = str(response.message)
+        except Exception as exc:
+            success = False
+            message = f"跌倒检测操作失败：{exc}"
+        self.fall_operation.emit(message)
+        self.operation_event.emit(message)
+        self.lifecycle_completed.emit(area, success)
+
+    @staticmethod
+    def _fall_event_dict(message) -> dict:
+        return {
+            "event_id": message.event_id,
+            "mode": message.mode,
+            "device_name": message.device_name,
+            "occurred_at_ms": int(message.occurred_at_ms),
+            "received_at_ms": int(message.received_at_ms),
+            "notify_not_before_ms": int(message.notify_not_before_ms),
+            "status": message.status,
+            "stage": message.stage,
+            "message": message.message,
+            "local_confidence": float(message.local_confidence),
+            "vlm_confidence": float(message.vlm_confidence),
+            "assessment_reason": message.assessment_reason,
+            "degraded": bool(message.degraded),
+            "degraded_reason": message.degraded_reason,
+            "notification_claimed": bool(message.notification_claimed),
+            "notification_attempted": bool(message.notification_attempted),
+            "notification_success": bool(message.notification_success),
+            "text_success": bool(message.text_success),
+            "image_success": bool(message.image_success),
+            "updated_at_ms": int(message.updated_at_ms),
+        }
+
+    def _request_fall_events(self, limit: int) -> None:
+        if not self._list_fall_events_client.wait_for_service(timeout_sec=0.25):
+            self.fall_operation.emit("跌倒事件列表服务尚未连接")
+            return
+        request = self._list_fall_events_type.Request()
+        request.limit = max(1, min(200, int(limit)))
+        self._list_fall_events_client.call_async(request).add_done_callback(
+            self._fall_events_received
+        )
+
+    def _fall_events_received(self, future) -> None:
+        try:
+            response = future.result()
+            if not response.success:
+                raise RuntimeError(response.message)
+            events = [self._fall_event_dict(item) for item in response.events]
+        except Exception as exc:
+            self.fall_operation.emit(f"读取跌倒事件失败：{exc}")
+            return
+        self.fall_events.emit(events)
+
+    def _request_fall_event(self, event_id: str) -> None:
+        if not event_id or not self._get_fall_event_client.wait_for_service(timeout_sec=0.25):
+            self.fall_operation.emit("跌倒事件详情服务尚未连接")
+            return
+        request = self._get_fall_event_type.Request()
+        request.event_id = event_id
+        self._get_fall_event_client.call_async(request).add_done_callback(
+            self._fall_event_received
+        )
+
+    def _fall_event_received(self, future) -> None:
+        try:
+            response = future.result()
+            if not response.success:
+                raise RuntimeError(response.message)
+            detail = self._fall_event_dict(response.event)
+            detail["transitions"] = [
+                {
+                    "from_status": item.from_status,
+                    "to_status": item.to_status,
+                    "stage": item.stage,
+                    "message": item.message,
+                    "created_at_ms": int(item.created_at_ms),
+                }
+                for item in response.transitions
+            ]
+        except Exception as exc:
+            self.fall_operation.emit(f"读取跌倒事件详情失败：{exc}")
+            return
+        self.fall_event_detail.emit(detail)
 
     def _get_front_camera_parameters(self) -> None:
         if not self._front_camera_get_client.wait_for_service(timeout_sec=0.25):
@@ -497,6 +702,19 @@ class RosBridge(QObject):
                 "Orin 机械臂生命周期控制已连接"
                 if manipulation_ready
                 else "等待发现 Orin 机械臂生命周期控制",
+            )
+        fall_ready = bool(
+            self._start_fall_client.service_is_ready()
+            and self._stop_fall_client.service_is_ready()
+            and self._restart_fall_client.service_is_ready()
+        )
+        if fall_ready != self._fall_control_ready:
+            self._fall_control_ready = fall_ready
+            self.fall_control_available.emit(
+                fall_ready,
+                "Orin 跌倒检测控制已连接"
+                if fall_ready
+                else "等待发现 Orin 跌倒检测控制",
             )
 
     def _set_voice_control_ready(self, ready: bool, message: str, force: bool = False) -> None:
@@ -713,6 +931,38 @@ class RosBridge(QObject):
             }
         value["raw"] = raw
         self.voice_status.emit(value)
+
+    def _on_fall_status(self, message) -> None:
+        self.fall_status.emit(
+            {
+                "scan_mode": message.scan_mode,
+                "service_ready": bool(message.service_ready),
+                "event_active": bool(message.event_active),
+                "active_event_id": message.active_event_id,
+                "stage": message.stage,
+                "scan_step": int(message.scan_step),
+                "scan_total": int(message.scan_total),
+                "current_heading_deg": float(message.current_heading_deg),
+                "target_heading_deg": float(message.target_heading_deg),
+                "local_confidence": float(message.local_confidence),
+                "vlm_confidence": float(message.vlm_confidence),
+                "motion_active": bool(message.motion_active),
+                "camera_ready": bool(message.camera_ready),
+                "specialized_model_ready": bool(message.specialized_model_ready),
+                "world_model_ready": bool(message.world_model_ready),
+                "vlm_ready": bool(message.vlm_ready),
+                "notification_ready": bool(message.notification_ready),
+                "nav2_action_ready": bool(message.nav2_action_ready),
+                "nav2_lifecycle_ready": bool(message.nav2_lifecycle_ready),
+                "tf_ready": bool(message.tf_ready),
+                "odom_ready": bool(message.odom_ready),
+                "costmap_ready": bool(message.costmap_ready),
+                "rotation_clear": bool(message.rotation_clear),
+                "cmd_vel_clear": bool(message.cmd_vel_clear),
+                "arm_safe": bool(message.arm_safe),
+                "message": message.message,
+            }
+        )
 
     def _on_uwb_observation(self, message) -> None:
         self.uwb_observation.emit(

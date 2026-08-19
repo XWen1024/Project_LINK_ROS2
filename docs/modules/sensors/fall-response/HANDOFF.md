@@ -1,18 +1,30 @@
-# Android Fall Response Orin Backend Handoff
+# Fall Response Backend And Console Handoff
 
 Verification date: 2026-08-20
-Canonical implementation commit: `d7ca4dd`
+Implementation baseline: `main` worktree based on `73bda7c`; Linux verification and canonical commit are pending
 
-## Implemented boundary
+## Current boundary
 
-The current delivery remains a no-motion closed loop. The Android app submits
-an authenticated event to the Orin, the Orin persists it in SQLite, captures
-virtual 30-degree views from the single stationary front-camera owner, runs a
-specialized `fallen/sitting/standing` model asynchronously, uses YOLO-World as
-the full-coverage person fallback, and requests multi-image VLM confirmation.
-No component publishes `/cmd_vel`, imports Nav2, or starts Nav2.
+The fall-response subsystem now has two explicitly selectable scan modes:
 
-Public Android endpoints remain:
+- `static`: the proven no-motion fallback. It captures the stationary front
+  camera for twelve virtual headings and keeps all model, VLM, cancellation and
+  notification behavior available.
+- `nav2_spin`: a real, fail-closed `nav2_msgs/action/Spin` adapter. It never
+  publishes `/cmd_vel`, never starts Nav2 by itself and moves only after a fall
+  event is accepted and every preflight gate passes.
+
+Starting `project-link-emergency.target` starts the front camera, authenticated
+HTTP gateway, visual coordinator and WeChat notifier. It does not start the
+base, lidar, mapping or Nav2 and it never sends a Spin goal during startup.
+
+The Ubuntu console has a dedicated **跌倒检测** page. Ubuntu renders video,
+evidence, status, event history and configuration; Orin retains camera, model,
+SQLite, Nav2 Action and notification ownership.
+
+## Implemented backend
+
+Android endpoints remain:
 
 ```text
 GET  /health
@@ -21,38 +33,17 @@ GET  /api/fall/{event_id}
 POST /api/fall/{event_id}/cancel
 ```
 
-All four endpoints, including `/health`, require the shared Token header. A
-local authenticated health check is:
-
-```bash
-set -a
-source ~/.config/project_link/fall_response.env
-set +a
-curl -sS -H "X-Fall-Guard-Token: $FALL_GUARD_TOKEN" \
-  http://127.0.0.1:8765/health | python3 -m json.tool
-```
-
-The only public states are `accepted`, `scanning`, `verifying`, `notified`,
-`not_fall`, `cancelled`, and `failed`. `event_id` is the idempotency key.
-
-## Components
-
-- `fall_http_gateway`: aiohttp server, Token authentication, validation,
-  single-event arbitration and ROS Action dispatch.
-- `mobile_fall_coordinator`: `/fall_detection/respond_to_fall` Action server,
-  virtual-angle capture, asynchronous fall inference, YOLO-World fallback,
-  multi-image VLM review, cancellation window and notification sequencing.
-- `project_link_front_camera`: owns `/dev/project_link_front_camera`, publishes
-  the low-bandwidth preview and serves `/front_camera/capture_still` from the
-  cached high-resolution frame.
-- `wechat_notifier_node`: `/fall_detection/send_notification` service backed by
-  pinned `wechatbot-sdk==0.3.0`, a single-contact binding and an exactly-once
-  notification ledger.
+All require `X-Fall-Guard-Token`. The public states remain `accepted`,
+`scanning`, `verifying`, `notified`, `not_fall`, `cancelled` and `failed`.
+The SQLite store now enforces an explicit state-transition allowlist in addition
+to terminal-state immutability, idempotency and atomic notification claiming.
 
 Runtime state defaults to:
 
 ```text
 ~/.local/state/project-link/fall-response/events.sqlite3
+~/.config/project_link/fall_response.env
+~/.config/project_link/fall_response.yaml
 ~/.config/project_link/wechatbot/credentials.json
 ~/.local/state/project-link/clawbot/binding.json
 ~/.local/state/project-link/clawbot/notifications.sqlite3
@@ -60,79 +51,88 @@ Runtime state defaults to:
 /home/wte/models/yolov8s-worldv2.pt
 ```
 
-All credentials, binding state and SQLite files must be mode 0600. The VLM
-defaults to the configurable Aliyun compatible endpoint and `qwen3.8-27b` via
-`OPENAI_BASE_URL` and `OPENAI_MODEL`; the user supplies `OPENAI_API_KEY`. Both
-YOLO models are installed explicitly and never downloaded during service startup.
+Credentials and databases remain mode `0600`. The CUDA model environment remains
+isolated at `~/.local/share/project-link/venvs/fall-cuda`; it does not replace
+LeRobot's Python/Torch environment.
 
-YOLO Pose is no longer part of the mobile production path. See
-`NAV2_ASYNC_SCAN_HANDOFF.md` for the deliberately deferred Spin adapter.
+## Typed operator interface
 
-## Deployment gates
+The Orin publishes:
 
-1. Build `project_link_emergency_interfaces`, `project_link_console_agent` and
-   `project_link_fall_response` with a normal colcon installation.
-2. Install `wechatbot-sdk==0.3.0` in the Orin user Python environment.
-3. Run `deploy/systemd/bin/project-link-install-fall-models` and verify both hashes.
-4. Copy `deploy/systemd/fall_response.env.example` to the private environment
-   file, replace secrets and set mode 0600.
-5. Run `ros2 run project_link_fall_response wechatbot_bind` in the foreground;
-   the one emergency contact must send the displayed `/bind <code>` command.
-6. Install user units. They are not enabled automatically.
-7. Validate HTTP, cancellation, static images and real front-camera capture
-   before starting `project-link-emergency.target` for phone integration.
+- `/fall_detection/status` (`FallResponseStatus`): scan mode, active event,
+  stage/progress, headings, confidence and every readiness/safety gate.
+- `/fall_detection/evidence/compressed`: the latest bounded candidate or
+  notification JPEG; evidence is not written to disk by the GUI.
 
-Starting the emergency target does not start the base, lidar, mapping or Nav2.
+It exposes:
 
-## Verified state
+- `/fall_detection/list_events`
+- `/fall_detection/get_event`
+- `/fall_detection/cancel_active`
+- `/fall_detection/create_demo_event`
+- `/fall_detection/run_preflight`
 
-- Orin normal colcon build passed at `d7ca4dd`; the focused fall-response suite
-  passed 37 tests. The five pure asynchronous scan scenarios cover early strong
-  interruption, failed recheck and resume, weak full-scan review, World fallback,
-  no-person degradation and specialized-model failure.
-- Android debug Kotlin compilation and Lint passed. The Windows JUnit runner
-  still cannot discover test classes from the repository's Chinese filesystem
-  path, although `compileDebugUnitTestKotlin` succeeds; rerun the unit task from
-  a path/environment without that classpath limitation before release packaging.
-- The specialized YOLO11 model is installed with SHA-256
-  `3f56ad30358d5c63bf8dbc0c1299cf68818c3d291dfb10c94107b94110aadd4c`;
-  it detected the retained difficult curled-floor sample as `fallen=0.6631`
-  and measured about 30.85 FPS. YOLO-World is installed with SHA-256
-  `9b2c17ab6124a913e9b3a5c170617920d91b0f01111a8479da69f00e2cf27792`
-  and detected the same person at 0.8173. The isolated JetPack CUDA environment
-  uses Torch 2.8.0 / CUDA 12.6 and is installed only in
-  `~/.local/share/project-link/venvs/fall-cuda`; the service disables user site
-  packages and prepends that environment, preserving LeRobot's existing
-  user-level Torch 2.7.1+cpu.
-- A real `/front_camera/capture_still` call passed at 1280x720 with a 57,996-byte
-  JPEG while Nav2 and both fall services stayed inactive. Focus/orientation and
-  representative-person five-frame inference still require supervised review.
-- A loopback Gateway/Action smoke persisted an event and finished it as
-  `cancelled`; no camera, notification or motion service was started.
-- `wechatbot-sdk==0.3.0` and its required user-level cryptography runtime are
-  installed. The user units are installed but disabled/inactive.
-- User-owned WeChat QR login and single-contact binding. The pinned SDK persists
-  login credentials in mode-0600 `credentials.json`; the project separately
-  persists and reinjects the bound contact context token after every restart.
-- Android-to-Orin LAN smoke test and 14.9-second cancellation race.
-- Confirmed and degraded notification delivery to the real contact.
-- The Nav2 adapter is intentionally absent. Follow `NAV2_ASYNC_SCAN_HANDOFF.md`
-  in a separate supervised task. Direct velocity publishing remains forbidden.
+The event query returns typed event records and their SQLite transition timeline.
+The console agent separately allowlists start/stop/restart of the emergency
+target and restart of the WeChat service. No GUI field accepts arbitrary unit
+names or shell commands.
 
-The retained difficult curled-floor image replayed all model paths on Orin. With
-model warmup enabled, the virtual scan received `fallen=0.6631` at the first of
-twelve headings, immediately entered simulated return/recheck, reproduced the
-candidate and selected three labeled images for VLM review. No Nav2 service or
-motion interface was involved.
+The full demo-event button is deliberately guarded by a warning: in
+`nav2_spin` it can rotate the robot, and with real-contact notification enabled
+it can send a real message.
 
-At the end of verification, front camera, fall response and WeChat notifier were
-active; navigation remained inactive. No event, VLM request or WeChat message
-was generated by the replay CLI.
+## Visual and notification path
 
-## Remaining gates
+- `/dev/project_link_front_camera` remains the sole chassis-camera device.
+- `/front_camera/capture_still` supplies cached full-resolution JPEG frames.
+- Primary model: YOLO11 `fallen/sitting/standing`.
+- YOLO-World only establishes person presence and never confirms a fall.
+- Strong candidates interrupt a live Spin segment, return to the candidate and
+  capture two recheck frames.
+- Weak candidates and World fallback retain the previous multi-image VLM path.
+- VLM rejection restores the initial heading; a confirmed candidate leaves the
+  camera facing the person.
+- The WeChat notifier exits non-zero if its long-poll loop dies so
+  `Restart=on-failure` can recover it. The page shows `notification_ready` and
+  has an allowlisted restart button.
 
-- Install the rebuilt Android APK on the phone and verify backend stage messages.
-- Run one phone-triggered no-motion event through the new multi-image VLM path.
-- Validate standing, sitting, bed lying, sofa lying, floor fallen, empty and
-  multi-person twelve-angle offline sets.
-- Add Nav2 only in the follow-up task defined by `NAV2_ASYNC_SCAN_HANDOFF.md`.
+## Configuration
+
+Non-secret fall parameters are stored in
+`~/.config/project_link/fall_response.yaml` and edited through the fixed SSH
+configuration helper. Simple mode exposes scan mode, real-contact notification,
+segment count, frames per heading and clearance radius. Advanced mode exposes
+bounded model thresholds, recheck, costmap, stop and Spin timeout parameters.
+
+Secrets remain in `fall_response.env`; the helper masks Token/API Key values and
+never returns them through ROS. Saving does not restart services. Use the page's
+**重启并读取配置** button after saving.
+
+## Safety contract
+
+`nav2_spin` preflight requires:
+
+- `/spin` ready and required Nav2 lifecycle nodes active;
+- fresh `odom -> base_footprint` TF and `/odom`;
+- fresh local costmap and no high-cost cell inside the configured rotation sweep;
+- `/cmd_vel` publishers limited to the allowlisted Nav2 path;
+- competing NavigateToPose/NavigateThroughPoses goals cancelled and the robot
+  stably below `0.03 rad/s` for `250 ms`;
+- the manipulator service inactive or its torque disabled;
+- the fall event still active and not cancelled.
+
+Any failed gate degrades to a visual-unconfirmed alert. Direct velocity fallback
+is forbidden. Cancellation always requests Spin cancellation, waits for Nav2
+acknowledgement and waits for stable zero angular velocity before completing.
+
+## Remaining verification gates
+
+1. Build interfaces, backend, agent and GUI normally on Orin/Ubuntu.
+2. Run the focused Python tests and `systemd-analyze --user verify`.
+3. Render the page offscreen on Ubuntu and verify typed DDS state/event queries.
+4. Keep `scan_mode=static`; run a phone and console demo event with real-contact
+   notification disabled.
+5. Run the read-only Nav2 preflight while Nav2 is active.
+6. With the area clear, arm stowed/torque off and physical E-stop ready, follow
+   `NAV2_ASYNC_SCAN_HANDOFF.md` for supervised motion gates.
+7. Keep `static` as the production default until two full supervised Spin cycles pass.

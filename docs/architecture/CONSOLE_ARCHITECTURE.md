@@ -40,7 +40,7 @@ an SSH-invoked allowlisted configuration helper and are never transported as ROS
 messages.
 
 The helper is `scripts/project_link_console_config.py`. It accepts only the
-`voice`, `global` and `uwb` sections, validates allowlisted fields, writes local
+`voice`, `global`, `uwb` and `fall` sections, validates allowlisted fields, writes local
 mode-0600 files atomically, never returns secret values, and never accepts a
 shell command or arbitrary path. The Ubuntu GUI sends JSON through SSH stdin.
 Ubuntu needs its own authorized SSH key; Windows private keys must not be copied.
@@ -55,8 +55,11 @@ Ubuntu needs its own authorized SSH key; Windows private keys must not be copied
 3. Voice: classic/Qwen exclusive selection, session state, simplified events and
    per-stage timing.
 4. Voice configuration: common parameters, prompt profiles and registered tools.
-5. UWB: code-preserved shadow tooling, hidden by default and outside the current MVP.
-6. Global settings: devices, paths, ROS networking and masked API credentials.
+5. Fall response: service/model/VLM/WeChat/Nav2 readiness, live camera and
+   bounded evidence, current event progress, typed SQLite timeline, cancellation,
+   read-only Spin preflight and bounded simple/advanced configuration.
+6. UWB: code-preserved shadow tooling, hidden by default and outside the current MVP.
+7. Global settings: devices, paths, ROS networking and masked API credentials.
 
 Simple mode exposes only common operator controls. Advanced mode exposes the
 full categorized parameter catalog with Chinese labels, units, limits, defaults,

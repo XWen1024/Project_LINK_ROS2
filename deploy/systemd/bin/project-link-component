@@ -69,7 +69,13 @@ case "$component" in
       export PYTHONNOUSERSITE=1
       export PYTHONPATH="$FALL_PYTHON_SITE${PYTHONPATH:+:$PYTHONPATH}"
     fi
-    exec ros2 launch project_link_fall_response mobile_fall_response.launch.py
+    fall_config="${PROJECT_LINK_FALL_CONFIG:-$HOME/.config/project_link/fall_response.yaml}"
+    fall_arguments=()
+    if [[ -f "$fall_config" ]]; then
+      fall_arguments+=(config:="$fall_config")
+    fi
+    exec ros2 launch project_link_fall_response mobile_fall_response.launch.py \
+      "${fall_arguments[@]}"
     ;;
   wechatbot)
     source_main

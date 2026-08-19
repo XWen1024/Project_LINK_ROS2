@@ -106,3 +106,16 @@ def test_voice_and_uwb_runtime_overrides_round_trip(tmp_path):
     uwb = _run(tmp_path, "get", "uwb")
     assert uwb["calibration"]["calibration_status"] == "proposed"
     assert uwb["tuning"]["uwb_ttl_sec"] == 0.8
+
+
+def test_fall_runtime_parameters_are_allowlisted_and_bounded(tmp_path):
+    loaded = _run(tmp_path, "get", "fall")
+    loaded["scan_mode"] = "nav2_spin"
+    loaded["parameters"]["notification_enabled"] = False
+    loaded["parameters"]["rotation_clearance_radius_m"] = 0.45
+    result = _run(tmp_path, "set", "fall", loaded)
+    assert result["restart_required"] is True
+    saved = _run(tmp_path, "get", "fall")
+    assert saved["scan_mode"] == "nav2_spin"
+    assert saved["parameters"]["notification_enabled"] is False
+    assert saved["parameters"]["rotation_clearance_radius_m"] == 0.45

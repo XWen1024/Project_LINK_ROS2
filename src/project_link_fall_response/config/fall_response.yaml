@@ -20,6 +20,8 @@ mobile_fall_coordinator:
     event_db_path: ~/.local/state/project-link/fall-response/events.sqlite3
     specialized_model_path: /home/wte/models/project_link/human-fall-detection-yolo11.pt
     world_model_path: /home/wte/models/yolov8s-worldv2.pt
+    scan_mode: static
+    notification_enabled: true
     simulated_scan_steps: 12
     frames_per_angle: 3
     recheck_frames: 2
@@ -38,6 +40,35 @@ mobile_fall_coordinator:
     openai_model: qwen3.8-27b
     openai_timeout_sec: 20.0
     notification_timeout_sec: 90.0
+    spin_action: /spin
+    odom_topic: /odom
+    local_costmap_topic: /local_costmap/costmap
+    cmd_vel_topic: /cmd_vel
+    odom_frame: odom
+    base_frame: base_footprint
+    arm_status_topic: /visual_grasp/status
+    nav2_lifecycle_services:
+      - /behavior_server/get_state
+      - /controller_server/get_state
+      - /bt_navigator/get_state
+    competing_action_cancel_services:
+      - /navigate_to_pose/_action/cancel_goal
+      - /navigate_through_poses/_action/cancel_goal
+    cancel_competing_actions: true
+    allowed_cmd_vel_publishers:
+      - velocity_smoother
+      - behavior_server
+    require_arm_torque_off: true
+    tf_ttl_sec: 0.50
+    odom_ttl_sec: 0.50
+    costmap_ttl_sec: 1.50
+    rotation_clearance_radius_m: 0.42
+    rotation_obstacle_cost_threshold: 80
+    stop_angular_velocity_rps: 0.03
+    stop_stable_sec: 0.25
+    stop_timeout_sec: 3.0
+    spin_cancel_timeout_sec: 2.0
+    spin_timeout_sec: 12.0
 
 wechat_notifier_node:
   ros__parameters:

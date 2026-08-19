@@ -14,6 +14,17 @@ from typing import Any
 TERMINAL_STATUSES = frozenset({"notified", "not_fall", "cancelled", "failed"})
 ACTIVE_STATUSES = frozenset({"accepted", "scanning", "verifying"})
 ALL_STATUSES = ACTIVE_STATUSES | TERMINAL_STATUSES
+ALLOWED_STATUS_TRANSITIONS = {
+    "accepted": frozenset({"accepted", "scanning", "cancelled", "failed"}),
+    "scanning": frozenset({"scanning", "verifying", "cancelled", "failed"}),
+    "verifying": frozenset(
+        {"verifying", "notified", "not_fall", "cancelled", "failed"}
+    ),
+    "notified": frozenset({"notified"}),
+    "not_fall": frozenset({"not_fall"}),
+    "cancelled": frozenset({"cancelled"}),
+    "failed": frozenset({"failed"}),
+}
 
 
 class BusyEventError(RuntimeError):
@@ -117,6 +128,24 @@ class EventStore:
                 tuple(ACTIVE_STATUSES),
             ).fetchone()
             return self._row(row)
+
+    def list_recent(self, limit: int = 20) -> list[dict[str, Any]]:
+        bounded = max(1, min(200, int(limit)))
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM events ORDER BY received_at_ms DESC LIMIT ?",
+                (bounded,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def transitions(self, event_id: str) -> list[dict[str, Any]]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT event_id, from_status, to_status, stage, message, created_at_ms
+                   FROM event_transitions WHERE event_id=? ORDER BY id ASC""",
+                (event_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def create_event(self, payload: dict[str, Any], received_at_ms: int | None = None) -> CreateResult:
         received = int(received_at_ms if received_at_ms is not None else now_ms())
@@ -226,6 +255,11 @@ class EventStore:
             if target_status not in ALL_STATUSES:
                 connection.rollback()
                 raise ValueError(f"invalid event status: {target_status}")
+            if target_status not in ALLOWED_STATUS_TRANSITIONS[current_status]:
+                connection.rollback()
+                raise ValueError(
+                    f"invalid event status transition: {current_status}->{target_status}"
+                )
             values: dict[str, Any] = dict(fields)
             values["status"] = target_status
             values["stage"] = stage if stage is not None else str(current["stage"])
@@ -260,7 +294,9 @@ class EventStore:
             connection.commit()
             return dict(row)
 
-    def cancel(self, event_id: str) -> tuple[dict[str, Any] | None, bool]:
+    def cancel(
+        self, event_id: str, reason: str = "cancelled by phone"
+    ) -> tuple[dict[str, Any] | None, bool]:
         timestamp = now_ms()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -272,12 +308,18 @@ class EventStore:
                 connection.commit()
                 return dict(current), False
             connection.execute(
-                """UPDATE events SET status='cancelled', stage='cancelled', message='cancelled by phone',
+                """UPDATE events SET status='cancelled', stage='cancelled', message=?,
                    cancel_requested_at_ms=?, updated_at_ms=? WHERE event_id=?""",
-                (timestamp, timestamp, event_id),
+                (reason, timestamp, timestamp, event_id),
             )
             self._insert_transition(
-                connection, event_id, str(current["status"]), "cancelled", "cancelled", "cancelled by phone", timestamp
+                connection,
+                event_id,
+                str(current["status"]),
+                "cancelled",
+                "cancelled",
+                reason,
+                timestamp,
             )
             row = connection.execute("SELECT * FROM events WHERE event_id=?", (event_id,)).fetchone()
             connection.commit()

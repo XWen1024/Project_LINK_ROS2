@@ -11,6 +11,7 @@ cd ~/wheeltec_robot
 source /opt/ros/humble/setup.bash
 python3 -m pip install --user -r src/project_link_console_gui/requirements-ubuntu.txt
 colcon build --packages-select \
+  project_link_emergency_interfaces \
   project_link_console_interfaces \
   wheeltec_robot_msg \
   project_link_visual_grasp_gui \
@@ -68,9 +69,12 @@ The remaining pages are implemented as follows:
   wake/session/task state and sanitized per-stage timing from the Orin agent.
 - Voice configuration: common VAD/audio values, separate system prompts and an
   editable registry limited to built-in Python tool executors.
+- Fall response: allowlisted Orin lifecycle control, typed readiness and event
+  timelines, front-camera/evidence preview, cancellation, read-only Nav2
+  preflight and bounded static/Nav2/model/notification settings.
 - UWB: implementation is preserved but hidden unless
   `PROJECT_LINK_SHOW_UWB_PAGE=1`; it is outside the current MVP.
-- Global settings: device/network values and masked classic/Qwen secrets. UWB
+- Global settings: device/network values and masked classic/Qwen/fall secrets. UWB
   settings are hidden with the UWB page.
 
 Secrets use the fixed allowlisted helper over SSH stdin; they never travel over

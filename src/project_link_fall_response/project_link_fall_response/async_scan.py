@@ -32,7 +32,12 @@ class ScanOutcome:
 
 
 class AsyncScanOrchestrator:
-    """Capture virtual headings while one GPU worker evaluates earlier bursts."""
+    """Capture headings while one GPU worker evaluates earlier bursts.
+
+    A real heading mover may poll ``should_interrupt`` while a Nav2 Spin goal is
+    active.  This keeps model inference concurrent with motion and lets a strong
+    result cancel the current segment before the next capture begins.
+    """
 
     def __init__(
         self,
@@ -69,6 +74,10 @@ class AsyncScanOrchestrator:
         infer_people: Callable[[list[tuple[float, bytes]]], PersonBatchResult],
         cancelled: Callable[[], bool],
         feedback: Callable[[str, str, int, int, float], None],
+        move_to_heading: Callable[
+            [float, str, int, int, Callable[[], bool]], bool
+        ]
+        | None = None,
     ) -> ScanOutcome:
         scenes: list[AngleScene] = []
         pending: list[tuple[Future, AngleScene]] = []
@@ -103,11 +112,23 @@ class AsyncScanOrchestrator:
             result, scene = candidate
             feedback(
                 "candidate_recheck",
-                f"high-confidence fallen candidate at {result.angle_deg:.0f} degrees; simulated return and recheck",
+                f"high-confidence fallen candidate at {result.angle_deg:.0f} degrees; returning for recheck",
                 step,
                 len(self.angles),
                 result.best_confidence,
             )
+            if move_to_heading is not None:
+                reached = move_to_heading(
+                    result.angle_deg,
+                    "candidate_return",
+                    step,
+                    len(self.angles),
+                    cancelled,
+                )
+                if not reached:
+                    if cancelled():
+                        return FallBatchResult(result.angle_deg, (), 0.0, 0, ()), ()
+                    raise RuntimeError("candidate heading was not reached")
             frames = capture(
                 result.angle_deg,
                 self.recheck_frames,
@@ -125,14 +146,70 @@ class AsyncScanOrchestrator:
             )
             return checked, images
 
+        def review_candidate(candidate, step: int) -> ScanOutcome | None:
+            checked, images = recheck(candidate, step)
+            if cancelled():
+                return ScanOutcome("cancelled", 0.0, None, (), b"", "cancelled", step - 1)
+            if self._confirmed(checked):
+                confidence = max(candidate[0].best_confidence, checked.best_confidence)
+                return ScanOutcome(
+                    "confirmed_candidate",
+                    confidence,
+                    candidate[0].angle_deg,
+                    images,
+                    images[0][1],
+                    "specialized fall model candidate reproduced during recheck",
+                    len(scenes),
+                )
+            rejected_angles.add(candidate[0].angle_deg)
+            return None
+
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fall-inference")
         try:
             for step, angle_deg in enumerate(self.angles, start=1):
                 if cancelled():
                     return ScanOutcome("cancelled", 0.0, None, (), b"", "cancelled", step - 1)
+                while step > 1:
+                    interrupted_candidate = None
+
+                    def should_interrupt() -> bool:
+                        nonlocal interrupted_candidate
+                        if cancelled():
+                            return True
+                        interrupted_candidate = process_finished()
+                        return interrupted_candidate is not None
+
+                    if move_to_heading is None:
+                        deadline = time.monotonic() + self.simulated_angle_delay_sec
+                        while time.monotonic() < deadline and not should_interrupt():
+                            time.sleep(0.01)
+                        reached = not cancelled() and interrupted_candidate is None
+                    else:
+                        reached = move_to_heading(
+                            angle_deg,
+                            "scan_move",
+                            step,
+                            len(self.angles),
+                            should_interrupt,
+                        )
+                    if cancelled():
+                        return ScanOutcome(
+                            "cancelled", 0.0, None, (), b"", "cancelled", step - 1
+                        )
+                    if interrupted_candidate is not None:
+                        outcome = review_candidate(interrupted_candidate, step)
+                        if outcome is not None:
+                            return outcome
+                        # A rejected candidate resumes the interrupted segment.
+                        continue
+                    if not reached:
+                        raise RuntimeError(
+                            f"heading {angle_deg:.0f} degrees was not reached"
+                        )
+                    break
                 feedback(
                     "scanning_fall_model",
-                    f"simulated scan angle {step}/{len(self.angles)} ({angle_deg:.0f} degrees)",
+                    f"scan angle {step}/{len(self.angles)} ({angle_deg:.0f} degrees)",
                     step,
                     len(self.angles),
                     0.0,
@@ -149,44 +226,65 @@ class AsyncScanOrchestrator:
                 scene = AngleScene(angle_deg, tuple(frames))
                 scenes.append(scene)
                 pending.append((executor.submit(infer_fall, angle_deg, frames), scene))
-                deadline = time.monotonic() + self.simulated_angle_delay_sec
-                strong = None
-                while time.monotonic() < deadline and not cancelled():
-                    strong = process_finished()
-                    if strong:
-                        break
-                    time.sleep(0.01)
-                if strong:
-                    checked, images = recheck(strong, step)
-                    if self._confirmed(checked):
-                        confidence = max(strong[0].best_confidence, checked.best_confidence)
-                        return ScanOutcome(
-                            "confirmed_candidate",
-                            confidence,
-                            strong[0].angle_deg,
-                            images,
-                            images[0][1],
-                            "specialized fall model candidate reproduced during recheck",
-                            step,
+
+            # Finish the physical circle while the last captured bursts are
+            # still being inferred.  A strong result may interrupt this return
+            # segment exactly like any other scan segment.
+            if scenes:
+                final_heading = float(self.angles[0]) + 360.0
+                while True:
+                    interrupted_candidate = None
+
+                    def should_interrupt_final() -> bool:
+                        nonlocal interrupted_candidate
+                        if cancelled():
+                            return True
+                        interrupted_candidate = process_finished()
+                        return interrupted_candidate is not None
+
+                    if move_to_heading is None:
+                        deadline = time.monotonic() + self.simulated_angle_delay_sec
+                        while (
+                            time.monotonic() < deadline
+                            and not should_interrupt_final()
+                        ):
+                            time.sleep(0.01)
+                        reached = not cancelled() and interrupted_candidate is None
+                    else:
+                        reached = move_to_heading(
+                            final_heading,
+                            "return_to_start",
+                            len(self.angles),
+                            len(self.angles),
+                            should_interrupt_final,
                         )
-                    rejected_angles.add(strong[0].angle_deg)
+                    if cancelled():
+                        return ScanOutcome(
+                            "cancelled",
+                            0.0,
+                            None,
+                            (),
+                            b"",
+                            "cancelled",
+                            len(scenes),
+                        )
+                    if interrupted_candidate is not None:
+                        outcome = review_candidate(
+                            interrupted_candidate, len(self.angles)
+                        )
+                        if outcome is not None:
+                            return outcome
+                        continue
+                    if not reached:
+                        raise RuntimeError("initial heading was not restored")
+                    break
 
             while pending and not cancelled():
                 strong = process_finished()
                 if strong:
-                    checked, images = recheck(strong, len(self.angles))
-                    if self._confirmed(checked):
-                        confidence = max(strong[0].best_confidence, checked.best_confidence)
-                        return ScanOutcome(
-                            "confirmed_candidate",
-                            confidence,
-                            strong[0].angle_deg,
-                            images,
-                            images[0][1],
-                            "specialized fall model candidate reproduced after scan",
-                            len(self.angles),
-                        )
-                    rejected_angles.add(strong[0].angle_deg)
+                    outcome = review_candidate(strong, len(self.angles))
+                    if outcome is not None:
+                        return outcome
                 if pending:
                     time.sleep(0.01)
         finally:

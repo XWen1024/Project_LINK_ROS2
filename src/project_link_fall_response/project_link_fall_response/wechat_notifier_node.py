@@ -34,6 +34,7 @@ class WeChatNotifierNode(Node):
             str(self.get_parameter("binding_path").value),
             str(self.get_parameter("ledger_path").value),
         )
+        self._poll_failed = False
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
@@ -66,6 +67,11 @@ class WeChatNotifierNode(Node):
         error = task.exception()
         if error is not None:
             self.get_logger().error(f"WeChat polling stopped: {error}")
+            # A dead long-poll loop cannot recover in place.  End the ROS spin;
+            # main() returns a non-zero code so Restart=on-failure can recover.
+            self._poll_failed = True
+            if rclpy.ok():
+                rclpy.shutdown()
 
     def _publish_ready(self) -> None:
         message = Bool()
@@ -108,14 +114,18 @@ class WeChatNotifierNode(Node):
 def main() -> None:
     rclpy.init()
     node = WeChatNotifierNode()
+    exit_code = 0
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
+        exit_code = 1 if node._poll_failed else 0
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
+    if exit_code:
+        raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":

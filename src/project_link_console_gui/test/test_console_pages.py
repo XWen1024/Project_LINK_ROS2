@@ -13,6 +13,7 @@ def test_all_planned_console_pages_are_real_widgets():
     app = _source("app.py")
     assert "VoicePage(bridge)" in app
     assert "VoiceConfigPage(self.config_client)" in app
+    assert "FallResponsePage(bridge, self.config_client)" in app
     assert 'PROJECT_LINK_SHOW_UWB_PAGE", "0"' in app
     assert "if self._show_uwb_page:" in app
     bridge = _source("ros_bridge.py")
@@ -107,6 +108,20 @@ def test_console_window_is_responsive_collapsible_and_single_instance():
     assert "connection_snapshot" in app
     assert 'self.config_client.load("global")' in app
     assert 'self.config_client.load("voice")' in app
+    assert 'self.config_client.load("fall")' in app
+
+
+def test_fall_response_page_uses_typed_status_and_allowlisted_controls():
+    page = _source("fall_response_page.py")
+    bridge = _source("ros_bridge.py")
+    assert "跌倒检测与紧急响应" in page
+    assert "真实 Nav2 分段旋转" in page
+    assert "取消当前处置并停车" in page
+    assert "FallResponseStatus" in bridge
+    assert '"/fall_detection/status"' in bridge
+    assert '"/fall_detection/get_event"' in bridge
+    assert '"/fall_detection/list_events"' in bridge
+    assert '"/cmd_vel"' not in page
 
 
 def test_manipulator_lifecycle_is_explicit_and_never_enables_torque():

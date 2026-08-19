@@ -12,6 +12,7 @@
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>project_link_console_interfaces</exec_depend>
+  <exec_depend>project_link_emergency_interfaces</exec_depend>
   <exec_depend>project_link_uwb_interfaces</exec_depend>
   <exec_depend>project_link_visual_grasp_gui</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>

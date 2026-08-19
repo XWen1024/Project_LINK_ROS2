@@ -125,3 +125,44 @@ def test_specialized_inference_failure_falls_back_to_world():
     )
     assert outcome.kind == "world_fallback"
     assert len(outcome.vlm_images) == 12
+
+
+def test_real_heading_mover_can_interrupt_and_resume_a_spin_segment():
+    import time
+
+    moves = []
+    recheck_failed = False
+
+    def capture(angle, count, stage, _step, _total):
+        nonlocal recheck_failed
+        if stage == "candidate_recheck":
+            recheck_failed = True
+        return [f"{angle}-{stage}-{index}".encode() for index in range(count)]
+
+    def infer(angle, frames):
+        if angle == 0 and not recheck_failed:
+            return fall_result(angle, [0.80] * len(frames))
+        return fall_result(angle, [0.0] * len(frames))
+
+    def move(target, stage, _step, _total, should_interrupt):
+        moves.append((target, stage))
+        deadline = time.monotonic() + 0.05
+        while time.monotonic() < deadline:
+            if should_interrupt():
+                return False
+            time.sleep(0.001)
+        return True
+
+    outcome = make_scan().run(
+        capture=capture,
+        infer_fall=infer,
+        infer_people=lambda _frames: PersonBatchResult((), 0.0, 0),
+        cancelled=lambda: False,
+        feedback=lambda *_args: None,
+        move_to_heading=move,
+    )
+
+    assert outcome.kind == "degraded"
+    assert moves.count((30, "scan_move")) == 2
+    assert (0, "candidate_return") in moves
+    assert moves[-1] == (360.0, "return_to_start")

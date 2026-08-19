@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer="Project LINK",
     maintainer_email="wte@example.com",
-    description="No-motion asynchronous Android and legacy voice fall-assessment response nodes.",
+    description="Asynchronous fall response with static fallback and fail-closed Nav2 Spin.",
     license="MIT",
     entry_points={
         "console_scripts": [

@@ -1,0 +1,6 @@
+string event_id
+---
+bool success
+project_link_emergency_interfaces/FallEvent event
+project_link_emergency_interfaces/FallTransition[] transitions
+string message

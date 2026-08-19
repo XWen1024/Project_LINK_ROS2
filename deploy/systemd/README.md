@@ -52,9 +52,10 @@ to use the validated LeRobot environment and controls SO-101; the detector has n
 arm driver or control interface.
 Install the specialized fall detector and YOLO-World with
 `deploy/systemd/bin/project-link-install-fall-models`; fixed hashes are checked
-before either destination is replaced. The current twelve-heading scan is a
-no-motion simulation. Its Nav2 boundary is documented in
-`docs/modules/sensors/fall-response/NAV2_ASYNC_SCAN_HANDOFF.md`.
+before either destination is replaced. The default `static` twelve-heading scan
+remains no-motion. A fail-closed real Nav2 `Spin` adapter is available through
+`~/.config/project_link/fall_response.yaml`; follow
+`docs/modules/sensors/fall-response/NAV2_ASYNC_SCAN_HANDOFF.md` before enabling it.
 
 Starting the emergency target starts only the front camera, HTTP/visual
 coordinator and WeChat notifier. It does not start the base, lidar or Nav2.

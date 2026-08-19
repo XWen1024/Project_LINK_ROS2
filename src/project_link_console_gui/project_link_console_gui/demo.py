@@ -29,6 +29,12 @@ class DemoBridge(QObject):
     voice_operation = Signal(str)
     manipulation_control_available = Signal(bool, str)
     manipulation_operation = Signal(str)
+    fall_status = Signal(dict)
+    fall_events = Signal(list)
+    fall_event_detail = Signal(dict)
+    fall_evidence_image = Signal(bytes)
+    fall_operation = Signal(str)
+    fall_control_available = Signal(bool, str)
     uwb_observation = Signal(dict)
     uwb_status = Signal(str)
     uwb_goal = Signal(dict)
@@ -43,6 +49,7 @@ class DemoBridge(QObject):
         self._lidar_preview_rpy = (0.0, 1.5708, math.pi)
         self._voice_backend = "off"
         self._uwb_shadow = False
+        self._fall_running = False
         self._tick_count = 0
         self._timer = QTimer(self)
         self._timer.setInterval(100)
@@ -52,8 +59,10 @@ class DemoBridge(QObject):
         self.connection_changed.emit(True, "离线演示")
         self.voice_control_available.emit(True, "离线演示语音控制已连接")
         self.manipulation_control_available.emit(True, "离线演示机械臂控制已连接")
+        self.fall_control_available.emit(True, "离线演示跌倒检测控制已连接")
         QTimer.singleShot(0, self._emit_map)
         QTimer.singleShot(0, self._emit_state)
+        QTimer.singleShot(0, self._emit_fall_status)
         self._timer.start()
 
     def connection_snapshot(self) -> tuple[bool, str]:
@@ -88,6 +97,8 @@ class DemoBridge(QObject):
             ("project-link-voice-classic.service", self._voice_backend == "classic"),
             ("project-link-voice-qwen.service", self._voice_backend == "qwen_realtime"),
             ("project-link-uwb-shadow.service", self._uwb_shadow),
+            ("project-link-fall-response.service", self._fall_running),
+            ("project-link-wechatbot.service", self._fall_running),
         ]
         self.system_state.emit(
             {
@@ -195,6 +206,123 @@ class DemoBridge(QObject):
     def stop_visual_grasp(self) -> None:
         self.manipulation_operation.emit("演示机械臂服务已停止")
         self.lifecycle_completed.emit("manipulation", True)
+
+    def start_fall_response(self) -> None:
+        self._fall_running = True
+        self.fall_operation.emit("演示跌倒检测服务已启动")
+        self.lifecycle_completed.emit("fall", True)
+        self._emit_state()
+        self._emit_fall_status()
+
+    def stop_fall_response(self) -> None:
+        self._fall_running = False
+        self.fall_operation.emit("演示跌倒检测服务已停止")
+        self.lifecycle_completed.emit("fall", True)
+        self._emit_state()
+        self._emit_fall_status()
+
+    def restart_fall_response(self) -> None:
+        self.start_fall_response()
+
+    def restart_wechatbot(self) -> None:
+        self.fall_operation.emit("演示微信通知服务已重启")
+
+    def cancel_fall_response(self) -> None:
+        self.fall_operation.emit("演示跌倒事件已取消")
+
+    def create_fall_demo_event(self) -> None:
+        self.fall_operation.emit("演示跌倒事件已创建")
+
+    def run_fall_preflight(self) -> None:
+        self.fall_operation.emit("演示 Nav2 预检通过")
+
+    def request_fall_events(self, _limit: int = 20) -> None:
+        event = {
+            "event_id": "demo-fall-event",
+            "mode": "demo",
+            "device_name": "演示手机",
+            "occurred_at_ms": 1787178000000,
+            "received_at_ms": 1787178000500,
+            "notify_not_before_ms": 1787178015500,
+            "status": "notified",
+            "stage": "completed",
+            "message": "演示联系人通知成功",
+            "local_confidence": 0.72,
+            "vlm_confidence": 0.86,
+            "assessment_reason": "演示画面中发现躺倒人员",
+            "degraded": False,
+            "notification_claimed": True,
+            "notification_attempted": True,
+            "notification_success": True,
+            "text_success": True,
+            "image_success": True,
+            "updated_at_ms": 1787178020000,
+        }
+        self.fall_events.emit([event])
+
+    def request_fall_event(self, event_id: str) -> None:
+        self.request_fall_events()
+        self.fall_event_detail.emit(
+            {
+                "event_id": event_id,
+                "status": "notified",
+                "transitions": [
+                    {
+                        "from_status": "",
+                        "to_status": "accepted",
+                        "stage": "accepted",
+                        "message": "事件已接收",
+                        "created_at_ms": 1787178000500,
+                    },
+                    {
+                        "from_status": "scanning",
+                        "to_status": "verifying",
+                        "stage": "vlm_request",
+                        "message": "正在执行多图复核",
+                        "created_at_ms": 1787178010000,
+                    },
+                    {
+                        "from_status": "verifying",
+                        "to_status": "notified",
+                        "stage": "completed",
+                        "message": "演示联系人通知成功",
+                        "created_at_ms": 1787178020000,
+                    },
+                ],
+            }
+        )
+
+    def _emit_fall_status(self) -> None:
+        self.fall_status.emit(
+            {
+                "scan_mode": "static",
+                "service_ready": self._fall_running,
+                "event_active": False,
+                "active_event_id": "",
+                "stage": "idle",
+                "scan_step": 0,
+                "scan_total": 12,
+                "current_heading_deg": 0.0,
+                "target_heading_deg": 0.0,
+                "local_confidence": 0.0,
+                "vlm_confidence": 0.0,
+                "motion_active": False,
+                "camera_ready": True,
+                "specialized_model_ready": True,
+                "world_model_ready": True,
+                "vlm_ready": True,
+                "notification_ready": True,
+                "nav2_action_ready": True,
+                "nav2_lifecycle_ready": True,
+                "tf_ready": True,
+                "odom_ready": True,
+                "costmap_ready": True,
+                "rotation_clear": True,
+                "cmd_vel_clear": True,
+                "arm_safe": True,
+                "message": "演示状态",
+            }
+        )
 
     def request_front_camera_parameters(self) -> None:
         self.front_camera_parameters.emit(

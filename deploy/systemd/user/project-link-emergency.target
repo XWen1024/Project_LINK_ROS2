@@ -1,5 +1,5 @@
 [Unit]
-Description=Project LINK no-motion Android fall-response stack
+Description=Project LINK fall-response stack (motion remains event-gated and fail-closed)
 Requires=project-link-fall-response.service project-link-wechatbot.service
 Wants=project-link-front-camera.service
 After=project-link-wechatbot.service project-link-front-camera.service

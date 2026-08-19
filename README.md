@@ -21,13 +21,15 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
   but must never run simultaneously.
 - UWB: code is preserved, but the page is hidden and the module is outside the current MVP.
-- Fall response: the Android client and Orin no-motion backend are implemented
-  with Token-authenticated HTTP, SQLite idempotency/cancellation, the shared
-  front camera, YOLO/VLM assessment and a single-contact WeChat notifier.
+- Fall response: the Android client, static fallback and fail-closed real Nav2
+  Spin adapter are implemented with Token-authenticated HTTP, strict SQLite
+  state/cancellation, the shared front camera, YOLO/VLM assessment and a
+  single-contact WeChat notifier. Real Spin still requires supervised gates.
 - Console: typed interfaces, headless agent, versioned systemd user units and the
   PySide6 pages are implemented. The visible Ubuntu GUI includes navigation with
   a distinct chassis-front camera preview, manipulation with its independent arm
-  camera, voice switching/timing, voice profiles/tools and masked global settings.
+  camera, voice switching/timing, voice profiles/tools, a dedicated fall-response
+  page with typed timelines/evidence/preflight and masked global settings.
   The window is desktop-bounded, the sidebar can
   collapse to icons, and real mode is single-instance to avoid duplicate ROS
   nodes. Live hardware loops remain supervised field items.

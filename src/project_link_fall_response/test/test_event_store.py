@@ -48,6 +48,7 @@ def test_active_real_rejects_second_event(tmp_path):
 def test_cancel_and_notification_claim_are_atomic(tmp_path):
     store = EventStore(tmp_path / "events.sqlite3")
     created = store.create_event(event(), received_at_ms=100).event
+    store.update(created["event_id"], status="scanning")
     store.update(created["event_id"], status="verifying")
     before, claimed = store.claim_notification(created["event_id"], at_ms=15099)
     assert claimed is False
@@ -62,6 +63,7 @@ def test_cancel_and_notification_claim_are_atomic(tmp_path):
 def test_claim_prevents_late_cancel(tmp_path):
     store = EventStore(tmp_path / "events.sqlite3")
     created = store.create_event(event(), received_at_ms=100).event
+    store.update(created["event_id"], status="scanning")
     store.update(created["event_id"], status="verifying")
     claimed_event, claimed = store.claim_notification(created["event_id"], at_ms=15100)
     assert claimed is True

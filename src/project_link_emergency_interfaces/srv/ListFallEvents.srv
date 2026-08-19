@@ -1,0 +1,5 @@
+uint32 limit
+---
+bool success
+project_link_emergency_interfaces/FallEvent[] events
+string message

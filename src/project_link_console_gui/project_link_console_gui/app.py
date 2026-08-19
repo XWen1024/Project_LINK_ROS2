@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from .navigation_page import NavigationPage
+from .fall_response_page import FallResponsePage
 from .manipulation_page import ManipulationPage
 from .config_client import ConfigClient
 from .settings_page import SettingsPage
@@ -152,6 +153,7 @@ class ConsoleWindow(QMainWindow):
             ("机械臂", QStyle.StandardPixmap.SP_ComputerIcon),
             ("语音控制", QStyle.StandardPixmap.SP_MediaVolume),
             ("语音配置", QStyle.StandardPixmap.SP_FileDialogDetailedView),
+            ("跌倒检测", QStyle.StandardPixmap.SP_MessageBoxWarning),
             ("全局设置", QStyle.StandardPixmap.SP_FileDialogContentsView),
         ]
         if self._show_uwb_page:
@@ -184,10 +186,12 @@ class ConsoleWindow(QMainWindow):
         self.pages.addWidget(self.manipulation_page)
         self.voice_page = VoicePage(bridge)
         self.voice_config_page = VoiceConfigPage(self.config_client)
+        self.fall_response_page = FallResponsePage(bridge, self.config_client)
         self.uwb_page = None
         self.settings_page = SettingsPage(self.config_client)
         self.pages.addWidget(self.voice_page)
         self.pages.addWidget(self.voice_config_page)
+        self.pages.addWidget(self.fall_response_page)
         if self._show_uwb_page:
             self.uwb_page = UwbPage(bridge, self.config_client)
             self.pages.addWidget(self.uwb_page)
@@ -217,6 +221,7 @@ class ConsoleWindow(QMainWindow):
         bridge.system_state.connect(self.navigation_page.update_system_state)
         bridge.system_state.connect(self.manipulation_page.update_system_state)
         bridge.system_state.connect(self.voice_page.update_system_state)
+        bridge.system_state.connect(self.fall_response_page.update_system_state)
         if self.uwb_page is not None:
             bridge.system_state.connect(self.uwb_page.update_system_state)
         bridge.grid_updated.connect(self.navigation_page.update_grid)
@@ -225,6 +230,8 @@ class ConsoleWindow(QMainWindow):
         bridge.path_updated.connect(self.navigation_page.update_path)
         bridge.robot_updated.connect(self.navigation_page.update_robot)
         bridge.front_camera_image.connect(self.navigation_page.update_front_camera)
+        bridge.front_camera_image.connect(self.fall_response_page.update_camera)
+        bridge.fall_evidence_image.connect(self.fall_response_page.update_evidence)
         bridge.operation_event.connect(self._append_log)
         bridge.console_event.connect(self._console_event)
         bridge.voice_status.connect(self.voice_page.update_voice_status)
@@ -265,6 +272,7 @@ class ConsoleWindow(QMainWindow):
     def _reload_configs(self) -> None:
         self.config_client.load("global")
         self.config_client.load("voice")
+        self.config_client.load("fall")
 
     def _lifecycle_completed(self, _area: str, success: bool) -> None:
         if success and not self._demo:

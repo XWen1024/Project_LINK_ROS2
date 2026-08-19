@@ -41,11 +41,12 @@ Archive tags:
 - Python syntax checks passed for visual grasp, VL53L0X, Windows lab and Qwen packages.
 - PowerShell parsing passed for the Windows visual-grasp launcher.
 - Qwen and classic voice are both present on `main` but remain mutually exclusive at runtime.
-- The Android fall-guard client and first Orin static backend are implemented:
-  authenticated aiohttp endpoints, SQLite state/transition storage, atomic
-  cancellation and notification claiming, shared front-camera still capture,
-  local YOLO pose scoring, SiliconFlow VLM and pinned WeChat SDK integration.
-  Orin build, model installation, QR binding and real notification remain gates.
+- The Android fall-guard client and Orin backend include the verified static
+  fallback plus a newly implemented fail-closed Nav2 Spin adapter. The backend
+  now enforces strict SQLite transitions, supports segment-interrupting CUDA
+  results, typed status/event/timeline/evidence interfaces and a dedicated
+  console page. Models, VLM and real WeChat delivery were previously verified;
+  the new interfaces/Nav2 adapter still require Linux build and supervised gates.
 - Orin direct pytest across console agent, classic voice and Qwen Realtime:
   79 passed after the new event/config integration.
 - The versioned systemd graph contains 13 services, 3 mode targets and 1 shared
@@ -174,6 +175,9 @@ Archive tags:
         horizontal servo in the visible Ubuntu GUI. Validate vertical servo separately.
 16. [ ] After the MVP loop, implement a typed allowlisted console bridge over SSH
         and validate reconnect/state resynchronization before replacing DDS Peer.
+17. [ ] Build and validate the dedicated fall-response page and typed interfaces
+        on Orin/Ubuntu in `static` mode, then execute the supervised 30°/cancel/
+        90°/180°/360° Nav2 Spin gate with real-contact notification disabled.
 
 ## Existing Hardware Gates
 
@@ -183,6 +187,8 @@ Archive tags:
 - Visual grasp needs a complete Orin-to-Ubuntu camera/SO-101/ToF field loop and more grasp demonstrations.
 - Classic voice still needs valid Volcano ASR credentials or an explicit documented fallback state.
 - Qwen Realtime still needs real Nav2, grasp and 20-cycle AEC/interruption validation.
+- Fall-response Nav2 Spin is implemented but remains blocked on Orin/Ubuntu build,
+  read-only preflight and the supervised physical sequence in its current handoff.
 
 ## Safety Acceptance For The Console
 

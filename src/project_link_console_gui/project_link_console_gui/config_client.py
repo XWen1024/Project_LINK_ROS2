@@ -45,7 +45,7 @@ class ConfigClient(QObject):
         self._enqueue("set", section, payload)
 
     def _enqueue(self, operation: str, section: str, payload: dict[str, Any] | None) -> None:
-        if section not in {"voice", "global", "uwb"}:
+        if section not in {"voice", "global", "uwb", "fall"}:
             self.failed.emit(section, "不支持的配置分区")
             return
         self._queue.append((operation, section, payload))

@@ -132,6 +132,30 @@ class ConsoleAgent(Node):
         )
         self.create_service(
             Trigger,
+            "/project_link/console/start_fall_response",
+            self._start_fall_response,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            Trigger,
+            "/project_link/console/stop_fall_response",
+            self._stop_fall_response,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            Trigger,
+            "/project_link/console/restart_fall_response",
+            self._restart_fall_response,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            Trigger,
+            "/project_link/console/restart_wechatbot",
+            self._restart_wechatbot,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            Trigger,
             "/project_link/console/start_uwb_shadow",
             self._start_uwb_shadow,
             callback_group=self._callbacks,
@@ -617,6 +641,58 @@ class ConsoleAgent(Node):
         response.success = True
         response.message = "机械臂视觉服务已停止"
         self._emit("manipulation", response.message)
+        return response
+
+    def _start_fall_response(self, _request, response):
+        try:
+            self._systemd.start(UNITS["emergency_target"])
+        except Exception as exc:
+            response.success = False
+            response.message = str(exc)
+            self._emit("fall_response", response.message, ConsoleEvent.SEVERITY_ERROR)
+            return response
+        response.success = True
+        response.message = "跌倒检测服务已启动；不会自动启动 Nav2 或产生运动"
+        self._emit("fall_response", response.message)
+        return response
+
+    def _stop_fall_response(self, _request, response):
+        try:
+            self._systemd.stop(UNITS["emergency_target"])
+        except Exception as exc:
+            response.success = False
+            response.message = str(exc)
+            self._emit("fall_response", response.message, ConsoleEvent.SEVERITY_ERROR)
+            return response
+        response.success = True
+        response.message = "跌倒检测与微信通知服务已停止"
+        self._emit("fall_response", response.message)
+        return response
+
+    def _restart_fall_response(self, _request, response):
+        try:
+            self._systemd.restart(UNITS["emergency_target"])
+        except Exception as exc:
+            response.success = False
+            response.message = str(exc)
+            self._emit("fall_response", response.message, ConsoleEvent.SEVERITY_ERROR)
+            return response
+        response.success = True
+        response.message = "跌倒检测服务已重启并重新读取 Orin 配置"
+        self._emit("fall_response", response.message)
+        return response
+
+    def _restart_wechatbot(self, _request, response):
+        try:
+            self._systemd.restart(UNITS["wechatbot"])
+        except Exception as exc:
+            response.success = False
+            response.message = str(exc)
+            self._emit("fall_response", response.message, ConsoleEvent.SEVERITY_ERROR)
+            return response
+        response.success = True
+        response.message = "微信通知服务已重启"
+        self._emit("fall_response", response.message)
         return response
 
     def _emergency_stop(self, _request, response):

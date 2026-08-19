@@ -18,6 +18,7 @@ Jetson Orin Nano: ROS domain 42
   voice backend (classic or Qwen, never both)
   isolated CUDA YOLO World process + LeRobot/SO-101 main process + VL53L0X
   UWB ingestion and guarded Nav2 bridge
+  fall response static fallback + fail-closed Nav2 Spin adapter
         |
         v
 chassis, Unitree L1, front camera, arm camera, audio, SO-101, BU04, ESP32-C3
@@ -28,10 +29,12 @@ the independent arm camera as `/visual_grasp/image/compressed`. Ubuntu only
 decodes and renders these streams; it never opens either V4L2 device.
 
 The Android fall guard talks directly to the Orin's authenticated LAN HTTP
-gateway. Its first production gate is static and no-motion: SQLite event state,
-the shared `/front_camera/capture_still` service, local YOLO pose selection,
-SiliconFlow VLM and a single bound WeChat contact. This stack does not start
-Nav2 and never publishes `/cmd_vel`.
+gateway. The default production path remains static and no-motion: strict SQLite
+event state, the shared `/front_camera/capture_still` service, a specialized
+fallen/sitting/standing model, YOLO-World person fallback, multi-image VLM and a
+single bound WeChat contact. An optional fail-closed Nav2 `/spin` adapter can
+rotate in supervised mode after TF/odom/costmap/cmd_vel/arm preflight. The stack
+does not start Nav2 and never publishes `/cmd_vel`.
 
 The source-locked DDS Router experiment remains under `deploy/dds-router/` but is
 not production-enabled. On 2026-08-19 both binaries, loopback listeners, SSH

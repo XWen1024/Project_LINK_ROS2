@@ -53,6 +53,15 @@ FIELDS = [
     ("qwen", "PROJECT_LINK_AUDIO_INPUT_NAME", "麦克风名称", False, True),
     ("qwen", "PROJECT_LINK_AUDIO_OUTPUT_DEVICE", "扬声器输出", False, True),
     ("qwen", "QWEATHER_API_KEY", "和风天气 API Key", True, False),
+    ("fall_api", "FALL_GUARD_TOKEN", "手机跌倒守护共享 Token", True, True),
+    ("fall_api", "OPENAI_API_KEY", "跌倒复核 VLM API Key", True, True),
+    ("fall_api", "OPENAI_BASE_URL", "跌倒复核 VLM Endpoint", False, False),
+    ("fall_api", "OPENAI_MODEL", "跌倒复核 VLM 模型", False, True),
+    ("fall_api", "FALL_GATEWAY_PORT", "手机网关端口", False, True),
+    ("fall_api", "FALL_SPECIALIZED_MODEL", "专用跌倒模型路径", False, False),
+    ("fall_api", "FALL_WORLD_MODEL", "YOLO-World 模型路径", False, False),
+    ("fall_api", "WECHATBOT_CREDENTIALS", "微信登录凭据路径", False, False),
+    ("fall_api", "WECHATBOT_BINDING", "紧急联系人绑定路径", False, False),
     ("uwb", "PROJECT_LINK_UWB_DEVICE", "BU04 测距设备", False, True),
     ("uwb", "PROJECT_LINK_UWB_TAG_ADDRESS", "BU03 私有 Tag 地址", True, True),
 ]
@@ -112,6 +121,7 @@ class SettingsPage(QWidget):
             "console": QGroupBox("系统与设备"),
             "voice_api": QGroupBox("经典语音与豆包 / DeepSeek"),
             "qwen": QGroupBox("Qwen Realtime"),
+            "fall_api": QGroupBox("跌倒检测、VLM 与微信通知"),
             "uwb": QGroupBox("UWB 私有配置"),
         }
         forms = {name: QFormLayout(box) for name, box in groups.items()}
@@ -130,7 +140,7 @@ class SettingsPage(QWidget):
                 label_widget.setVisible(False)
                 widget.setVisible(False)
                 self._advanced_rows.append((label_widget, widget))
-        for name in ("console", "voice_api", "qwen"):
+        for name in ("console", "voice_api", "qwen", "fall_api"):
             layout.addWidget(groups[name])
         if self._show_uwb:
             layout.addWidget(groups["uwb"])
@@ -165,7 +175,15 @@ class SettingsPage(QWidget):
 
     def _save(self) -> None:
         self._client.set_connection(self.ssh_target.text(), self.workspace.text())
-        payload = {"files": {"console": {}, "voice_api": {}, "qwen": {}, "uwb": {}}}
+        payload = {
+            "files": {
+                "console": {},
+                "voice_api": {},
+                "qwen": {},
+                "fall_api": {},
+                "uwb": {},
+            }
+        }
         for (file_name, key), widget in self._fields.items():
             text = widget.text().strip()
             field = next(item for item in FIELDS if item[0] == file_name and item[1] == key)

@@ -23,11 +23,13 @@ VOICE_CLASSIC_PATH = CONFIG_DIR / "voice_classic.yaml"
 VOICE_QWEN_PATH = CONFIG_DIR / "voice_qwen.yaml"
 VOICE_PROFILE_PATH = CONFIG_DIR / "voice_profile.json"
 UWB_CONFIG_PATH = CONFIG_DIR / "uwb_navigation.yaml"
+FALL_CONFIG_PATH = CONFIG_DIR / "fall_response.yaml"
 
 DEFAULT_VOICE_CLASSIC = WORKSPACE / "src/project_link_voice/config/voice_direct_drive.yaml"
 DEFAULT_VOICE_QWEN = WORKSPACE / "src/project_link_qwen_realtime_voice/config/qwen_realtime_voice.yaml"
 DEFAULT_VOICE_PROFILE = WORKSPACE / "configs/console/voice_profile.json"
 DEFAULT_UWB_CONFIG = WORKSPACE / "src/project_link_uwb_navigation/config/uwb_navigation.yaml"
+DEFAULT_FALL_CONFIG = WORKSPACE / "src/project_link_fall_response/config/fall_response.yaml"
 
 
 VOICE_PARAMETERS = {
@@ -54,6 +56,37 @@ VOICE_PARAMETERS = {
         "first_turn_no_speech_timeout_sec": (float, 2.0, 60.0),
         "confirmation_timeout_sec": (float, 5.0, 120.0),
     },
+}
+
+FALL_PARAMETERS = {
+    "notification_enabled": (bool, None, None),
+    "simulated_scan_steps": (int, 4, 36),
+    "frames_per_angle": (int, 1, 8),
+    "recheck_frames": (int, 1, 6),
+    "frame_interval_sec": (float, 0.0, 2.0),
+    "capture_timeout_sec": (float, 0.5, 15.0),
+    "simulated_angle_delay_sec": (float, 0.0, 10.0),
+    "specialized_inference_threshold": (float, 0.01, 1.0),
+    "strong_fallen_threshold": (float, 0.05, 1.0),
+    "weak_fallen_threshold": (float, 0.01, 1.0),
+    "recheck_frame_threshold": (float, 0.05, 1.0),
+    "recheck_average_threshold": (float, 0.05, 1.0),
+    "world_person_threshold": (float, 0.05, 1.0),
+    "vlm_threshold": (float, 0.05, 1.0),
+    "openai_timeout_sec": (float, 1.0, 120.0),
+    "notification_timeout_sec": (float, 1.0, 180.0),
+    "cancel_competing_actions": (bool, None, None),
+    "require_arm_torque_off": (bool, None, None),
+    "tf_ttl_sec": (float, 0.05, 5.0),
+    "odom_ttl_sec": (float, 0.05, 5.0),
+    "costmap_ttl_sec": (float, 0.10, 10.0),
+    "rotation_clearance_radius_m": (float, 0.30, 1.50),
+    "rotation_obstacle_cost_threshold": (int, 1, 100),
+    "stop_angular_velocity_rps": (float, 0.005, 0.20),
+    "stop_stable_sec": (float, 0.05, 2.0),
+    "stop_timeout_sec": (float, 0.5, 15.0),
+    "spin_cancel_timeout_sec": (float, 0.5, 10.0),
+    "spin_timeout_sec": (float, 2.0, 60.0),
 }
 
 REGISTERED_TOOLS = {
@@ -128,6 +161,26 @@ ENV_FILES = {
             "PROJECT_LINK_UWB_TAG_ADDRESS": True,
         },
     ),
+    "fall_api": (
+        CONFIG_DIR / "fall_response.env",
+        {
+            "FALL_GUARD_TOKEN": True,
+            "OPENAI_API_KEY": True,
+            "OPENAI_BASE_URL": False,
+            "OPENAI_MODEL": False,
+            "OPENAI_TIMEOUT_SEC": False,
+            "FALL_GATEWAY_HOST": False,
+            "FALL_GATEWAY_PORT": False,
+            "FALL_EVENT_DB": False,
+            "FALL_SPECIALIZED_MODEL": False,
+            "FALL_WORLD_MODEL": False,
+            "FALL_YOLO_DEVICE": False,
+            "PROJECT_LINK_FALL_CONFIG": False,
+            "WECHATBOT_CREDENTIALS": False,
+            "WECHATBOT_BINDING": False,
+            "WECHATBOT_LEDGER": False,
+        },
+    ),
 }
 
 ENV_DEFAULTS = {
@@ -164,6 +217,21 @@ ENV_DEFAULTS = {
         "PROJECT_LINK_AUDIO_OUTPUT_DEVICE": "alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo",
     },
     "uwb": {"PROJECT_LINK_UWB_DEVICE": "/dev/uwb-bu04"},
+    "fall_api": {
+        "OPENAI_BASE_URL": "https://ws-f79uecupn4b5efpv.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        "OPENAI_MODEL": "qwen3.8-27b",
+        "OPENAI_TIMEOUT_SEC": "20",
+        "FALL_GATEWAY_HOST": "0.0.0.0",
+        "FALL_GATEWAY_PORT": "8765",
+        "FALL_EVENT_DB": "/home/wte/.local/state/project-link/fall-response/events.sqlite3",
+        "FALL_SPECIALIZED_MODEL": "/home/wte/models/project_link/human-fall-detection-yolo11.pt",
+        "FALL_WORLD_MODEL": "/home/wte/models/yolov8s-worldv2.pt",
+        "FALL_YOLO_DEVICE": "0",
+        "PROJECT_LINK_FALL_CONFIG": "/home/wte/.config/project_link/fall_response.yaml",
+        "WECHATBOT_CREDENTIALS": "/home/wte/.config/project_link/wechatbot/credentials.json",
+        "WECHATBOT_BINDING": "/home/wte/.local/state/project-link/clawbot/binding.json",
+        "WECHATBOT_LEDGER": "/home/wte/.local/state/project-link/clawbot/notifications.sqlite3",
+    },
 }
 
 
@@ -303,6 +371,42 @@ def set_voice(payload: dict[str, Any]) -> dict[str, Any]:
     return {"success": True, "restart_required": True}
 
 
+def get_fall() -> dict[str, Any]:
+    value = load_yaml(FALL_CONFIG_PATH, DEFAULT_FALL_CONFIG)
+    parameters = node_parameters(value, "mobile_fall_coordinator")
+    return {
+        "scan_mode": str(parameters.get("scan_mode", "static")),
+        "parameters": {
+            key: parameters.get(key) for key in FALL_PARAMETERS
+        },
+    }
+
+
+def set_fall(payload: dict[str, Any]) -> dict[str, Any]:
+    value = load_yaml(FALL_CONFIG_PATH, DEFAULT_FALL_CONFIG)
+    parameters = node_parameters(value, "mobile_fall_coordinator")
+    scan_mode = str(payload.get("scan_mode", parameters.get("scan_mode", "static")))
+    if scan_mode not in {"static", "nav2_spin"}:
+        raise ValueError("invalid_fall_scan_mode")
+    requested = payload.get("parameters", {})
+    if not isinstance(requested, dict):
+        raise ValueError("fall_parameters_must_be_object")
+    unknown = set(requested) - set(FALL_PARAMETERS)
+    if unknown:
+        raise ValueError(f"fall_parameter_not_allowed:{sorted(unknown)}")
+    parameters["scan_mode"] = scan_mode
+    for key, requested_value in requested.items():
+        parameters[key] = validate_parameter(
+            key, requested_value, FALL_PARAMETERS[key]
+        )
+    if float(parameters.get("weak_fallen_threshold", 0.25)) > float(
+        parameters.get("strong_fallen_threshold", 0.60)
+    ):
+        raise ValueError("weak_threshold_exceeds_strong_threshold")
+    write_yaml(FALL_CONFIG_PATH, value)
+    return {"success": True, "restart_required": True}
+
+
 ASSIGNMENT = re.compile(r"^(?:export\s+)?([A-Z][A-Z0-9_]*)=(.*)$")
 
 
@@ -377,7 +481,9 @@ def set_global(payload: dict[str, Any]) -> dict[str, Any]:
                 if not math.isfinite(yaw) or not -3.1415926536 <= yaw <= 3.1415926536:
                     raise ValueError(f"lidar_mount_angle_out_of_range:{key}")
             values[key] = text
-        write_env(path, values, shell_export=name != "console")
+        # console.env and fall_response.env are also consumed by systemd
+        # EnvironmentFile, which does not accept an ``export`` prefix.
+        write_env(path, values, shell_export=name not in {"console", "fall_api"})
     return {"success": True, "restart_required": True}
 
 
@@ -456,16 +562,26 @@ def math_is_finite(value: float) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("get", "set"))
-    parser.add_argument("section", choices=("voice", "global", "uwb"))
+    parser.add_argument("section", choices=("voice", "global", "uwb", "fall"))
     arguments = parser.parse_args()
     try:
         if arguments.operation == "get":
-            result = {"voice": get_voice, "global": get_global, "uwb": get_uwb}[arguments.section]()
+            result = {
+                "voice": get_voice,
+                "global": get_global,
+                "uwb": get_uwb,
+                "fall": get_fall,
+            }[arguments.section]()
         else:
             payload = json.load(sys.stdin)
             if not isinstance(payload, dict):
                 raise ValueError("payload_must_be_object")
-            result = {"voice": set_voice, "global": set_global, "uwb": set_uwb}[arguments.section](payload)
+            result = {
+                "voice": set_voice,
+                "global": set_global,
+                "uwb": set_uwb,
+                "fall": set_fall,
+            }[arguments.section](payload)
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
