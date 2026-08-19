@@ -156,6 +156,12 @@ are evidence snapshots, not current operating instructions.
   leaves directory/symlink collisions. If switching build modes, delete only the
   affected packages' verified `build/<pkg>` and `install/<pkg>` generated folders,
   then rebuild normally. Never clear the whole workspace or runtime data.
+- ROS 2 Humble `setup.bash` and generated overlay setup files are not safe to
+  source while Bash `set -u` is active; they may read variables such as
+  `AMENT_TRACE_SETUP_FILES` before defining them. In strict-mode scripts, wrap
+  every ROS/ament setup source with `set +u` and restore `set -u` immediately
+  afterward. Treat an `unbound variable` during setup as a shell-wrapper defect,
+  not as a missing ROS package or hardware failure.
 
 ## Active ROS Packages
 
