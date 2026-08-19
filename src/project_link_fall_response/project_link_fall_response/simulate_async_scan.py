@@ -26,6 +26,12 @@ def main() -> None:
     parser.add_argument("--device", default="0")
     parser.add_argument("--strong", type=float, default=0.60)
     parser.add_argument("--weak", type=float, default=0.25)
+    parser.add_argument(
+        "--angle-delay",
+        type=float,
+        default=1.0,
+        help="simulated travel/settle time between headings",
+    )
     args = parser.parse_args()
     if bool(args.image) == bool(args.angles_dir):
         parser.error("provide exactly one of --image or --angles-dir")
@@ -44,7 +50,7 @@ def main() -> None:
         angles=angles,
         strong_threshold=args.strong,
         weak_threshold=args.weak,
-        simulated_angle_delay_sec=0.05,
+        simulated_angle_delay_sec=max(0.0, args.angle_delay),
     )
     feedback_rows = []
     outcome = scan.run(

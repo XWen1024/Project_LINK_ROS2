@@ -121,7 +121,7 @@ class MobileFallCoordinator(Node):
         self.declare_parameter("recheck_frames", 2)
         self.declare_parameter("frame_interval_sec", 0.08)
         self.declare_parameter("capture_timeout_sec", 2.0)
-        self.declare_parameter("simulated_angle_delay_sec", 0.20)
+        self.declare_parameter("simulated_angle_delay_sec", 1.0)
         self.declare_parameter("specialized_inference_threshold", 0.05)
         self.declare_parameter("strong_fallen_threshold", 0.60)
         self.declare_parameter("weak_fallen_threshold", 0.25)

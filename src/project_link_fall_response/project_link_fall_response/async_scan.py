@@ -44,7 +44,7 @@ class AsyncScanOrchestrator:
         weak_threshold: float = 0.25,
         recheck_frame_threshold: float = 0.55,
         recheck_average_threshold: float = 0.50,
-        simulated_angle_delay_sec: float = 0.20,
+        simulated_angle_delay_sec: float = 1.0,
     ) -> None:
         self.angles = angles
         self.frames_per_angle = frames_per_angle
