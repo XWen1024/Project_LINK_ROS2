@@ -65,6 +65,21 @@ class SpecializedFallDetector:
             self._model = YOLO(str(self.model_path), task="detect")
         return self._model
 
+    def warmup(self) -> None:
+        import numpy as np
+
+        with self._lock:
+            model = self._load()
+            kwargs: dict[str, Any] = {
+                "source": np.zeros((640, 640, 3), dtype=np.uint8),
+                "conf": self.threshold,
+                "imgsz": 640,
+                "verbose": False,
+            }
+            if self.device:
+                kwargs["device"] = self.device
+            model.predict(**kwargs)
+
     def assess(self, angle_deg: float, jpeg_frames: list[bytes]) -> FallBatchResult:
         with self._lock:
             model = self._load()

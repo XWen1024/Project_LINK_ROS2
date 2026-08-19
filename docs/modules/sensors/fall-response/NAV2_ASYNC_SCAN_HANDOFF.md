@@ -85,6 +85,8 @@ unchanged.
 The simulator uses a configurable one-second virtual travel/settle interval by
 default. This is intentionally long enough for CUDA inference to complete and
 exercise early interruption; it is not a Nav2 speed command.
+The specialized model is warmed once before accepting scan work so the first
+real event does not pay model-load latency during the circle.
 
 Replay one still image without ROS motion:
 

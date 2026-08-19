@@ -46,6 +46,7 @@ def main() -> None:
 
     fall = SpecializedFallDetector(args.fall_model, threshold=0.05, device=args.device)
     people = YoloWorldPersonDetector(args.world_model, threshold=0.50, device=args.device)
+    fall.warmup()
     scan = AsyncScanOrchestrator(
         angles=angles,
         strong_threshold=args.strong,

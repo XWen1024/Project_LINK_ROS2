@@ -92,6 +92,13 @@ class MobileFallCoordinator(Node):
         self._active_lock = threading.Lock()
         self._reserved = False
         self._cancel = threading.Event()
+        try:
+            self._fall_detector.warmup()
+            self.get_logger().info("Specialized fall model warmed up")
+        except Exception as exc:
+            self.get_logger().error(
+                f"Specialized fall model warmup failed; World fallback remains available: {exc}"
+            )
         self._server = ActionServer(
             self,
             RespondToFall,
