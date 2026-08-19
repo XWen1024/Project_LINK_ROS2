@@ -18,6 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 from nav_msgs.msg import OccupancyGrid, Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
@@ -48,6 +49,11 @@ class QwenRealtimeVoiceNode(Node):
         self._conversation_active = threading.Event()
         self._input_requested = False
         self._microphone_stream_seen = False
+        self._wake_serial_state = "starting"
+        self._wake_serial_port = ""
+        self._wake_bytes_seen = 0
+        self._wake_events_seen = 0
+        self._wake_last_data_monotonic = 0.0
         self._event_queue: queue.Queue[RealtimeEvent] = queue.Queue(maxsize=2048)
         self._tool_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="qwen-tools")
         self._trace: TimingTrace | None = None
@@ -77,7 +83,9 @@ class QwenRealtimeVoiceNode(Node):
         self._event_pub = self.create_publisher(String, "/voice/realtime_event", 20)
         self.create_subscription(String, "/voice/text_input", self._on_text_input, 10)
         self.create_subscription(OccupancyGrid, "/map", self._on_map, 10)
-        self.create_subscription(LaserScan, "/scan", self._on_scan, 10)
+        self.create_subscription(
+            LaserScan, "/scan", self._on_scan, qos_profile_sensor_data
+        )
         self.create_subscription(Odometry, "/odom", self._on_odom, 10)
 
         self._transport = DashScopeRealtimeTransport(
@@ -556,12 +564,20 @@ class QwenRealtimeVoiceNode(Node):
                 int(self.get_parameter("wakeup_serial_baud").value),
                 timeout=0.2,
             ) as stream:
+                self._wake_serial_state = "ready"
+                self._wake_serial_port = port
                 self.get_logger().info(f"Qwen wake serial ready: {port}")
                 while not self._stop.is_set():
-                    event = detector.feed(stream.read(256))
+                    data = stream.read(256)
+                    if data:
+                        self._wake_bytes_seen += len(data)
+                        self._wake_last_data_monotonic = time.monotonic()
+                    event = detector.feed(data)
                     if event is not None:
+                        self._wake_events_seen += 1
                         self._begin_conversation(event)
         except Exception as exc:
+            self._wake_serial_state = "fault"
             self.get_logger().error(f"Wake serial failed: {exc}")
 
     def _begin_conversation(self, wake_event: str) -> None:
@@ -714,6 +730,11 @@ class QwenRealtimeVoiceNode(Node):
         self._robot.odom_seen = True
 
     def _publish_status(self) -> None:
+        last_data_age = (
+            time.monotonic() - self._wake_last_data_monotonic
+            if self._wake_last_data_monotonic > 0.0
+            else -1.0
+        )
         status = {
             "backend": "qwen_realtime",
             "session_ready": self._session_ready.is_set(),
@@ -722,6 +743,12 @@ class QwenRealtimeVoiceNode(Node):
             "pending_task": self._robot.pending_task.kind if self._robot.pending_task else "",
             "active_task": self._robot.active_task.kind if self._robot.active_task else "",
             "sdk_version": self._transport.sdk_version,
+            "wakeup_serial_state": self._wake_serial_state,
+            "wakeup_serial_port": self._wake_serial_port,
+            "wakeup_bytes_seen": self._wake_bytes_seen,
+            "wakeup_events_seen": self._wake_events_seen,
+            "wakeup_last_data_age_sec": round(last_data_age, 3),
+            "microphone_stream_seen": self._microphone_stream_seen,
         }
         self._status_pub.publish(String(data=json.dumps(status, ensure_ascii=False)))
 

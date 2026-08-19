@@ -512,6 +512,10 @@ class VisualGraspPanel(QWidget):
         future = self.client.parameter_client.get_parameters(list(PARAMETERS))
         future.add_done_callback(self._parameters_loaded)
 
+    def refresh_remote(self) -> None:
+        """Reload parameters after the Orin service becomes available."""
+        self._load_parameters()
+
     def _parameters_loaded(self, future) -> None:
         try:
             values = future.result().values

@@ -56,3 +56,21 @@ def test_systemd_rejects_arbitrary_unit():
         assert "unit_not_allowed" in str(exc)
     else:
         raise AssertionError("arbitrary unit was accepted")
+
+
+def test_nonblocking_start_uses_systemd_job_queue():
+    commands = []
+
+    def runner(command, timeout):
+        commands.append((command, timeout))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    manager = SystemdManager(runner=runner)
+    manager.start_no_block(UNITS["mapping_target"])
+    assert commands[0][0] == [
+        "systemctl",
+        "--user",
+        "--no-block",
+        "start",
+        UNITS["mapping_target"],
+    ]

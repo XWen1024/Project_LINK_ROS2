@@ -119,6 +119,7 @@ class ConsoleWindow(QMainWindow):
         self._sidebar_collapsed = False
         self._connection_text = "未连接"
         self._connection_ok = False
+        self._subsystem_ready: dict[str, bool] | None = None
         self._transport_mode = os.environ.get("PROJECT_LINK_TRANSPORT_MODE", "legacy-dds")
         self._transport_process: QProcess | None = None
         self.config_client = ConfigClient(self)
@@ -176,7 +177,7 @@ class ConsoleWindow(QMainWindow):
         self.pages = ResponsiveStackedWidget()
         self.navigation_page = NavigationPage(bridge)
         self.pages.addWidget(self.navigation_page)
-        self.manipulation_page = ManipulationPage(demo=demo)
+        self.manipulation_page = ManipulationPage(bridge, demo=demo)
         self.manipulation_page.message.connect(self._append_log)
         self.pages.addWidget(self.manipulation_page)
         self.voice_page = VoicePage(bridge)
@@ -207,7 +208,9 @@ class ConsoleWindow(QMainWindow):
         self.navigation_page.launch_rviz_requested.connect(self._launch_rviz)
 
         bridge.connection_changed.connect(self._connection_changed)
+        bridge.system_state.connect(self._system_state_changed)
         bridge.system_state.connect(self.navigation_page.update_system_state)
+        bridge.system_state.connect(self.manipulation_page.update_system_state)
         bridge.system_state.connect(self.voice_page.update_system_state)
         if self.uwb_page is not None:
             bridge.system_state.connect(self.uwb_page.update_system_state)
@@ -222,6 +225,7 @@ class ConsoleWindow(QMainWindow):
         bridge.voice_status.connect(self.voice_page.update_voice_status)
         bridge.voice_control_available.connect(self.voice_page.set_voice_control_available)
         bridge.voice_operation.connect(self.voice_page.show_voice_operation)
+        bridge.lifecycle_completed.connect(self._lifecycle_completed)
         if self.uwb_page is not None:
             bridge.uwb_observation.connect(self.uwb_page.update_observation)
             bridge.uwb_status.connect(self.uwb_page.update_status)
@@ -241,8 +245,41 @@ class ConsoleWindow(QMainWindow):
         self._transport_timer.setInterval(2000)
         self._transport_timer.timeout.connect(self._poll_transport)
         self._transport_timer.start()
+        self._config_reload_timer = QTimer(self)
+        self._config_reload_timer.setSingleShot(True)
+        self._config_reload_timer.setInterval(500)
+        self._config_reload_timer.timeout.connect(self._reload_configs)
         self._poll_transport()
+        if hasattr(bridge, "connection_snapshot"):
+            connected, text = bridge.connection_snapshot()
+            self._connection_changed(connected, text)
+        if not self._demo:
+            self._config_reload_timer.start(0)
         self._fit_to_available_screen()
+
+    def _reload_configs(self) -> None:
+        self.config_client.load("global")
+        self.config_client.load("voice")
+
+    def _lifecycle_completed(self, _area: str, success: bool) -> None:
+        if success and not self._demo:
+            self._config_reload_timer.start(300)
+
+    def _system_state_changed(self, state: dict) -> None:
+        snapshot = {
+            str(item.get("name", "")): bool(item.get("ready"))
+            for item in state.get("subsystems", [])
+        }
+        previous = self._subsystem_ready
+        self._subsystem_ready = snapshot
+        if previous is None or self._demo:
+            return
+        newly_ready = any(
+            ready and not previous.get(name, False)
+            for name, ready in snapshot.items()
+        )
+        if newly_ready:
+            self._config_reload_timer.start()
 
     def _fit_to_available_screen(self) -> None:
         screen = self.screen() or QApplication.primaryScreen()

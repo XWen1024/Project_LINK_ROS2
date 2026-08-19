@@ -20,9 +20,13 @@ class DemoBridge(QObject):
     front_camera_image = Signal(bytes)
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
+    stack_progress = Signal(dict)
+    lifecycle_completed = Signal(str, bool)
     voice_status = Signal(dict)
     voice_control_available = Signal(bool, str)
     voice_operation = Signal(str)
+    manipulation_control_available = Signal(bool, str)
+    manipulation_operation = Signal(str)
     uwb_observation = Signal(dict)
     uwb_status = Signal(str)
     uwb_goal = Signal(dict)
@@ -43,9 +47,13 @@ class DemoBridge(QObject):
     def start(self) -> None:
         self.connection_changed.emit(True, "离线演示")
         self.voice_control_available.emit(True, "离线演示语音控制已连接")
+        self.manipulation_control_available.emit(True, "离线演示机械臂控制已连接")
         QTimer.singleShot(0, self._emit_map)
         QTimer.singleShot(0, self._emit_state)
         self._timer.start()
+
+    def connection_snapshot(self) -> tuple[bool, str]:
+        return False, "等待离线演示启动"
 
     def _emit_map(self) -> None:
         width, height = 120, 90
@@ -102,6 +110,9 @@ class DemoBridge(QObject):
 
     def manage_stack(self, operation: int, restart: bool = False) -> None:
         del restart
+        self.stack_progress.emit(
+            {"state": "running", "step": "demo", "progress": 0.5, "message": "正在切换演示模式"}
+        )
         if operation == 1:
             self._mode = 1
         elif operation == 2:
@@ -113,6 +124,10 @@ class DemoBridge(QObject):
         elif operation == 5:
             self._mode = 0
         self.operation_event.emit("演示模式已切换")
+        self.stack_progress.emit(
+            {"state": "complete", "step": "complete", "progress": 1.0, "message": "演示模式已切换"}
+        )
+        self.lifecycle_completed.emit("stack", True)
         self._emit_state()
 
     def send_teleop(self, enabled: bool, deadman: bool, linear: float, angular: float) -> None:
@@ -167,6 +182,15 @@ class DemoBridge(QObject):
 
     def probe_voice_control(self) -> None:
         self.voice_control_available.emit(True, "离线演示语音控制已连接")
+
+    def start_visual_grasp(self) -> None:
+        self.manipulation_control_available.emit(True, "离线演示机械臂控制已连接")
+        self.manipulation_operation.emit("演示机械臂服务已启动")
+        self.lifecycle_completed.emit("manipulation", True)
+
+    def stop_visual_grasp(self) -> None:
+        self.manipulation_operation.emit("演示机械臂服务已停止")
+        self.lifecycle_completed.emit("manipulation", True)
 
     def start_uwb_shadow(self) -> None:
         self._uwb_shadow = True

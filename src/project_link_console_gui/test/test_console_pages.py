@@ -24,12 +24,24 @@ def test_all_planned_console_pages_are_real_widgets():
 def test_navigation_page_has_separate_front_camera_preview():
     page = _source("navigation_page.py")
     bridge = _source("ros_bridge.py")
-    assert 'QGroupBox("车头摄像头")' in page
+    assert 'QGroupBox("车头摄像头 · 原生 720P/16:9")' in page
     assert '"/front_camera/image/compressed"' in bridge
     assert "front_camera_image" in bridge
     assert "QImage.fromData(jpeg_data)" in page
     assert 'QImage.fromData(jpeg_data, b"JPG")' not in page
+    assert "原生 720P/16:9" in page
+    assert 'f"已连接 · {image.width()}×{image.height()} · {ratio} · {fps:.1f} FPS"' in page
     assert '"/visual_grasp/image/compressed"' not in bridge
+
+
+def test_navigation_lifecycle_has_chinese_status_and_progress_dialog():
+    page = _source("navigation_page.py")
+    bridge = _source("ros_bridge.py")
+    assert "class StackProgressDialog(QDialog):" in page
+    assert '["功能", "模块名", "状态", "就绪"]' in page
+    assert 'self.status_table.setColumnHidden(1, True)' in page
+    assert '"正在检查就绪条件"' in page
+    assert "stack_progress" in bridge
 
 
 def test_voice_page_uses_typed_switch_action_via_bridge():
@@ -56,6 +68,18 @@ def test_console_window_is_responsive_collapsible_and_single_instance():
     assert "project-link-dds-tunnel.service" in app
     assert "project-link-dds-router-ubuntu.service" in app
     assert "SSH 隧道 + DDS Router 就绪" in app
+    assert "connection_snapshot" in app
+    assert 'self.config_client.load("global")' in app
+    assert 'self.config_client.load("voice")' in app
+
+
+def test_manipulator_lifecycle_is_explicit_and_never_enables_torque():
+    page = _source("manipulation_page.py")
+    bridge = _source("ros_bridge.py")
+    assert "启动 Orin 视觉服务" in page
+    assert "不会启用扭矩" in page
+    assert "start_visual_grasp" in bridge
+    assert "stop_visual_grasp" in bridge
 
 
 def test_uwb_page_is_shadow_only_and_never_publishes_velocity():

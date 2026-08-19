@@ -23,6 +23,11 @@ def test_serial_wake_detector_trims_noise_and_keeps_matching():
     assert detector.feed(b"ke") is not None
 
 
+def test_serial_wake_detector_accepts_aiui_key_case_variants():
+    detector = SerialWakeDetector("aiui_event")
+    assert detector.feed(b'{"type":"AIUI_EVENT"}') is not None
+
+
 def test_empty_match_accepts_first_nonempty_chunk():
     detector = SerialWakeDetector("")
 

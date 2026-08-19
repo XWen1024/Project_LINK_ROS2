@@ -12,6 +12,7 @@ DEFAULT_WAKEUP_ALIAS = "/dev/project_link_wakeup"
 class SerialWakeDetector:
     def __init__(self, match_text: str, max_buffer_bytes: int = 16384) -> None:
         self._needle = match_text.encode("utf-8")
+        self._needle_folded = self._needle.lower()
         self._max_buffer_bytes = max(max_buffer_bytes, len(self._needle) + 1)
         self._buffer = bytearray()
 
@@ -21,7 +22,10 @@ class SerialWakeDetector:
         if not self._needle:
             return data.decode("utf-8", errors="backslashreplace")
         self._buffer.extend(data)
-        match_index = self._buffer.find(self._needle)
+        # AIUI firmware revisions have emitted both lower- and upper-case ASCII
+        # event keys. Matching case-insensitively keeps the binary rolling-buffer
+        # behavior while avoiding a silent wake failure after firmware changes.
+        match_index = bytes(self._buffer).lower().find(self._needle_folded)
         if match_index >= 0:
             end = match_index + len(self._needle)
             start = max(0, end - 2048)

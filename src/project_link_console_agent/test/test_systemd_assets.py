@@ -62,6 +62,16 @@ def test_topic_readiness_ignores_stale_ros2_cli_daemon_state():
     assert "ros2 topic echo --no-daemon --once" in wait_helper
 
 
+def test_accumulated_scan_waits_for_point_lio_odom_without_platform_cycle():
+    unit_dir = DEPLOY_ROOT / "user"
+    scan = (unit_dir / UNITS["scan"]).read_text(encoding="utf-8")
+    point_lio = (unit_dir / UNITS["point_lio_map"]).read_text(encoding="utf-8")
+    assert "topic /scan 30" in scan
+    assert "/scan_accumulated" not in scan
+    assert "topic /odom_lio 45" in point_lio
+    assert "topic /scan_accumulated 45" in point_lio
+
+
 def test_runtime_voice_and_uwb_overrides_remain_local_and_shadow_only():
     component = (DEPLOY_ROOT / "bin" / "project-link-component").read_text(encoding="utf-8")
     assert "PROJECT_LINK_VOICE_PROFILE" in component
@@ -89,7 +99,7 @@ def test_lidar_component_sources_humble_overlays_without_nounset():
     assert 'source "$unilidar_ws/install/setup.bash"\n    set -u' in lidar_block
 
 
-def test_console_agent_exposes_only_uwb_shadow_lifecycle_services():
+def test_console_agent_exposes_allowlisted_optional_lifecycle_services():
     source = (
         REPOSITORY_ROOT
         / "src"
@@ -99,5 +109,8 @@ def test_console_agent_exposes_only_uwb_shadow_lifecycle_services():
     ).read_text(encoding="utf-8")
     assert '"/project_link/console/start_uwb_shadow"' in source
     assert '"/project_link/console/stop_uwb_shadow"' in source
+    assert '"/project_link/console/start_visual_grasp"' in source
+    assert '"/project_link/console/stop_visual_grasp"' in source
     assert "_systemd.start(UNITS[\"uwb_shadow\"])" in source
+    assert "_systemd.start(UNITS[\"visual_grasp\"])" in source
     assert "PersonNavigation" not in source

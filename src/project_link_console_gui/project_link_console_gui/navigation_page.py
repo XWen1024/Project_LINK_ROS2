@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
+from collections import deque
 import math
+import time
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QDialog,
     QDoubleSpinBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPlainTextEdit,
+    QProgressBar,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -26,6 +34,152 @@ from PySide6.QtWidgets import (
 from .map_view import MapView
 from .models import GridLayer, Pose2D
 from .teleop_pad import TeleopPad
+
+
+FUNCTION_LABELS = {
+    "project-link-console-agent.service": "中控通信代理",
+    "project-link-base.service": "底盘串口与里程计",
+    "project-link-lidar.service": "Unitree L1 三维激光雷达",
+    "project-link-front-camera.service": "车头 720P 摄像头",
+    "project-link-fall-response.service": "跌倒检测响应",
+    "project-link-wechatbot.service": "微信紧急通知",
+    "project-link-robot-description.service": "机器人模型与传感器坐标",
+    "project-link-scan.service": "二维雷达扫描",
+    "project-link-point-lio-map.service": "Point-LIO 定位与实时建图",
+    "project-link-nav2.service": "Navigation2 路径规划与导航",
+    "project-link-rf2o-fallback.service": "rf2o 备用定位",
+    "project-link-visual-grasp.service": "机械臂视觉抓取服务",
+    "project-link-vl53l0x.service": "夹爪距离传感器",
+    "project-link-voice-classic.service": "经典语音链路",
+    "project-link-voice-qwen.service": "Qwen Realtime 语音",
+    "project-link-uwb-shadow.service": "UWB 影子模式",
+    "project-link-platform.target": "底盘与传感器基础平台",
+    "project-link-mapping.target": "建图模式总流程",
+    "project-link-navigation.target": "Navigation2 模式总流程",
+    "project-link-rf2o-fallback.target": "rf2o 备用模式总流程",
+    "project-link-emergency.target": "紧急响应总流程",
+}
+
+SIMPLE_UNITS = {
+    "project-link-console-agent.service",
+    "project-link-base.service",
+    "project-link-lidar.service",
+    "project-link-front-camera.service",
+    "project-link-robot-description.service",
+    "project-link-scan.service",
+    "project-link-point-lio-map.service",
+    "project-link-nav2.service",
+    "project-link-visual-grasp.service",
+    "project-link-voice-classic.service",
+    "project-link-voice-qwen.service",
+}
+
+
+class CameraPreview(QLabel):
+    """Aspect-ratio preserving preview that resizes from the latest source frame."""
+
+    def __init__(self, text: str, parent=None) -> None:
+        super().__init__(text, parent)
+        self._source = QPixmap()
+        self._aspect_ratio = 16.0 / 9.0
+        self.setAlignment(Qt.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setMinimumSize(280, 158)
+        self.setMaximumHeight(240)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return max(135, int(width / max(0.1, self._aspect_ratio)))
+
+    def sizeHint(self) -> QSize:
+        return QSize(360, self.heightForWidth(360))
+
+    def set_image(self, image: QImage) -> None:
+        self._aspect_ratio = image.width() / max(1, image.height())
+        self._source = QPixmap.fromImage(image)
+        self._render()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._render()
+
+    def _render(self) -> None:
+        if not self._source.isNull():
+            super().setPixmap(
+                self._source.scaled(
+                    self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
+            )
+
+
+class StackProgressDialog(QDialog):
+    """Non-blocking, operator-readable lifecycle progress and step log."""
+
+    def __init__(self, title: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(False)
+        self.setMinimumWidth(560)
+        self._last_line = ""
+        layout = QVBoxLayout(self)
+        self.description = QLabel("正在向 Orin 提交启动请求…")
+        self.description.setWordWrap(True)
+        layout.addWidget(self.description)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(2)
+        layout.addWidget(self.progress)
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setMaximumBlockCount(200)
+        self.log.setMinimumHeight(210)
+        layout.addWidget(self.log)
+        self.close_button = QPushButton("启动完成后可关闭")
+        self.close_button.setEnabled(False)
+        self.close_button.clicked.connect(self.accept)
+        layout.addWidget(self.close_button)
+        self.append("准备", "正在向 Orin 提交请求")
+
+    def append(self, step: str, message: str) -> None:
+        line = f"{step}：{message}" if step else message
+        if line == self._last_line:
+            return
+        self._last_line = line
+        self.log.appendPlainText(f"{time.strftime('%H:%M:%S')}  {line}")
+        self.description.setText(message)
+
+    def update_progress(self, event: dict) -> None:
+        state = str(event.get("state", "running"))
+        progress = max(0.0, min(1.0, float(event.get("progress", 0.0))))
+        message = str(event.get("message", ""))
+        step = str(event.get("step", ""))
+        self.progress.setValue(round(progress * 100.0))
+        self.append(step, message)
+        if state in {"complete", "failed"}:
+            self.close_button.setEnabled(True)
+            self.close_button.setText("关闭")
+            if state == "complete":
+                self.progress.setValue(100)
+                self.description.setText("启动流程已完成")
+            else:
+                self.description.setText("启动失败：" + message)
+
+    @property
+    def running(self) -> bool:
+        return not self.close_button.isEnabled()
+
+    def reject(self) -> None:
+        if self.running:
+            return
+        super().reject()
+
+    def closeEvent(self, event) -> None:
+        if self.running:
+            event.ignore()
+            return
+        super().closeEvent(event)
 
 
 class NavigationPage(QWidget):
@@ -43,6 +197,9 @@ class NavigationPage(QWidget):
         self._connected = False
         self._pending_goal: Pose2D | None = None
         self._advanced = False
+        self._last_state: dict = {}
+        self._progress_dialog: StackProgressDialog | None = None
+        self._camera_frames: deque[float] = deque(maxlen=120)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -68,10 +225,18 @@ class NavigationPage(QWidget):
         self.stop_button = QPushButton("全部停止")
         self.emergency_button = QPushButton("紧急停车")
         self.emergency_button.setObjectName("dangerButton")
-        self.mapping_button.clicked.connect(lambda: bridge.manage_stack(1, False))
-        self.navigation_button.clicked.connect(lambda: bridge.manage_stack(2, False))
-        self.mapping_only_button.clicked.connect(lambda: bridge.manage_stack(4, False))
-        self.stop_button.clicked.connect(lambda: bridge.manage_stack(5, False))
+        self.mapping_button.clicked.connect(
+            lambda: self._request_stack(1, "启动建图模式")
+        )
+        self.navigation_button.clicked.connect(
+            lambda: self._request_stack(2, "启动 Navigation2")
+        )
+        self.mapping_only_button.clicked.connect(
+            lambda: self._request_stack(4, "停止导航并保留建图")
+        )
+        self.stop_button.clicked.connect(
+            lambda: self._request_stack(5, "停止建图与导航")
+        )
         self.emergency_button.clicked.connect(bridge.emergency_stop)
         for button in (
             self.mapping_button,
@@ -87,23 +252,24 @@ class NavigationPage(QWidget):
         splitter = QSplitter(Qt.Horizontal)
         self.map_view = MapView()
         splitter.addWidget(self.map_view)
-        side = QWidget()
-        side.setMinimumWidth(330)
-        side.setMaximumWidth(440)
-        side_layout = QVBoxLayout(side)
-        side_layout.setContentsMargins(4, 0, 0, 0)
 
-        camera_group = QGroupBox("车头摄像头")
+        side_scroll = QScrollArea()
+        side_scroll.setWidgetResizable(True)
+        side_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        side_scroll.setMinimumWidth(330)
+        side_scroll.setMaximumWidth(450)
+        side = QWidget()
+        side_layout = QVBoxLayout(side)
+        side_layout.setContentsMargins(4, 0, 4, 0)
+
+        camera_group = QGroupBox("车头摄像头 · 原生 720P/16:9")
         camera_layout = QVBoxLayout(camera_group)
-        self.front_camera_preview = QLabel("等待 Orin 车头摄像头画面")
-        self.front_camera_preview.setAlignment(Qt.AlignCenter)
-        self.front_camera_preview.setMinimumSize(280, 120)
-        self.front_camera_preview.setMaximumHeight(180)
+        self.front_camera_preview = CameraPreview("等待 Orin 车头摄像头画面")
         self.front_camera_preview.setStyleSheet(
             "background: #090b0e; border: 1px solid #343b45; color: #7f8995;"
         )
         self.front_camera_preview.setToolTip(
-            "Orin 独占 /dev/project_link_front_camera，Ubuntu 仅渲染压缩 ROS 图像"
+            "Orin 独占 /dev/project_link_front_camera，Ubuntu 仅渲染 1280×720 压缩图像"
         )
         self.front_camera_status = QLabel("未收到 /front_camera/image/compressed")
         self.front_camera_status.setStyleSheet("color: #8e98a5;")
@@ -156,9 +322,7 @@ class NavigationPage(QWidget):
         side_layout.addWidget(goal_group)
 
         self.teleop = TeleopPad()
-        self.teleop.setToolTip(
-            "备选 GUI 遥控；日常人工驾驶优先使用 STM32 原生手柄"
-        )
+        self.teleop.setToolTip("备选 GUI 遥控；日常人工驾驶优先使用 STM32 原生手柄")
         self.teleop.command_requested.connect(bridge.send_teleop)
         self.teleop.setVisible(False)
         side_layout.addWidget(self.teleop)
@@ -181,34 +345,56 @@ class NavigationPage(QWidget):
         advanced_layout.addWidget(self.linear_speed, 0, 1)
         advanced_layout.addWidget(QLabel("建图遥控角速度"), 1, 0)
         advanced_layout.addWidget(self.angular_speed, 1, 1)
-        note = QLabel("GUI 发送 20 Hz 租约；Orin agent 负责限幅、模式门控和 250 ms 超时停车。")
+        note = QLabel("GUI 发送 20 Hz 租约；Orin 负责限幅、模式门控和 250 ms 超时停车。")
         note.setWordWrap(True)
         advanced_layout.addWidget(note, 2, 0, 1, 2)
         self.advanced_group.setVisible(False)
         side_layout.addWidget(self.advanced_group)
         side_layout.addStretch()
-        splitter.addWidget(side)
+        side_scroll.setWidget(side)
+        splitter.addWidget(side_scroll)
         splitter.setStretchFactor(0, 1)
         root.addWidget(splitter, 1)
 
-        status_group = QGroupBox("节点与服务状态")
+        status_group = QGroupBox("功能运行状态")
         status_layout = QVBoxLayout(status_group)
         self.status_table = QTableWidget(0, 4)
-        self.status_table.setHorizontalHeaderLabels(["模块", "状态", "就绪", "说明"])
+        self.status_table.setHorizontalHeaderLabels(["功能", "模块名", "状态", "就绪"])
         self.status_table.horizontalHeader().setStretchLastSection(True)
         self.status_table.verticalHeader().setVisible(False)
         self.status_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.status_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.status_table.setMaximumHeight(190)
+        self.status_table.setColumnHidden(1, True)
         status_layout.addWidget(self.status_table)
         root.addWidget(status_group)
+
+        bridge.stack_progress.connect(self._update_stack_progress)
+
+    def _request_stack(self, operation: int, title: str) -> None:
+        if self._progress_dialog is not None and self._progress_dialog.running:
+            self._progress_dialog.raise_()
+            self._progress_dialog.activateWindow()
+            return
+        self._progress_dialog = StackProgressDialog(title, self)
+        self._progress_dialog.show()
+        self._bridge.manage_stack(operation, False)
+
+    def _update_stack_progress(self, event: dict) -> None:
+        if self._progress_dialog is None:
+            self._progress_dialog = StackProgressDialog("建图与导航流程", self)
+            self._progress_dialog.show()
+        self._progress_dialog.update_progress(event)
 
     def set_advanced(self, enabled: bool) -> None:
         self._advanced = bool(enabled)
         self.teleop.setVisible(self._advanced)
         self.advanced_group.setVisible(self._advanced)
+        self.status_table.setColumnHidden(1, not self._advanced)
+        self._render_status()
 
     def update_system_state(self, state: dict) -> None:
+        self._last_state = state
         self._mode = int(state.get("mode", self.MODE_OFF))
         names = {
             self.MODE_OFF: "系统关闭",
@@ -220,23 +406,55 @@ class NavigationPage(QWidget):
         }
         self.mode_badge.setText(names.get(self._mode, state.get("mode_name", "未知")))
         self.teleop.set_mapping_mode(self._connected and self._mode == self.MODE_MAPPING)
-        can_goal = (
+        self.send_goal_button.setEnabled(
             self._connected
             and self._mode == self.MODE_NAVIGATION
             and self._pending_goal is not None
         )
-        self.send_goal_button.setEnabled(can_goal)
-        subsystems = list(state.get("subsystems", []))
+        self._render_status()
+
+    def _render_status(self) -> None:
+        subsystems = list(self._last_state.get("subsystems", []))
+        if not self._advanced:
+            filtered = [item for item in subsystems if item.get("name") in SIMPLE_UNITS]
+            if filtered:
+                subsystems = filtered
         self.status_table.setRowCount(len(subsystems))
         for row, subsystem in enumerate(subsystems):
+            module = str(subsystem.get("name", ""))
+            function = FUNCTION_LABELS.get(
+                module, str(subsystem.get("display_name") or module)
+            )
+            status = self._translate_status(
+                str(subsystem.get("active_state", "")),
+                str(subsystem.get("sub_state", "")),
+            )
             values = [
-                subsystem.get("display_name") or subsystem.get("name", ""),
-                f"{subsystem.get('active_state', '')}/{subsystem.get('sub_state', '')}",
+                function,
+                module,
+                status,
                 "是" if subsystem.get("ready") else "否",
-                subsystem.get("message", ""),
             ]
             for column, value in enumerate(values):
-                self.status_table.setItem(row, column, QTableWidgetItem(str(value)))
+                self.status_table.setItem(row, column, QTableWidgetItem(value))
+        self.status_table.resizeColumnsToContents()
+        self.status_table.horizontalHeader().setStretchLastSection(True)
+
+    @staticmethod
+    def _translate_status(active_state: str, sub_state: str) -> str:
+        if active_state == "active":
+            return "运行中" if sub_state == "running" else "已启用"
+        if active_state == "activating":
+            return "正在检查就绪条件" if sub_state == "start-post" else "正在启动"
+        if active_state == "deactivating":
+            return "正在停止"
+        if active_state == "inactive":
+            return "已停止"
+        if active_state == "failed":
+            return "故障"
+        if active_state == "unknown":
+            return "状态不可用"
+        return "/".join(value for value in (active_state, sub_state) if value) or "未知"
 
     def set_connection_available(self, connected: bool) -> None:
         self._connected = bool(connected)
@@ -276,15 +494,21 @@ class NavigationPage(QWidget):
         if image.isNull():
             self.front_camera_status.setText("车头摄像头图像解码失败")
             return
-        pixmap = QPixmap.fromImage(image)
-        self.front_camera_preview.setPixmap(
-            pixmap.scaled(
-                self.front_camera_preview.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
+        self.front_camera_preview.set_image(image)
+        now = time.monotonic()
+        self._camera_frames.append(now)
+        while self._camera_frames and now - self._camera_frames[0] > 2.0:
+            self._camera_frames.popleft()
+        fps = 0.0
+        if len(self._camera_frames) >= 2:
+            fps = (len(self._camera_frames) - 1) / max(
+                0.001, self._camera_frames[-1] - self._camera_frames[0]
             )
+        divisor = math.gcd(image.width(), image.height())
+        ratio = f"{image.width() // divisor}:{image.height() // divisor}"
+        self.front_camera_status.setText(
+            f"已连接 · {image.width()}×{image.height()} · {ratio} · {fps:.1f} FPS"
         )
-        self.front_camera_status.setText(f"已连接 · {image.width()}×{image.height()}")
 
     def _goal_selected(self, x: float, y: float) -> None:
         self._pending_goal = Pose2D(x, y, math.radians(self.goal_yaw.value()))

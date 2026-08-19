@@ -29,6 +29,31 @@ from .teleop import TeleopLease
 from .voice_state import VoiceState, parse_voice_status
 
 
+SUBSYSTEM_LABELS = {
+    UNITS["agent"]: "中控通信代理",
+    UNITS["base"]: "底盘串口与里程计",
+    UNITS["lidar"]: "Unitree L1 三维激光雷达",
+    UNITS["front_camera"]: "车头 720P 摄像头",
+    UNITS["fall_response"]: "跌倒检测响应",
+    UNITS["wechatbot"]: "微信紧急通知",
+    UNITS["robot_description"]: "机器人模型与传感器坐标",
+    UNITS["scan"]: "二维雷达扫描",
+    UNITS["point_lio_map"]: "Point-LIO 定位与实时建图",
+    UNITS["nav2"]: "Navigation2 路径规划与导航",
+    UNITS["rf2o"]: "rf2o 备用定位",
+    UNITS["visual_grasp"]: "机械臂视觉抓取服务",
+    UNITS["vl53l0x"]: "夹爪距离传感器",
+    UNITS["voice_classic"]: "经典语音链路",
+    UNITS["voice_qwen"]: "Qwen Realtime 语音",
+    UNITS["uwb_shadow"]: "UWB 影子模式",
+    UNITS["platform_target"]: "底盘与传感器基础平台",
+    UNITS["mapping_target"]: "建图模式总流程",
+    UNITS["navigation_target"]: "Navigation2 模式总流程",
+    UNITS["rf2o_target"]: "rf2o 备用模式总流程",
+    UNITS["emergency_target"]: "紧急响应总流程",
+}
+
+
 class ConsoleAgent(Node):
     def __init__(self) -> None:
         super().__init__("project_link_console_agent")
@@ -90,6 +115,18 @@ class ConsoleAgent(Node):
             Trigger,
             "/project_link/console/clear_emergency_stop",
             self._clear_emergency_stop,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            Trigger,
+            "/project_link/console/start_visual_grasp",
+            self._start_visual_grasp,
+            callback_group=self._callbacks,
+        )
+        self.create_service(
+            Trigger,
+            "/project_link/console/stop_visual_grasp",
+            self._stop_visual_grasp,
             callback_group=self._callbacks,
         )
         self.create_service(
@@ -277,7 +314,7 @@ class ConsoleAgent(Node):
         for unit, state in states.items():
             item = SubsystemState()
             item.name = unit
-            item.display_name = state.description or unit
+            item.display_name = SUBSYSTEM_LABELS.get(unit, state.description or unit)
             item.active_state = state.active_state
             item.sub_state = state.sub_state
             item.result = state.result
@@ -304,6 +341,64 @@ class ConsoleAgent(Node):
         feedback.message = message
         goal_handle.publish_feedback(feedback)
 
+    def _start_target_with_progress(
+        self,
+        goal_handle,
+        target: str,
+        ordered_units: list[str],
+        *,
+        restart: bool,
+        timeout_sec: float = 210.0,
+    ) -> None:
+        if restart:
+            self._systemd.restart_no_block(target)
+        else:
+            self._systemd.start_no_block(target)
+        deadline = time.monotonic() + timeout_sec
+        last_snapshot = None
+        while time.monotonic() < deadline:
+            states = self._systemd.safe_states(ordered_units)
+            failed = [
+                state
+                for state in states.values()
+                if state.active_state == "failed" or state.sub_state == "failed"
+            ]
+            if failed:
+                state = failed[0]
+                label = SUBSYSTEM_LABELS.get(state.unit, state.unit)
+                raise RuntimeError(f"{label}启动失败：{state.result}")
+            ready_count = sum(1 for unit in ordered_units if states[unit].active)
+            pending = next(
+                (unit for unit in ordered_units if not states[unit].active),
+                ordered_units[-1],
+            )
+            pending_state = states[pending]
+            snapshot = (ready_count, pending, pending_state.active_state, pending_state.sub_state)
+            if snapshot != last_snapshot:
+                label = SUBSYSTEM_LABELS.get(pending, pending)
+                if pending_state.active_state == "activating":
+                    description = f"{label}：正在执行启动与就绪检查"
+                elif pending_state.active_state == "inactive":
+                    description = f"{label}：等待前置功能就绪"
+                else:
+                    description = f"{label}：{pending_state.active_state}/{pending_state.sub_state}"
+                self._feedback(
+                    goal_handle,
+                    pending,
+                    min(0.95, 0.12 + 0.83 * ready_count / max(1, len(ordered_units))),
+                    description,
+                )
+                last_snapshot = snapshot
+            if ready_count == len(ordered_units):
+                return
+            time.sleep(0.5)
+        pending_labels = [
+            SUBSYSTEM_LABELS.get(unit, unit)
+            for unit, state in self._systemd.safe_states(ordered_units).items()
+            if not state.active
+        ]
+        raise RuntimeError("启动超时，仍未就绪：" + "、".join(pending_labels))
+
     def _manage_stack(self, goal_handle) -> ManageStack.Result:
         request = goal_handle.request
         result = ManageStack.Result()
@@ -324,18 +419,44 @@ class ConsoleAgent(Node):
             self._mode = SystemState.MODE_TRANSITIONING
             self._mode_name = "transitioning"
         try:
-            self._feedback(goal_handle, "prepare", 0.1, "Stopping incompatible control paths")
+            self._feedback(goal_handle, "prepare", 0.05, "正在停止不兼容的控制链路")
             if request.operation == ManageStack.Goal.OPERATION_START_MAPPING:
                 self._systemd.stop(UNITS["navigation_target"])
                 self._systemd.stop(UNITS["rf2o_target"])
-                self._feedback(goal_handle, "mapping", 0.5, "Starting Point-LIO mapping target")
-                self._systemd.restart(UNITS["mapping_target"]) if request.restart else self._systemd.start(UNITS["mapping_target"])
+                self._start_target_with_progress(
+                    goal_handle,
+                    UNITS["mapping_target"],
+                    [
+                        UNITS["base"],
+                        UNITS["lidar"],
+                        UNITS["robot_description"],
+                        UNITS["scan"],
+                        UNITS["platform_target"],
+                        UNITS["point_lio_map"],
+                        UNITS["mapping_target"],
+                    ],
+                    restart=request.restart,
+                )
                 final_mode = SystemState.MODE_MAPPING
                 final_mode_name = "mapping"
             elif request.operation == ManageStack.Goal.OPERATION_START_NAVIGATION:
                 self._systemd.stop(UNITS["rf2o_target"])
-                self._feedback(goal_handle, "navigation", 0.5, "Starting navigation target")
-                self._systemd.restart(UNITS["navigation_target"]) if request.restart else self._systemd.start(UNITS["navigation_target"])
+                self._start_target_with_progress(
+                    goal_handle,
+                    UNITS["navigation_target"],
+                    [
+                        UNITS["base"],
+                        UNITS["lidar"],
+                        UNITS["robot_description"],
+                        UNITS["scan"],
+                        UNITS["platform_target"],
+                        UNITS["point_lio_map"],
+                        UNITS["mapping_target"],
+                        UNITS["nav2"],
+                        UNITS["navigation_target"],
+                    ],
+                    restart=request.restart,
+                )
                 final_mode = SystemState.MODE_NAVIGATION
                 final_mode_name = "navigation"
             elif request.operation == ManageStack.Goal.OPERATION_START_RF2O_FALLBACK:
@@ -371,6 +492,7 @@ class ConsoleAgent(Node):
         with self._lock:
             self._mode = final_mode
             self._mode_name = final_mode_name
+        self._feedback(goal_handle, "complete", 1.0, "启动流程已完成")
         goal_handle.succeed()
         result.success = True
         result.final_mode = final_mode
@@ -416,6 +538,32 @@ class ConsoleAgent(Node):
         result.message = "voice_backend_switched"
         self._emit("voice", result.message)
         return result
+
+    def _start_visual_grasp(self, _request, response):
+        try:
+            self._systemd.start(UNITS["visual_grasp"])
+        except Exception as exc:
+            response.success = False
+            response.message = str(exc)
+            self._emit("manipulation", response.message, ConsoleEvent.SEVERITY_ERROR)
+            return response
+        response.success = True
+        response.message = "机械臂视觉服务已启动；尚未连接机械臂或启用扭矩"
+        self._emit("manipulation", response.message)
+        return response
+
+    def _stop_visual_grasp(self, _request, response):
+        try:
+            self._systemd.stop(UNITS["visual_grasp"])
+        except Exception as exc:
+            response.success = False
+            response.message = str(exc)
+            self._emit("manipulation", response.message, ConsoleEvent.SEVERITY_ERROR)
+            return response
+        response.success = True
+        response.message = "机械臂视觉服务已停止"
+        self._emit("manipulation", response.message)
+        return response
 
     def _emergency_stop(self, _request, response):
         with self._lock:

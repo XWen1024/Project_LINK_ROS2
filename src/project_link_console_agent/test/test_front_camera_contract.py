@@ -14,6 +14,11 @@ def test_front_camera_is_orin_owned_and_uses_a_dedicated_topic():
     assert '"/front_camera/capture_still"' in source
     assert "CaptureStill" in source
     assert 'self.declare_parameter("camera_width", 1280)' in source
+    assert 'self.declare_parameter("camera_height", 720)' in source
+    assert 'self.declare_parameter("camera_fps", 30.0)' in source
+    assert 'self.declare_parameter("preview_fps", 30.0)' in source
+    assert 'self.declare_parameter("preview_width", 1280)' in source
+    assert 'self.declare_parameter("preview_height", 720)' in source
     assert "CompressedImage" in source
     assert '"/visual_grasp/image/compressed"' not in source
     assert '"/cmd_vel"' not in source

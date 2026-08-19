@@ -109,6 +109,8 @@ class SettingsPage(QWidget):
         }
         forms = {name: QFormLayout(box) for name, box in groups.items()}
         for file_name, key, label, secret, simple in FIELDS:
+            if file_name == "uwb" and not self._show_uwb:
+                continue
             widget = QLineEdit()
             widget.setToolTip(f"环境变量：{key}")
             if secret:
@@ -172,7 +174,9 @@ class SettingsPage(QWidget):
             self.state_label.setText("已保存；相关服务重启后生效")
             for file_name, key, _label, secret, _simple in FIELDS:
                 if secret:
-                    widget = self._fields[(file_name, key)]
+                    widget = self._fields.get((file_name, key))
+                    if widget is None:
+                        continue
                     if widget.text():
                         widget.clear()
                         widget.setPlaceholderText("已配置；留空保持原值")

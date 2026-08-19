@@ -36,3 +36,5 @@ def test_console_manipulation_page_only_constructs_a_remote_client():
     assert "set_torque" not in source
     assert "self.initialization_error" in source
     assert "self.initialization_traceback" in source
+    assert "start_visual_grasp" in source
+    assert "不会启用扭矩" in source

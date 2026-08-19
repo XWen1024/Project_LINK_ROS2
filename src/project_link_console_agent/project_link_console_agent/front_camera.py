@@ -23,11 +23,11 @@ class FrontCameraNode(Node):
         self.declare_parameter("camera_device", "/dev/project_link_front_camera")
         self.declare_parameter("camera_width", 1280)
         self.declare_parameter("camera_height", 720)
-        self.declare_parameter("camera_fps", 15.0)
-        self.declare_parameter("preview_fps", 8.0)
-        self.declare_parameter("preview_width", 640)
-        self.declare_parameter("preview_height", 360)
-        self.declare_parameter("jpeg_quality", 65)
+        self.declare_parameter("camera_fps", 30.0)
+        self.declare_parameter("preview_fps", 30.0)
+        self.declare_parameter("preview_width", 1280)
+        self.declare_parameter("preview_height", 720)
+        self.declare_parameter("jpeg_quality", 70)
         self.declare_parameter("still_jpeg_quality", 85)
         self.declare_parameter("max_still_age_sec", 0.5)
         self.declare_parameter("rotation_degrees", 0)
@@ -91,7 +91,12 @@ class FrontCameraNode(Node):
                 return False
             self._camera = camera
             self._publish_status("ready")
-            self.get_logger().info(f"Front camera ready on {device}")
+            width = int(camera.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = float(camera.get(cv2.CAP_PROP_FPS))
+            self.get_logger().info(
+                f"Front camera ready on {device}: {width}x{height} @ {fps:.1f} FPS"
+            )
             return True
         except Exception as exc:
             self._camera = None

@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from .models import GridLayer, Pose2D, laser_points, transform_points
 
@@ -33,9 +33,13 @@ class RosBridge(QObject):
     front_camera_image = Signal(bytes)
     connection_changed = Signal(bool, str)
     operation_event = Signal(str)
+    stack_progress = Signal(dict)
+    lifecycle_completed = Signal(str, bool)
     voice_status = Signal(dict)
     voice_control_available = Signal(bool, str)
     voice_operation = Signal(str)
+    manipulation_control_available = Signal(bool, str)
+    manipulation_operation = Signal(str)
     uwb_observation = Signal(dict)
     uwb_status = Signal(str)
     uwb_goal = Signal(dict)
@@ -53,8 +57,16 @@ class RosBridge(QObject):
         self._navigate_type = None
         self._last_state_monotonic = 0.0
         self._connected = False
+        self._connection_text = "等待 Orin console agent"
         self._cloud_enabled = False
+        self._front_camera_lock = threading.Lock()
+        self._pending_front_camera: bytes | None = None
+        self._front_camera_timer = QTimer(self)
+        self._front_camera_timer.setInterval(33)
+        self._front_camera_timer.timeout.connect(self._flush_front_camera)
+        self._front_camera_timer.start()
         self._voice_control_ready: bool | None = None
+        self._manipulation_control_ready: bool | None = None
         self._uwb_enabled = os.environ.get("PROJECT_LINK_SHOW_UWB_PAGE", "0") == "1"
 
     def start(self) -> None:
@@ -101,6 +113,12 @@ class RosBridge(QObject):
         )
         self._start_uwb_client = None
         self._stop_uwb_client = None
+        self._start_visual_grasp_client = self._node.create_client(
+            Trigger, "/project_link/console/start_visual_grasp"
+        )
+        self._stop_visual_grasp_client = self._node.create_client(
+            Trigger, "/project_link/console/stop_visual_grasp"
+        )
         if self._uwb_enabled:
             self._start_uwb_client = self._node.create_client(
                 Trigger, "/project_link/console/start_uwb_shadow"
@@ -157,7 +175,7 @@ class RosBridge(QObject):
         self._node.create_subscription(
             CompressedImage,
             "/front_camera/image/compressed",
-            lambda message: self.front_camera_image.emit(bytes(message.data)),
+            self._on_front_camera,
             qos_profile_sensor_data,
         )
         self._node.create_subscription(
@@ -172,18 +190,33 @@ class RosBridge(QObject):
         self._node.create_timer(0.50, self._check_state_freshness)
         self._node.create_timer(1.00, self._check_voice_control)
 
+        self.connection_changed.emit(False, self._connection_text)
+        self.voice_control_available.emit(False, "等待发现 Orin 语音控制")
+        self.manipulation_control_available.emit(False, "等待发现 Orin 机械臂控制")
         self._executor = MultiThreadedExecutor(num_threads=3)
         self._executor.add_node(self._node)
         self._thread = threading.Thread(target=self._executor.spin, name="console-ros", daemon=True)
         self._thread.start()
-        self.connection_changed.emit(False, "等待 Orin console agent")
-        self.voice_control_available.emit(False, "等待发现 Orin 语音控制")
+
+    def connection_snapshot(self) -> tuple[bool, str]:
+        return self._connected, self._connection_text
 
     def _put(self, command: tuple[Any, ...]) -> None:
         try:
             self._commands.put_nowait(command)
         except queue.Full:
             self.operation_event.emit("命令队列已满；已丢弃本次操作")
+
+    def _on_front_camera(self, message) -> None:
+        with self._front_camera_lock:
+            self._pending_front_camera = bytes(message.data)
+
+    def _flush_front_camera(self) -> None:
+        with self._front_camera_lock:
+            jpeg_data = self._pending_front_camera
+            self._pending_front_camera = None
+        if jpeg_data is not None:
+            self.front_camera_image.emit(jpeg_data)
 
     def manage_stack(self, operation: int, restart: bool = False) -> None:
         self._put(("manage", int(operation), bool(restart)))
@@ -207,6 +240,12 @@ class RosBridge(QObject):
 
     def probe_voice_control(self) -> None:
         self._put(("probe_voice",))
+
+    def start_visual_grasp(self) -> None:
+        self._put(("visual_grasp", True))
+
+    def stop_visual_grasp(self) -> None:
+        self._put(("visual_grasp", False))
 
     def start_uwb_shadow(self) -> None:
         self._put(("uwb_shadow", True))
@@ -236,6 +275,8 @@ class RosBridge(QObject):
                 self._switch_voice(command[1])
             elif command[0] == "probe_voice":
                 self._probe_voice_control()
+            elif command[0] == "visual_grasp":
+                self._set_visual_grasp(command[1])
             elif command[0] == "uwb_shadow":
                 self._set_uwb_shadow(command[1])
         if latest_teleop is not None:
@@ -254,12 +295,44 @@ class RosBridge(QObject):
     def _send_manage_goal(self, operation: int, restart: bool) -> None:
         if not self._manage_client.wait_for_server(timeout_sec=0.0):
             self.operation_event.emit("Orin console agent 尚未连接")
+            self.stack_progress.emit(
+                {
+                    "state": "failed",
+                    "progress": 0.0,
+                    "message": "Orin console agent 尚未连接",
+                }
+            )
             return
         goal = self._manage_type.Goal()
         goal.operation = operation
         goal.restart = restart
         future = self._manage_client.send_goal_async(goal, feedback_callback=self._manage_feedback)
         future.add_done_callback(self._manage_goal_response)
+
+    def _set_visual_grasp(self, enabled: bool) -> None:
+        client = self._start_visual_grasp_client if enabled else self._stop_visual_grasp_client
+        if not client.wait_for_service(timeout_sec=0.25):
+            message = "Orin 机械臂生命周期控制尚未连接"
+            self.manipulation_control_available.emit(False, message)
+            self.manipulation_operation.emit(message)
+            return
+        self.manipulation_control_available.emit(True, "Orin 机械臂生命周期控制已连接")
+        future = client.call_async(self._trigger_type.Request())
+        future.add_done_callback(
+            lambda done, action="manipulation": self._manipulation_done(done, action)
+        )
+
+    def _manipulation_done(self, future, action: str) -> None:
+        try:
+            response = future.result()
+            message = response.message
+            success = bool(response.success)
+        except Exception as exc:
+            message = f"机械臂生命周期操作失败：{exc}"
+            success = False
+        self.manipulation_operation.emit(message)
+        self.operation_event.emit(message)
+        self.lifecycle_completed.emit(action, success)
 
     def _switch_voice(self, backend: int) -> None:
         if not self._switch_voice_client.wait_for_server(timeout_sec=0.25):
@@ -294,6 +367,18 @@ class RosBridge(QObject):
             if self._switch_voice_client.server_is_ready()
             else "等待发现 Orin 语音控制",
         )
+        manipulation_ready = bool(
+            self._start_visual_grasp_client.service_is_ready()
+            and self._stop_visual_grasp_client.service_is_ready()
+        )
+        if manipulation_ready != self._manipulation_control_ready:
+            self._manipulation_control_ready = manipulation_ready
+            self.manipulation_control_available.emit(
+                manipulation_ready,
+                "Orin 机械臂生命周期控制已连接"
+                if manipulation_ready
+                else "等待发现 Orin 机械臂生命周期控制",
+            )
 
     def _set_voice_control_ready(self, ready: bool, message: str, force: bool = False) -> None:
         ready = bool(ready)
@@ -318,9 +403,12 @@ class RosBridge(QObject):
 
     def _voice_result(self, future) -> None:
         try:
-            self._emit_voice_operation(future.result().result.message)
+            result = future.result().result
+            self._emit_voice_operation(result.message)
+            self.lifecycle_completed.emit("voice", bool(result.success))
         except Exception as exc:
             self._emit_voice_operation(f"语音切换结果读取失败：{exc}")
+            self.lifecycle_completed.emit("voice", False)
 
     def _set_uwb_shadow(self, enabled: bool) -> None:
         if not self._uwb_enabled:
@@ -342,20 +430,52 @@ class RosBridge(QObject):
     def _manage_feedback(self, feedback_message) -> None:
         feedback = feedback_message.feedback
         self.operation_event.emit(f"{feedback.step}: {feedback.message}")
+        self.stack_progress.emit(
+            {
+                "state": "running",
+                "step": feedback.step,
+                "progress": float(feedback.progress),
+                "message": feedback.message,
+            }
+        )
 
     def _manage_goal_response(self, future) -> None:
         try:
             handle = future.result()
         except Exception as exc:
             self.operation_event.emit(f"模式切换失败：{exc}")
+            self.stack_progress.emit(
+                {"state": "failed", "progress": 0.0, "message": f"模式切换失败：{exc}"}
+            )
+            self.lifecycle_completed.emit("stack", False)
             return
         if not handle.accepted:
             self.operation_event.emit("模式切换请求被拒绝")
+            self.stack_progress.emit(
+                {"state": "failed", "progress": 0.0, "message": "模式切换请求被拒绝"}
+            )
+            self.lifecycle_completed.emit("stack", False)
             return
         result_future = handle.get_result_async()
-        result_future.add_done_callback(
-            lambda done: self.operation_event.emit(done.result().result.message)
+        result_future.add_done_callback(self._manage_result)
+
+    def _manage_result(self, future) -> None:
+        try:
+            result = future.result().result
+            success = bool(result.success)
+            message = "操作已完成" if success else result.message
+        except Exception as exc:
+            success = False
+            message = f"模式切换结果读取失败：{exc}"
+        self.operation_event.emit(message)
+        self.stack_progress.emit(
+            {
+                "state": "complete" if success else "failed",
+                "progress": 1.0 if success else 0.0,
+                "message": message,
+            }
         )
+        self.lifecycle_completed.emit("stack", success)
 
     def _send_navigation_action(self, pose: Pose2D) -> None:
         if not self._navigate_client.wait_for_server(timeout_sec=0.0):
@@ -392,7 +512,8 @@ class RosBridge(QObject):
         self._last_state_monotonic = time.monotonic()
         if not self._connected:
             self._connected = True
-            self.connection_changed.emit(True, "Orin 已连接")
+            self._connection_text = "Orin 已连接"
+            self.connection_changed.emit(True, self._connection_text)
         self.system_state.emit(
             {
                 "mode": int(message.mode),
@@ -419,7 +540,8 @@ class RosBridge(QObject):
     def _check_state_freshness(self) -> None:
         if self._connected and time.monotonic() - self._last_state_monotonic > 2.0:
             self._connected = False
-            self.connection_changed.emit(False, "Orin 状态已超时")
+            self._connection_text = "Orin 状态已超时"
+            self.connection_changed.emit(False, self._connection_text)
 
     def _on_console_event(self, message) -> None:
         self.console_event.emit(
@@ -446,7 +568,17 @@ class RosBridge(QObject):
                 else ("idle" if value.get("session_ready", True) else "connecting")
             )
             value["wakeup_state"] = (
-                "已唤醒" if value.get("conversation_active") else "等待唤醒"
+                "已唤醒"
+                if value.get("conversation_active")
+                else (
+                    "唤醒串口异常"
+                    if value.get("wakeup_serial_state") == "fault"
+                    else (
+                        "等待唤醒"
+                        if value.get("wakeup_serial_state") == "ready"
+                        else "正在连接唤醒串口"
+                    )
+                )
             )
         else:
             state = raw.split(";", 1)[0].strip() or "unknown"
@@ -582,6 +714,7 @@ class RosBridge(QObject):
         )
 
     def stop(self) -> None:
+        self._front_camera_timer.stop()
         if self._node is None:
             return
         try:

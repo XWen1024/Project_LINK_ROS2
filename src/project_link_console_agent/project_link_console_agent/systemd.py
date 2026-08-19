@@ -83,11 +83,17 @@ class SystemdManager:
     def start(self, unit: str) -> None:
         self._run(["start", self.validate_unit(unit)], timeout_sec=240.0)
 
+    def start_no_block(self, unit: str) -> None:
+        self._run(["--no-block", "start", self.validate_unit(unit)], timeout_sec=20.0)
+
     def stop(self, unit: str) -> None:
         self._run(["stop", self.validate_unit(unit)], timeout_sec=30.0)
 
     def restart(self, unit: str) -> None:
         self._run(["restart", self.validate_unit(unit)], timeout_sec=240.0)
+
+    def restart_no_block(self, unit: str) -> None:
+        self._run(["--no-block", "restart", self.validate_unit(unit)], timeout_sec=20.0)
 
     @staticmethod
     def _state_from_values(unit: str, values: dict[str, str]) -> UnitState:

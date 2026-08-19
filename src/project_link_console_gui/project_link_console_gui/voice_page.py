@@ -32,6 +32,10 @@ STATE_LABELS = {
     "idle": "待命",
     "connecting": "正在连接模型",
     "waiting_wakeup": "等待唤醒",
+    "等待唤醒": "等待唤醒",
+    "已唤醒": "已唤醒",
+    "唤醒串口异常": "唤醒串口异常",
+    "正在连接唤醒串口": "正在连接唤醒串口",
     "conversation_active": "对话中",
     "listening": "正在聆听",
     "thinking": "正在处理",
@@ -211,7 +215,17 @@ class VoicePage(QWidget):
         wake_state = str(status.get("wakeup_state", ""))
         if not wake_state:
             wake_state = "已唤醒" if status.get("conversation_active") else "等待唤醒"
-        self.wakeup_card.value.setText(STATE_LABELS.get(wake_state, wake_state))
+        wake_text = STATE_LABELS.get(wake_state, wake_state)
+        if not status.get("conversation_active") and status.get("wakeup_serial_state") == "ready":
+            events = int(status.get("wakeup_events_seen", 0) or 0)
+            bytes_seen = int(status.get("wakeup_bytes_seen", 0) or 0)
+            if events:
+                wake_text = f"等待唤醒 · 已识别 {events} 次"
+            elif bytes_seen:
+                wake_text = "收到串口数据，未识别唤醒事件"
+            else:
+                wake_text = "等待唤醒 · 串口已连接"
+        self.wakeup_card.value.setText(wake_text)
         self.session_card.value.setText(STATE_LABELS.get(state, state))
         pending = str(status.get("pending_task", "") or "")
         active = str(status.get("active_task", "") or "")
