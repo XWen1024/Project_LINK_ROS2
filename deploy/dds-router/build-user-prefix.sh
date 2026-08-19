@@ -26,9 +26,15 @@ clone_locked() {
   local name="$1" url="$2" commit="$3"
   local path="$source_root/src/$name"
   if [[ ! -d "$path/.git" ]]; then
-    git clone --filter=blob:none --no-checkout "$url" "$path"
+    mkdir -p "$path"
+    git -C "$path" init
+    git -C "$path" remote add origin "$url"
+  else
+    git -C "$path" remote set-url origin "$url"
   fi
-  git -C "$path" fetch --depth 1 origin "$commit"
+  # Fetch only the verified object. Cloning the repository's default branch is
+  # both unnecessary and markedly less reliable on the Orin field network.
+  git -C "$path" fetch --depth 1 --no-tags origin "$commit"
   git -C "$path" checkout --detach "$commit"
   [[ "$(git -C "$path" rev-parse HEAD)" == "$commit" ]] || {
     echo "Commit verification failed for $name" >&2
