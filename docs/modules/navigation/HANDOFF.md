@@ -1,7 +1,7 @@
 # Navigation Two 交接文档
 
-Status: current; transport and hardware-alias field gates pending  
-Last verified: 2026-08-19  
+Status: current; transport and hardware-alias field gates pending
+Last verified: 2026-08-19
 Verified code: `main@c37bdfc`
 
 本文档是 Project LINK 当前 Point-LIO + slam_toolbox + Navigation2 路线的
