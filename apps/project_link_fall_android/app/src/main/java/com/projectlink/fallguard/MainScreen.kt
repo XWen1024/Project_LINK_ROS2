@@ -162,7 +162,7 @@ fun MainScreen(
 
     if (state.settingsVisible) {
         SettingsDialog(
-            initialSettings = state.settings,
+            initialSettings = state.settingsDraft ?: state.settings,
             testingConnection = state.testingConnection,
             onDismiss = onSettingsDismissed,
             onSave = onSettingsSaved,
@@ -438,7 +438,7 @@ private fun SettingsDialog(
     var settings by remember(initialSettings) { mutableStateOf(initialSettings) }
     var advancedVisible by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!testingConnection) onDismiss() },
         title = { Text("设置") },
         text = {
             Column(
@@ -524,8 +524,22 @@ private fun SettingsDialog(
                 )
             }
         },
-        confirmButton = { Button(onClick = { onSave(settings) }) { Text("保存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = {
+            Button(
+                onClick = { onSave(settings) },
+                enabled = !testingConnection,
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !testingConnection,
+            ) {
+                Text("取消")
+            }
+        },
     )
 }
 

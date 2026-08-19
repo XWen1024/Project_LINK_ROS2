@@ -103,12 +103,17 @@ Starting the emergency target does not start the base, lidar, mapping or Nav2.
 - User-owned WeChat QR login and single-contact binding. The pinned SDK persists
   login credentials in mode-0600 `credentials.json`; the project separately
   persists and reinjects the bound contact context token after every restart.
-- Android App `0.2.0 (2)` has passed the authenticated phone-to-Orin `/health`
+- Android App `0.2.1 (3)` has passed the authenticated phone-to-Orin `/health`
   smoke against `http://10.255.176.119:8765`: HTTP 200 with camera, model,
   vision, notification and coordinator readiness all true. The App now reports
   target URL, active network transport, HTTP status and response details instead
-  of collapsing failures to a boolean. The full event lifecycle and 14.9-second
-  cancellation race remain open.
+  of collapsing failures to a boolean. Saving settings now returns home, runs an
+  immediate health check and shows the result. While the Activity is foregrounded,
+  it performs a silent health check every 15 seconds. The manual test checks only
+  the unsaved settings draft and does not act as the connection-state switch.
+  These `0.2.1` changes passed Windows compilation, unit tests and Lint; renewed
+  device interaction validation is pending because ADB disconnected. The full
+  event lifecycle and 14.9-second cancellation race remain open.
 - Confirmed and degraded notification delivery to the real contact.
 - Only after two static supervised cycles: add the separately gated Nav2 Spin
   mode. Direct velocity publishing remains forbidden.

@@ -48,6 +48,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.startConnectionMonitoring()
+    }
+
+    override fun onStop() {
+        viewModel.stopConnectionMonitoring()
+        super.onStop()
+    }
+
     private fun toggleGuardianWithPermission(state: MainUiState) {
         val permissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=

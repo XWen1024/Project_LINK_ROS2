@@ -95,6 +95,7 @@ data class MainUiState(
     val orinConnected: Boolean = false,
     val testingConnection: Boolean = false,
     val settings: AppSettings = AppSettings(),
+    val settingsDraft: AppSettings? = null,
     val settingsVisible: Boolean = false,
     val demoConfirmationVisible: Boolean = false,
     val demoCountdown: Int? = null,

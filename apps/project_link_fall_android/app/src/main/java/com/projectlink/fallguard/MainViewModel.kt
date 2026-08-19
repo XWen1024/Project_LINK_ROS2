@@ -7,11 +7,15 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsStore = SettingsStore(application)
@@ -20,6 +24,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var demoJob: Job? = null
     private var activeDemoGateway: FallGateway? = null
     private var activeDemoEventId: String? = null
+    private var heartbeatJob: Job? = null
+    private val healthCheckMutex = Mutex()
 
     init {
         viewModelScope.launch {
@@ -87,8 +93,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     statusMessage = "请先连接 Orin",
                     informationDialog = InformationDialogState(
                         title = "Orin 尚未连接",
-                        message = "请先在设置中关闭本地模拟、填写 Orin 局域网地址和 Token，然后点击测试连接。",
-                        details = "当前配置：${it.settings.orinBaseUrl}\n手机不能使用 127.0.0.1；Orin 当前地址应为 http://10.255.176.119:8765。",
+                        message = "请在设置中确认 Orin 局域网地址和 Token。保存后 App 会自动检查连接。",
+                        details = "当前配置：${it.settings.orinBaseUrl}\n手机不能使用 127.0.0.1；也可在设置中用“测试连接”单独检查尚未保存的内容。",
                         isError = true,
                     ),
                 )
@@ -165,11 +171,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun showSettings() {
-        _uiState.update { it.copy(settingsVisible = true) }
+        _uiState.update { it.copy(settingsVisible = true, settingsDraft = it.settings) }
     }
 
     fun hideSettings() {
-        _uiState.update { it.copy(settingsVisible = false) }
+        _uiState.update { it.copy(settingsVisible = false, settingsDraft = null) }
+    }
+
+    fun startConnectionMonitoring() {
+        if (heartbeatJob?.isActive == true) return
+        heartbeatJob = viewModelScope.launch {
+            runAutomaticHealthCheck()
+            while (isActive) {
+                delay(HEARTBEAT_INTERVAL_MS)
+                runAutomaticHealthCheck()
+            }
+        }
+    }
+
+    fun stopConnectionMonitoring() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
     }
 
     fun dismissInformation() {
@@ -186,33 +208,85 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             settingsStore.save(settings)
             _uiState.update {
                 it.copy(
+                    settings = settings,
+                    settingsDraft = null,
                     settingsVisible = false,
-                    orinConnected = if (settings.simulationEnabled) true else false,
-                    statusMessage = if (settings.simulationEnabled) "本地模拟已就绪" else "请测试 Orin 连接",
+                    statusMessage = "设置已保存，正在检查后端连接",
                 )
             }
+            performHealthCheck(
+                settings = settings,
+                showDialog = true,
+                returnToSettings = false,
+                manual = false,
+                applyConnectionState = true,
+            )
         }
     }
 
     fun testConnection(settings: AppSettings) {
-        _uiState.update { it.copy(testingConnection = true) }
+        _uiState.update { it.copy(settingsDraft = settings, testingConnection = true) }
         viewModelScope.launch {
+            performHealthCheck(
+                settings = settings,
+                showDialog = true,
+                returnToSettings = true,
+                manual = true,
+                applyConnectionState = false,
+            )
+        }
+    }
+
+    private suspend fun runAutomaticHealthCheck() {
+        val settings = settingsStore.settings.first()
+        performHealthCheck(
+            settings = settings,
+            showDialog = false,
+            returnToSettings = false,
+            manual = false,
+            applyConnectionState = true,
+        )
+    }
+
+    private suspend fun performHealthCheck(
+        settings: AppSettings,
+        showDialog: Boolean,
+        returnToSettings: Boolean,
+        manual: Boolean,
+        applyConnectionState: Boolean,
+    ) {
+        healthCheckMutex.withLock {
+            if (manual) {
+                _uiState.update { it.copy(testingConnection = true) }
+            }
             val result = FallGatewayFactory.create(settings, getApplication()).health()
-            _uiState.update {
-                it.copy(
-                    testingConnection = false,
-                    settings = settings,
-                    settingsVisible = false,
-                    orinConnected = result.success,
-                    status = if (result.success) GuardianStatus.IDLE else GuardianStatus.DISCONNECTED,
-                    statusMessage = result.summary,
-                    informationDialog = InformationDialogState(
-                        title = if (result.success) "连接测试成功" else "连接测试失败",
-                        message = result.summary,
-                        details = result.details,
-                        isError = !result.success,
-                        returnToSettings = true,
-                    ),
+            _uiState.update { state ->
+                val mayReplaceMainStatus = state.incident == null && !state.guarding
+                state.copy(
+                    testingConnection = if (manual) false else state.testingConnection,
+                    settingsVisible = if (manual) false else state.settingsVisible,
+                    orinConnected = if (applyConnectionState) result.success else state.orinConnected,
+                    status = if (applyConnectionState && mayReplaceMainStatus) {
+                        if (result.success) GuardianStatus.IDLE else GuardianStatus.DISCONNECTED
+                    } else {
+                        state.status
+                    },
+                    statusMessage = if (applyConnectionState && mayReplaceMainStatus) {
+                        result.summary
+                    } else {
+                        state.statusMessage
+                    },
+                    informationDialog = if (showDialog) {
+                        InformationDialogState(
+                            title = if (result.success) "连接成功" else "连接失败",
+                            message = result.summary,
+                            details = result.details,
+                            isError = !result.success,
+                            returnToSettings = returnToSettings,
+                        )
+                    } else {
+                        state.informationDialog
+                    },
                 )
             }
         }
@@ -292,6 +366,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appendLine("当前网络：${NetworkDiagnostics.describe(getApplication())}")
         appendLine("错误类型：${error.javaClass.simpleName}")
         append("错误信息：${error.message ?: "无详细信息"}")
+    }
+
+    private companion object {
+        const val HEARTBEAT_INTERVAL_MS = 15_000L
     }
 }
 
