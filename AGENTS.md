@@ -123,6 +123,12 @@ are evidence snapshots, not current operating instructions.
   confirm it before using these values with `ssh orin`. If port `7897` refuses the
   connection, ask whether Mihomo is running instead of cycling through guessed
   proxy ports.
+- As of 2026-08-19, the Windows-hosted Mihomo LAN endpoint
+  `10.255.176.247:7897` is reachable from Orin and supports both HTTP CONNECT and
+  SOCKS. When direct GitHub downloads on Orin are progressing at field-network
+  speeds, first verify this endpoint with a bounded `curl`, then apply temporary
+  `http_proxy`/`https_proxy` and `all_proxy` exports to that build command. Do not
+  persist the numeric proxy address because it changes with the network.
 - Level 2 — safe remote/environment failures: continue with read-only diagnosis,
   then retry a bounded number of materially different, non-destructive fixes. This
   includes a missing workspace setup, stale Git checkout, inactive user service,

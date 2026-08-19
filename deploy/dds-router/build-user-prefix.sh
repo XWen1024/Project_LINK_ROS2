@@ -73,5 +73,9 @@ ddspipe $DDS_PIPE_COMMIT
 ddsrouter $DDS_ROUTER_COMMIT
 EOF
 
+set +u
+# shellcheck disable=SC1090
+source "$prefix/setup.bash"
+set -u
 "$binary" --version
 echo "DDS Router installed in isolated user prefix: $prefix"
