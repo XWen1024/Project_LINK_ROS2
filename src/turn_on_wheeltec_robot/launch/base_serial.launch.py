@@ -34,7 +34,7 @@ def include_imu_launch(context, *args, **kwargs):
     
     # 公共参数
     common_params = {
-        'usart_port_name': '/dev/wheeltec_controller',
+        'usart_port_name': LaunchConfiguration('usart_port_name').perform(context),
         'serial_baud_rate': 115200,
         'robot_frame_id': 'base_footprint',
         'odom_frame_id': 'odom',
@@ -122,6 +122,11 @@ def generate_launch_description():
         default_value='',
         description='Whether to enable ranger avoidance'
     )
+    declare_usart_port = DeclareLaunchArgument(
+        'usart_port_name',
+        default_value='/dev/project_link_chassis',
+        description='Stable chassis serial alias'
+    )
 
     # 3) 使用 OpaqueFunction 在运行时生成节点
     return LaunchDescription([
@@ -130,5 +135,6 @@ def generate_launch_description():
         declare_carparam_mode,
         declare_car_mode,
         declare_ranger,
+        declare_usart_port,
         OpaqueFunction(function=include_imu_launch)
     ])

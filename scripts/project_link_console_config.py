@@ -71,7 +71,10 @@ ENV_FILES = {
         {
             "PROJECT_LINK_WORKSPACE": False,
             "UNILIDAR_WS": False,
+            "CHASSIS_DEVICE": False,
             "UNILIDAR_PORT": False,
+            "FRONT_CAMERA_DEVICE": False,
+            "FRONT_CAMERA_ROTATION_DEGREES": False,
             "ROS_DOMAIN_ID": False,
             "ROS_LOCALHOST_ONLY": False,
             "PROJECT_LINK_VOICE_ENABLE_MOTION": False,
@@ -123,7 +126,10 @@ ENV_DEFAULTS = {
     "console": {
         "PROJECT_LINK_WORKSPACE": "/home/wte/wheeltec_robot",
         "UNILIDAR_WS": "/home/wte/unilidar_sdk/unitree_lidar_ros2",
-        "UNILIDAR_PORT": "/dev/unilidar",
+        "CHASSIS_DEVICE": "/dev/project_link_chassis",
+        "UNILIDAR_PORT": "/dev/project_link_lidar",
+        "FRONT_CAMERA_DEVICE": "/dev/project_link_front_camera",
+        "FRONT_CAMERA_ROTATION_DEGREES": "90",
         "ROS_DOMAIN_ID": "42",
         "ROS_LOCALHOST_ONLY": "0",
         "PROJECT_LINK_VOICE_ENABLE_MOTION": "false",

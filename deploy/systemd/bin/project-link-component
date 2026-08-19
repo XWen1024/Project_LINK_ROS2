@@ -32,7 +32,8 @@ case "$component" in
     ;;
   base)
     source_main
-    exec ros2 launch turn_on_wheeltec_robot base_serial.launch.py
+    exec ros2 launch turn_on_wheeltec_robot base_serial.launch.py \
+      usart_port_name:="${CHASSIS_DEVICE:-/dev/project_link_chassis}"
     ;;
   lidar)
     source /opt/ros/humble/setup.bash
