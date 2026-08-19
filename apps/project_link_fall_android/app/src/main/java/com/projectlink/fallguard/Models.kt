@@ -49,6 +49,30 @@ data class IncidentUiState(
     val message: String,
 )
 
+data class ImuSummary(
+    val peakAccelG: Float,
+    val orientationChangeDeg: Float,
+    val inactivityMs: Long,
+)
+
+data class FallEventRequest(
+    val eventId: String,
+    val mode: AppMode,
+    val occurredAtMs: Long,
+    val deviceName: String,
+    val cancelWindowMs: Long = 15_000,
+    val imu: ImuSummary?,
+)
+
+data class ServiceRuntimeState(
+    val guarding: Boolean = false,
+    val sensorAvailable: Boolean = true,
+    val orinConnected: Boolean = false,
+    val status: GuardianStatus = GuardianStatus.IDLE,
+    val statusMessage: String = "准备就绪",
+    val incident: IncidentUiState? = null,
+)
+
 data class MainUiState(
     val mode: AppMode = AppMode.REAL,
     val status: GuardianStatus = GuardianStatus.IDLE,
