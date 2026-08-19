@@ -119,6 +119,8 @@ class ConsoleWindow(QMainWindow):
         self._sidebar_collapsed = False
         self._connection_text = "未连接"
         self._connection_ok = False
+        self._transport_mode = os.environ.get("PROJECT_LINK_TRANSPORT_MODE", "legacy-dds")
+        self._transport_process: QProcess | None = None
         self.config_client = ConfigClient(self)
         self.setWindowTitle("Project LINK 中控台" + (" — 离线演示" if demo else ""))
 
@@ -165,6 +167,9 @@ class ConsoleWindow(QMainWindow):
         self.connection_label = QLabel("● 未连接")
         self.connection_label.setStyleSheet("color: #ef9a9a; padding: 8px;")
         sidebar_layout.addWidget(self.connection_label)
+        self.transport_label = QLabel("⇄ 检查传输通道…")
+        self.transport_label.setStyleSheet("color: #8e98a5; padding: 0 8px 8px 8px;")
+        sidebar_layout.addWidget(self.transport_label)
         root.addWidget(self.sidebar)
 
         content_splitter = QSplitter(Qt.Vertical)
@@ -232,6 +237,11 @@ class ConsoleWindow(QMainWindow):
 
         self._sidebar_shortcut = QShortcut(QKeySequence("Ctrl+B"), self)
         self._sidebar_shortcut.activated.connect(self.toggle_sidebar)
+        self._transport_timer = QTimer(self)
+        self._transport_timer.setInterval(2000)
+        self._transport_timer.timeout.connect(self._poll_transport)
+        self._transport_timer.start()
+        self._poll_transport()
         self._fit_to_available_screen()
 
     def _fit_to_available_screen(self) -> None:
@@ -263,6 +273,9 @@ class ConsoleWindow(QMainWindow):
             else (("● " if self._connection_ok else "○ ") + self._connection_text)
         )
         self.connection_label.setToolTip(self._connection_text)
+        self.transport_label.setText(
+            "⇄" if collapsed else self.transport_label.toolTip()
+        )
         self.navigation.setStyleSheet(
             "QListWidget { padding: 7px; } QListWidget::item { padding: 12px 8px; }"
             if collapsed else ""
@@ -294,6 +307,54 @@ class ConsoleWindow(QMainWindow):
         if self.uwb_page is not None:
             self.uwb_page.set_connection_available(connected)
 
+    def _poll_transport(self) -> None:
+        if self._transport_mode != "dds-router":
+            message = "直连 DDS 兼容模式"
+            self.transport_label.setToolTip(message)
+            self.transport_label.setText("⇄" if self._sidebar_collapsed else f"⇄ {message}")
+            self.transport_label.setStyleSheet("color: #d2ad72; padding: 0 8px 8px 8px;")
+            return
+        if self._transport_process is not None:
+            return
+        process = QProcess(self)
+        process.setProgram("systemctl")
+        process.setArguments(
+            [
+                "--user",
+                "show",
+                "project-link-dds-tunnel.service",
+                "project-link-dds-router-ubuntu.service",
+                "--property=Id",
+                "--property=ActiveState",
+                "--property=SubState",
+                "--no-pager",
+            ]
+        )
+        process.finished.connect(self._transport_finished)
+        self._transport_process = process
+        process.start()
+
+    def _transport_finished(self, exit_code: int, _exit_status) -> None:
+        process = self._transport_process
+        self._transport_process = None
+        output = "" if process is None else bytes(process.readAllStandardOutput()).decode(
+            "utf-8", errors="replace"
+        )
+        if process is not None:
+            process.deleteLater()
+        active = {
+            line.partition("=")[2]
+            for line in output.splitlines()
+            if line.startswith("Id=")
+        }
+        active_count = output.count("ActiveState=active")
+        ready = exit_code == 0 and active_count == 2 and len(active) == 2
+        message = "SSH 隧道 + DDS Router 就绪" if ready else "等待 SSH 隧道 / DDS Router"
+        self.transport_label.setToolTip(message)
+        self.transport_label.setText("⇄" if self._sidebar_collapsed else f"⇄ {message}")
+        color = "#81c784" if ready else "#ef9a9a"
+        self.transport_label.setStyleSheet(f"color: {color}; padding: 0 8px 8px 8px;")
+
     def _console_event(self, event: dict) -> None:
         self.voice_page.append_event(event)
         timing = ""
@@ -323,6 +384,8 @@ class ConsoleWindow(QMainWindow):
             QMessageBox.warning(self, "RViz2", "无法启动 rviz2，请检查 Ubuntu ROS 2 环境。")
 
     def closeEvent(self, event) -> None:
+        if self._transport_process is not None:
+            self._transport_process.kill()
         self.manipulation_page.shutdown()
         self.config_client.shutdown()
         self._bridge.stop()

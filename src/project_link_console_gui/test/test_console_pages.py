@@ -51,6 +51,9 @@ def test_console_window_is_responsive_collapsible_and_single_instance():
     assert "setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)" in app
     assert "QLockFile" in app
     assert "中控台已经在运行" in app
+    assert "project-link-dds-tunnel.service" in app
+    assert "project-link-dds-router-ubuntu.service" in app
+    assert "SSH 隧道 + DDS Router 就绪" in app
 
 
 def test_uwb_page_is_shadow_only_and_never_publishes_velocity():

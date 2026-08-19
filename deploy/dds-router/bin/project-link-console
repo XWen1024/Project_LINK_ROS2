@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+workspace="${PROJECT_LINK_UBUNTU_WORKSPACE:-/home/xwen/wheeltec_robot}"
+set +u
+source /opt/ros/humble/setup.bash
+source "$workspace/install/setup.bash"
+set -u
+
+export ROS_DOMAIN_ID="${PROJECT_LINK_CONSOLE_DOMAIN_ID:-142}"
+export ROS_LOCALHOST_ONLY=0
+export PROJECT_LINK_TRANSPORT_MODE=dds-router
+
+systemctl --user start project-link-dds-router-ubuntu.service
+exec ros2 run project_link_console_gui project_link_console "$@"

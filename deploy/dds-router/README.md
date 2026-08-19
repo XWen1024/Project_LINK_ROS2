@@ -31,3 +31,14 @@ target, and keep it mode `0600`. The SSH key must be the Ubuntu user's own key.
 
 The GUI must run with `ROS_DOMAIN_ID=142`; all Orin robot services remain on 42.
 The allowlist excludes UWB and the high-bandwidth raw lidar/Point-LIO streams.
+
+After both transport units are installed and the Ubuntu environment file is
+configured, launch the production console with:
+
+```bash
+./deploy/dds-router/bin/project-link-console
+```
+
+The wrapper starts only the Ubuntu tunnel/router services, sets domain 142 and
+then opens the GUI. The sidebar reports the local tunnel/router state separately
+from the Orin ROS heartbeat.
