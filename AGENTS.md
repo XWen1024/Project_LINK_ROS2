@@ -215,7 +215,10 @@ are evidence snapshots, not current operating instructions.
   `odom -> base_footprint`.
 - Qwen and classic voice are mutually exclusive because they share wake serial,
   microphone, speaker and robot tools.
-- LLMs choose registered tools only. Python owns confirmation, validation,
+- LLMs choose registered tools only. The mandatory `end_conversation` executor
+  cancels current robot work, plays the fixed exit acknowledgement and returns
+  the voice backend to wake standby; it must remain available even when the
+  operator tool profile omits it. Python owns confirmation, validation,
   ROS Actions, cancellation and all robot execution.
 - Fall response defaults to `static`. Real scanning may use only the allowlisted
   Nav2 `/spin` Action after TF/odom/costmap/cmd_vel/arm preflight; it must never

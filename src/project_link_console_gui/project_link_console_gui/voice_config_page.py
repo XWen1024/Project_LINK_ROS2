@@ -35,6 +35,7 @@ REGISTERED_TOOLS = {
     "navigate_to_location": "创建需要确认的命名航点导航任务",
     "fetch_item_from_location": "创建需要确认的导航与抓取任务",
     "cancel_current_task": "取消当前待确认或正在执行的任务",
+    "end_conversation": "结束当前语音会话并回到等待唤醒状态",
 }
 
 

@@ -50,7 +50,7 @@ def configured_tool_schemas(
         name = str(function.get("name", ""))
         override = configured.get(name)
         if override is None:
-            if name == "demo_motion":
+            if name in {"demo_motion", "end_conversation"}:
                 output.append(value)
             continue
         if not bool(override.get("enabled", True)):

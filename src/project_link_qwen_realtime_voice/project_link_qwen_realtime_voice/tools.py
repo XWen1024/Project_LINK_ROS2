@@ -97,6 +97,17 @@ BASE_TOOL_SCHEMAS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "end_conversation",
+            "description": (
+                "结束当前语音会话并回到等待唤醒状态。用户表达退出、退下、关闭语音、"
+                "休息、不用了、再见或拜拜时必须调用；不要只用自然语言答复。"
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
@@ -122,6 +133,8 @@ DEMO_TOOL_SCHEMA = {
 SYSTEM_PROMPT = """你是 Project LINK 机器人的实时语音中枢。
 你通过 Function Calling 使用机器人的能力，禁止声称尚未实际发生的动作。
 天气、当前位置、保存航点、列出航点、导航、取物和取消必须调用对应工具。
+用户要求退出、退下、关闭语音、休息、不用了、再见或拜拜时，必须调用 end_conversation；
+不要询问是否取消任务，也不要在调用后继续对话。
 导航和取物只允许使用已经保存的命名航点，禁止编造坐标。
 navigate_to_location 和 fetch_item_from_location 只会建立待确认任务；Python 安全层会要求用户明确说“确认开始”。
 模型绝不能绕过确认、直接控制 ROS Action、直接发布 cmd_vel 或启用机械臂扭矩。
@@ -150,8 +163,13 @@ EXIT_PHRASES = {
     "取消",
     "退出",
     "退出对话",
+    "关闭",
+    "关闭语音",
+    "关闭语音服务",
+    "关闭对话",
     "结束对话",
     "退下",
+    "退下吧",
     "休息",
     "休息吧",
     "不用了",
@@ -185,6 +203,14 @@ def is_explicit_exit(text: str) -> bool:
     normalized = normalize_spoken_text(text)
     if normalized in EXIT_PHRASES:
         return True
+    # Realtime ASR commonly repeats short commands (for example "退出退出").
+    # Accept only a whole utterance made from repeated exit commands so phrases
+    # such as "关闭警灯" or "不要退出" cannot accidentally end the session.
+    for phrase in sorted(EXIT_PHRASES, key=len, reverse=True):
+        if len(normalized) >= len(phrase) * 2 and normalized == phrase * (
+            len(normalized) // len(phrase)
+        ):
+            return True
     candidate = normalized
     changed = True
     while changed and candidate:

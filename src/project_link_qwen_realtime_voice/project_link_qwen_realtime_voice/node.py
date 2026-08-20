@@ -424,7 +424,18 @@ class QwenRealtimeVoiceNode(Node):
         try:
             self._transport.send_tool_result(call_id, output)
             self._timing("tool_result_sent", tool=name)
-            self._transport.create_response()
+            if result.end_conversation:
+                self._input_requested = False
+                if self._audio is not None:
+                    self._audio.set_input_enabled(False)
+                self._timing("conversation_exit_tool", tool=name)
+                self._intercept_turn(
+                    result.spoken_reply
+                    or str(self.get_parameter("conversation_exit_reply").value),
+                    True,
+                )
+            else:
+                self._transport.create_response()
         except Exception as exc:
             self.get_logger().error(f"Tool result delivery failed: {exc}")
 

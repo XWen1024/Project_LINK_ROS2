@@ -102,6 +102,15 @@ class RobotToolController:
                 {"success": True, "message": "已取消当前任务。", "spoken_reply": "已取消当前任务。"},
                 spoken_reply="已取消当前任务。",
             )
+        if name == "end_conversation":
+            self.cancel_everything("qwen end conversation tool")
+            reply = str(self._node.get_parameter("conversation_exit_reply").value).strip()
+            reply = reply or "好的，我退下了"
+            return ToolExecutionResult(
+                {"success": True, "message": "语音会话即将结束。", "spoken_reply": reply},
+                spoken_reply=reply,
+                end_conversation=True,
+            )
         if name == "navigate_to_location":
             return self._prepare_navigation(args)
         if name == "fetch_item_from_location":

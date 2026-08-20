@@ -17,8 +17,12 @@ def test_exit_keywords_accept_explicit_natural_commands():
     assert is_explicit_exit("退出对话")
     assert is_explicit_exit("好了，你退下吧")
     assert is_explicit_exit("请停止一下")
+    assert is_explicit_exit("退出退出")
+    assert is_explicit_exit("关闭")
+    assert is_explicit_exit("关闭语音服务")
     assert not is_explicit_exit("不要停止播放音乐")
     assert not is_explicit_exit("取消导航到客厅")
+    assert not is_explicit_exit("关闭警灯")
 
 
 def test_normalize_spoken_text_removes_spacing_and_punctuation():
@@ -28,5 +32,6 @@ def test_normalize_spoken_text_removes_spacing_and_punctuation():
 def test_demo_tool_is_exposed_only_in_demo_mode():
     production = {entry["function"]["name"] for entry in tool_schemas(False)}
     demo = {entry["function"]["name"] for entry in tool_schemas(True)}
+    assert "end_conversation" in production
     assert "demo_motion" not in production
     assert "demo_motion" in demo

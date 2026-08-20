@@ -23,5 +23,9 @@ The Volcengine Embedded Kit S2S work is archived under
 The Ubuntu console switches the two supported backends through the typed
 console-agent Action and displays sanitized JSONL timing phases. Shared operator
 profiles live in `~/.config/project_link/voice_profile.json`; prompts and schemas
-may be edited, but only the seven repository-registered Python executors can be
-enabled. Runtime YAML overrides remain local mode-0600 files on Orin.
+may be edited, but only repository-registered Python executors can be enabled.
+The safety-owned `end_conversation` executor is always registered: exit intents
+cancel pending/active robot work, play the fixed exit acknowledgement, close the
+current realtime session and return to wake standby. Direct keyword matching
+remains a fallback for exact and repeated commands such as `退出退出`. Runtime YAML
+overrides remain local mode-0600 files on Orin.
