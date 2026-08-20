@@ -196,7 +196,7 @@ ENV_DEFAULTS = {
         "LIDAR_MOUNT_PITCH_RAD": "1.5708",
         "LIDAR_MOUNT_YAW_RAD": "3.14159",
         "FRONT_CAMERA_DEVICE": "/dev/project_link_front_camera",
-        "FRONT_CAMERA_PREVIEW_FPS": "30.0",
+        "FRONT_CAMERA_PREVIEW_FPS": "24.0",
         "FRONT_CAMERA_ROTATION_DEGREES": "0",
         "FRONT_CAMERA_PREFER_NATIVE_MJPEG": "true",
         "FRONT_CAMERA_MANUAL_EXPOSURE": "true",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
-from typing import Iterable
+from typing import Iterable, Sequence
 
 
 @dataclass(frozen=True)
@@ -14,7 +14,7 @@ class GridLayer:
     resolution: float
     origin_x: float
     origin_y: float
-    cells: tuple[int, ...]
+    cells: Sequence[int]
 
     def __post_init__(self) -> None:
         if self.width <= 0 or self.height <= 0:

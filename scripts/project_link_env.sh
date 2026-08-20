@@ -2,6 +2,9 @@
 
 export ROS_DOMAIN_ID=42
 export ROS_LOCALHOST_ONLY=0
+if [ -f /home/wte/wheeltec_robot/scripts/project_link_dds_profile.sh ]; then
+  source /home/wte/wheeltec_robot/scripts/project_link_dds_profile.sh
+fi
 source /opt/ros/humble/setup.bash
 if [ -f /home/wte/point_lio_ws/install/setup.bash ]; then
   source /home/wte/point_lio_ws/install/setup.bash

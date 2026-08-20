@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import itertools
 import math
 import os
 import queue
@@ -83,7 +84,16 @@ class RosBridge(QObject):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._commands: queue.Queue[tuple[Any, ...]] = queue.Queue(maxsize=200)
+        self._commands: queue.PriorityQueue[tuple[int, int, tuple[Any, ...], str | None]] = (
+            queue.PriorityQueue(maxsize=64)
+        )
+        self._command_sequence = itertools.count()
+        self._queued_keys: set[str] = set()
+        self._queue_lock = threading.Lock()
+        self._voice_switch_in_flight = False
+        self._fall_events_in_flight = False
+        self._fall_event_in_flight = False
+        self._stopping = False
         self._teleop_lock = threading.Lock()
         self._pending_teleop: tuple[bool, bool, float, float] | None = None
         self._pending_manage: dict[str, Any] | None = None
@@ -117,6 +127,11 @@ class RosBridge(QObject):
         self._manipulation_control_ready: bool | None = None
         self._fall_control_ready: bool | None = None
         self._uwb_enabled = os.environ.get("PROJECT_LINK_SHOW_UWB_PAGE", "0") == "1"
+        self._navigation_visible = True
+        self._fall_visible = False
+        self._navigation_subscriptions: list[Any] = []
+        self._front_camera_subscription = None
+        self._fall_evidence_subscription = None
 
     def start(self) -> None:
         import rclpy
@@ -129,7 +144,7 @@ class RosBridge(QObject):
         from project_link_emergency_interfaces.srv import GetFallEvent, ListFallEvents
         from rcl_interfaces.srv import GetParameters, SetParameters
         from rclpy.action import ActionClient
-        from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+        from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
         from rclpy.executors import MultiThreadedExecutor
         from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
         from rclpy.parameter import Parameter
@@ -161,6 +176,7 @@ class RosBridge(QObject):
             rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
         self._node = rclpy.create_node("project_link_console_gui")
         self._command_callback_group = MutuallyExclusiveCallbackGroup()
+        self._action_callback_group = ReentrantCallbackGroup()
         self._teleop_pub = self._node.create_publisher(
             TeleopCommand, "/project_link/console/teleop", 20
         )
@@ -168,19 +184,19 @@ class RosBridge(QObject):
             self._node,
             ManageStack,
             "/project_link/console/manage_stack",
-            callback_group=self._command_callback_group,
+            callback_group=self._action_callback_group,
         )
         self._switch_voice_client = ActionClient(
             self._node,
             SwitchVoice,
             "/project_link/console/switch_voice",
-            callback_group=self._command_callback_group,
+            callback_group=self._action_callback_group,
         )
         self._navigate_client = ActionClient(
             self._node,
             NavigateToPose,
             "/navigate_to_pose",
-            callback_group=self._command_callback_group,
+            callback_group=self._action_callback_group,
         )
         self._emergency_client = self._node.create_client(
             Trigger, "/project_link/console/emergency_stop"
@@ -272,38 +288,12 @@ class RosBridge(QObject):
         map_qos = QoSProfile(depth=1)
         map_qos.reliability = ReliabilityPolicy.RELIABLE
         map_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
-        self._node.create_subscription(
-            OccupancyGrid,
-            "/map",
-            lambda message: self._on_grid("occupancy_map", message),
-            map_qos,
-        )
-        self._node.create_subscription(
-            OccupancyGrid,
-            "/global_costmap/costmap",
-            lambda message: self._on_grid("global_costmap", message),
-            5,
-        )
-        self._node.create_subscription(
-            OccupancyGrid,
-            "/local_costmap/costmap",
-            lambda message: self._on_grid("local_costmap", message),
-            5,
-        )
-        self._node.create_subscription(LaserScan, "/scan", self._on_scan, qos_profile_sensor_data)
-        self._node.create_subscription(
-            CompressedImage,
-            "/front_camera/image/compressed",
-            self._on_front_camera,
-            qos_profile_sensor_data,
-        )
-        self._node.create_subscription(
-            CompressedImage,
-            "/fall_detection/evidence/compressed",
-            lambda message: self.fall_evidence_image.emit(bytes(message.data)),
-            qos_profile_sensor_data,
-        )
-        self._node.create_subscription(Path, "/plan", self._on_path, 5)
+        self._occupancy_grid_type = OccupancyGrid
+        self._laser_scan_type = LaserScan
+        self._compressed_image_type = CompressedImage
+        self._path_type = Path
+        self._map_qos = map_qos
+        self._sync_visual_subscriptions()
         self._command_guard = self._node.create_guard_condition(
             self._process_commands,
             callback_group=self._command_callback_group,
@@ -329,17 +319,38 @@ class RosBridge(QObject):
     def connection_snapshot(self) -> tuple[bool, str]:
         return self._connected, self._connection_text
 
-    def _put(self, command: tuple[Any, ...]) -> None:
+    def _put(
+        self,
+        command: tuple[Any, ...],
+        *,
+        priority: int = 10,
+        coalesce_key: str | None = None,
+    ) -> bool:
+        if self._stopping:
+            return False
+        with self._queue_lock:
+            if coalesce_key and coalesce_key in self._queued_keys:
+                return False
+            if coalesce_key:
+                self._queued_keys.add(coalesce_key)
         try:
-            self._commands.put_nowait(command)
+            self._commands.put_nowait((priority, next(self._command_sequence), command, coalesce_key))
         except queue.Full:
+            with self._queue_lock:
+                if coalesce_key:
+                    self._queued_keys.discard(coalesce_key)
             self.operation_event.emit("命令队列已满；已丢弃本次操作")
-            return
+            return False
         # Wake the ROS executor immediately. Relying only on the polling timer
         # can starve lifecycle requests behind map, camera and point-cloud work.
         guard = self._command_guard
         if guard is not None:
-            guard.trigger()
+            try:
+                guard.trigger()
+            except Exception:
+                if not self._stopping:
+                    raise
+        return True
 
     def _on_front_camera(self, message) -> None:
         with self._front_camera_lock:
@@ -353,6 +364,9 @@ class RosBridge(QObject):
             self.front_camera_image.emit(jpeg_data)
 
     def manage_stack(self, operation: int, restart: bool = False) -> None:
+        if self._pending_manage is not None:
+            self.operation_event.emit("建图/导航切换正在进行，请等待当前操作完成")
+            return
         expected_modes = {
             1: {1},
             2: {2},
@@ -378,7 +392,10 @@ class RosBridge(QObject):
             "restart": bool(restart),
             "saw_transitioning": False,
         }
-        self._put(("manage", int(operation), bool(restart)))
+        if not self._put(
+            ("manage", int(operation), bool(restart)), priority=1, coalesce_key="manage"
+        ):
+            self._pending_manage = None
 
     def send_teleop(self, enabled: bool, deadman: bool, linear: float, angular: float) -> None:
         # Teleop is a latest-value heartbeat, not a lifecycle command. Coalesce
@@ -392,25 +409,37 @@ class RosBridge(QObject):
                 float(angular),
             )
         guard = self._command_guard
-        if guard is not None:
-            guard.trigger()
+        if guard is not None and not self._stopping:
+            try:
+                guard.trigger()
+            except Exception:
+                if not self._stopping:
+                    raise
 
     def send_navigation_goal(self, pose: Pose2D) -> None:
-        self._put(("goal", pose))
+        self._put(("goal", pose), priority=2, coalesce_key="navigation_goal")
 
     def emergency_stop(self) -> None:
         while True:
             try:
-                self._commands.get_nowait()
+                _priority, _sequence, _command, key = self._commands.get_nowait()
+                with self._queue_lock:
+                    if key:
+                        self._queued_keys.discard(key)
             except queue.Empty:
                 break
-        self._put(("emergency",))
+        self._put(("emergency",), priority=0, coalesce_key="emergency")
 
     def switch_voice(self, backend: int) -> None:
-        self._put(("switch_voice", int(backend)))
+        if self._voice_switch_in_flight:
+            self._emit_voice_operation("语音切换正在进行，请等待当前操作完成")
+            return
+        self._voice_switch_in_flight = True
+        if not self._put(("switch_voice", int(backend)), priority=1, coalesce_key="switch_voice"):
+            self._voice_switch_in_flight = False
 
     def probe_voice_control(self) -> None:
-        self._put(("probe_voice",))
+        self._put(("probe_voice",), priority=20, coalesce_key="probe_voice")
 
     def start_visual_grasp(self) -> None:
         self._put(("visual_grasp", True))
@@ -440,10 +469,20 @@ class RosBridge(QObject):
         self._put(("fall_preflight",))
 
     def request_fall_events(self, limit: int = 20) -> None:
-        self._put(("fall_events", int(limit)))
+        if self._fall_events_in_flight:
+            return
+        self._put(("fall_events", int(limit)), priority=30, coalesce_key="fall_events")
 
     def request_fall_event(self, event_id: str) -> None:
-        self._put(("fall_event", str(event_id)))
+        if self._fall_event_in_flight:
+            return
+        self._put(("fall_event", str(event_id)), priority=30, coalesce_key="fall_event")
+
+    def set_visible_pages(self, navigation: bool, fall: bool) -> None:
+        self._put(
+            ("visible_pages", bool(navigation), bool(fall)),
+            priority=5,
+        )
 
     def request_front_camera_parameters(self) -> None:
         self._put(("front_camera_get",))
@@ -483,11 +522,14 @@ class RosBridge(QObject):
         self._put(("lidar_calibration_enabled", bool(enabled)))
 
     def _process_commands(self) -> None:
-        while True:
+        for _ in range(8):
             try:
-                command = self._commands.get_nowait()
+                _priority, _sequence, command, key = self._commands.get_nowait()
             except queue.Empty:
                 break
+            with self._queue_lock:
+                if key:
+                    self._queued_keys.discard(key)
             try:
                 if command[0] == "manage":
                     self._send_manage_goal(command[1], command[2])
@@ -525,6 +567,10 @@ class RosBridge(QObject):
                     self._sync_cloud_subscription()
                 elif command[0] == "uwb_shadow":
                     self._set_uwb_shadow(command[1])
+                elif command[0] == "visible_pages":
+                    self._navigation_visible = bool(command[1])
+                    self._fall_visible = bool(command[2])
+                    self._sync_visual_subscriptions()
             except Exception as exc:
                 message = f"中控命令执行失败：{type(exc).__name__}: {exc}"
                 self.operation_event.emit(message)
@@ -534,6 +580,13 @@ class RosBridge(QObject):
                         {"state": "failed", "progress": 0.0, "message": message}
                     )
                     self.lifecycle_completed.emit("stack", False)
+                elif command[0] == "switch_voice":
+                    self._voice_switch_in_flight = False
+                    self.lifecycle_completed.emit("voice", False)
+                elif command[0] == "fall_events":
+                    self._fall_events_in_flight = False
+                elif command[0] == "fall_event":
+                    self._fall_event_in_flight = False
         with self._teleop_lock:
             latest_teleop = self._pending_teleop
             self._pending_teleop = None
@@ -672,6 +725,7 @@ class RosBridge(QObject):
         if not self._list_fall_events_client.wait_for_service(timeout_sec=0.25):
             self.fall_operation.emit("跌倒事件列表服务尚未连接")
             return
+        self._fall_events_in_flight = True
         request = self._list_fall_events_type.Request()
         request.limit = max(1, min(200, int(limit)))
         self._list_fall_events_client.call_async(request).add_done_callback(
@@ -679,6 +733,7 @@ class RosBridge(QObject):
         )
 
     def _fall_events_received(self, future) -> None:
+        self._fall_events_in_flight = False
         try:
             response = future.result()
             if not response.success:
@@ -693,6 +748,7 @@ class RosBridge(QObject):
         if not event_id or not self._get_fall_event_client.wait_for_service(timeout_sec=0.25):
             self.fall_operation.emit("跌倒事件详情服务尚未连接")
             return
+        self._fall_event_in_flight = True
         request = self._get_fall_event_type.Request()
         request.event_id = event_id
         self._get_fall_event_client.call_async(request).add_done_callback(
@@ -700,6 +756,7 @@ class RosBridge(QObject):
         )
 
     def _fall_event_received(self, future) -> None:
+        self._fall_event_in_flight = False
         try:
             response = future.result()
             if not response.success:
@@ -793,8 +850,10 @@ class RosBridge(QObject):
 
     def _switch_voice(self, backend: int) -> None:
         if not self._switch_voice_client.wait_for_server(timeout_sec=0.25):
+            self._voice_switch_in_flight = False
             self._set_voice_control_ready(False, "未发现 Orin 语音控制；请检查局域网和 ROS Domain 42")
             self._emit_voice_operation("语音切换服务尚未连接")
+            self.lifecycle_completed.emit("voice", False)
             return
         self._set_voice_control_ready(True, "Orin 语音控制已连接")
         goal = self._switch_voice_type.Goal()
@@ -864,14 +923,19 @@ class RosBridge(QObject):
         try:
             handle = future.result()
         except Exception as exc:
+            self._voice_switch_in_flight = False
             self._emit_voice_operation(f"语音切换失败：{exc}")
+            self.lifecycle_completed.emit("voice", False)
             return
         if not handle.accepted:
+            self._voice_switch_in_flight = False
             self._emit_voice_operation("语音切换请求被拒绝")
+            self.lifecycle_completed.emit("voice", False)
             return
         handle.get_result_async().add_done_callback(self._voice_result)
 
     def _voice_result(self, future) -> None:
+        self._voice_switch_in_flight = False
         try:
             result = future.result().result
             self._emit_voice_operation(result.message)
@@ -1169,7 +1233,7 @@ class RosBridge(QObject):
                 resolution=float(message.info.resolution),
                 origin_x=float(message.info.origin.position.x),
                 origin_y=float(message.info.origin.position.y),
-                cells=tuple(int(value) for value in message.data),
+                cells=message.data,
             )
         except ValueError as exc:
             self.operation_event.emit(f"忽略无效 {name}: {exc}")
@@ -1252,6 +1316,52 @@ class RosBridge(QObject):
             self._node.destroy_subscription(self._cloud_subscription)
             self._cloud_subscription = None
 
+    def _sync_visual_subscriptions(self) -> None:
+        if self._node is None:
+            return
+        if self._navigation_visible and not self._navigation_subscriptions:
+            self._navigation_subscriptions = [
+                self._node.create_subscription(
+                    self._occupancy_grid_type, "/map",
+                    lambda message: self._on_grid("occupancy_map", message), self._map_qos
+                ),
+                self._node.create_subscription(
+                    self._occupancy_grid_type, "/global_costmap/costmap",
+                    lambda message: self._on_grid("global_costmap", message), 5
+                ),
+                self._node.create_subscription(
+                    self._occupancy_grid_type, "/local_costmap/costmap",
+                    lambda message: self._on_grid("local_costmap", message), 5
+                ),
+                self._node.create_subscription(
+                    self._laser_scan_type, "/scan", self._on_scan, self._sensor_qos
+                ),
+                self._node.create_subscription(self._path_type, "/plan", self._on_path, 5),
+            ]
+        elif not self._navigation_visible and self._navigation_subscriptions:
+            for subscription in self._navigation_subscriptions:
+                self._node.destroy_subscription(subscription)
+            self._navigation_subscriptions = []
+
+        camera_wanted = self._navigation_visible or self._fall_visible
+        if camera_wanted and self._front_camera_subscription is None:
+            self._front_camera_subscription = self._node.create_subscription(
+                self._compressed_image_type, "/front_camera/image/compressed",
+                self._on_front_camera, self._sensor_qos
+            )
+        elif not camera_wanted and self._front_camera_subscription is not None:
+            self._node.destroy_subscription(self._front_camera_subscription)
+            self._front_camera_subscription = None
+
+        if self._fall_visible and self._fall_evidence_subscription is None:
+            self._fall_evidence_subscription = self._node.create_subscription(
+                self._compressed_image_type, "/fall_detection/evidence/compressed",
+                lambda message: self.fall_evidence_image.emit(bytes(message.data)), self._sensor_qos
+            )
+        elif not self._fall_visible and self._fall_evidence_subscription is not None:
+            self._node.destroy_subscription(self._fall_evidence_subscription)
+            self._fall_evidence_subscription = None
+
     def _publish_lidar_calibration_cloud(self, message) -> None:
         if not self._lidar_calibration_enabled:
             return
@@ -1300,6 +1410,7 @@ class RosBridge(QObject):
         )
 
     def stop(self) -> None:
+        self._stopping = True
         self._front_camera_timer.stop()
         if self._node is None:
             return

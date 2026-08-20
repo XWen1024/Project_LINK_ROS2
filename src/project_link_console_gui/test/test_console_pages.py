@@ -42,6 +42,21 @@ def test_point_cloud_subscription_is_created_only_when_visible():
     assert "destroy_subscription(self._cloud_subscription)" in bridge
 
 
+def test_heavy_visual_subscriptions_follow_visible_page():
+    app = _source("app.py")
+    bridge = _source("ros_bridge.py")
+    fall = _source("fall_response_page.py")
+    assert "set_visible_pages" in app
+    assert "_sync_visual_subscriptions" in bridge
+    assert "destroy_subscription(subscription)" in bridge
+    assert "self._front_camera_subscription" in bridge
+    assert "self._fall_evidence_subscription" in bridge
+    assert "set_page_visible" in fall
+    assert "self._bridge.request_fall_events(30)" not in fall.split(
+        "def _operation", 1
+    )[1].split("def _refresh_events", 1)[0]
+
+
 def test_front_camera_network_preview_has_explicit_rate_gate():
     camera = (
         REPOSITORY_ROOT

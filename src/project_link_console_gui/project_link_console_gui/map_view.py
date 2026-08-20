@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPainterPath, QPen, QPolygonF, qRgba
 from PySide6.QtWidgets import QWidget
 
 from .models import GridLayer, LayerVisibility, Pose2D
@@ -67,26 +67,32 @@ class MapView(QWidget):
 
     @staticmethod
     def _grid_image(name: str, grid: GridLayer) -> QImage:
-        rgba = bytearray(grid.width * grid.height * 4)
-        for source_row in range(grid.height):
-            target_row = grid.height - source_row - 1
-            for column in range(grid.width):
-                value = grid.cells[source_row * grid.width + column]
-                offset = (target_row * grid.width + column) * 4
-                if name == "occupancy_map":
-                    if value < 0:
-                        color = (58, 62, 69, 255)
-                    else:
-                        shade = max(32, 238 - int(max(0, min(100, value)) * 2.0))
-                        color = (shade, shade, shade, 255)
-                elif value <= 0:
-                    color = (0, 0, 0, 0)
-                elif name == "local_costmap":
-                    color = (239, 83, 80, min(180, 30 + value))
+        # OccupancyGrid is signed int8. Converting it to bytes is a C-level
+        # copy and lets Qt apply a 256-entry palette instead of running a
+        # Python loop for every pixel on every costmap update.
+        try:
+            pixels = memoryview(grid.cells).cast("B").tobytes()
+        except (TypeError, ValueError):
+            # Offline demo/test fixtures use tuples instead of ROS array('b').
+            pixels = bytes((value & 0xFF for value in grid.cells))
+        image = QImage(pixels, grid.width, grid.height, grid.width, QImage.Format_Indexed8).copy()
+        palette: list[int] = []
+        for encoded in range(256):
+            value = encoded if encoded < 128 else encoded - 256
+            if name == "occupancy_map":
+                if value < 0:
+                    palette.append(qRgba(58, 62, 69, 255))
                 else:
-                    color = (255, 167, 38, min(150, 24 + value))
-                rgba[offset : offset + 4] = bytes(color)
-        return QImage(bytes(rgba), grid.width, grid.height, QImage.Format_RGBA8888).copy()
+                    shade = max(32, 238 - int(max(0, min(100, value)) * 2.0))
+                    palette.append(qRgba(shade, shade, shade, 255))
+            elif value <= 0:
+                palette.append(qRgba(0, 0, 0, 0))
+            elif name == "local_costmap":
+                palette.append(qRgba(239, 83, 80, min(180, 30 + value)))
+            else:
+                palette.append(qRgba(255, 167, 38, min(150, 24 + value)))
+        image.setColorTable(palette)
+        return image.mirrored(False, True)
 
     def _bounds(self) -> tuple[float, float, float, float]:
         for name in ("occupancy_map", "global_costmap", "local_costmap"):

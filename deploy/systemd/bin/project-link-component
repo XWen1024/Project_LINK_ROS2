@@ -45,6 +45,7 @@ case "$component" in
     set -u
     export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
     export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
+    source "$workspace/scripts/project_link_dds_profile.sh"
     exec ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
       -p port:="${UNILIDAR_PORT:-/dev/project_link_lidar}"
     ;;
@@ -54,7 +55,7 @@ case "$component" in
       -p camera_device:="${FRONT_CAMERA_DEVICE:-/dev/project_link_front_camera}" \
       -p rotation_degrees:="${FRONT_CAMERA_ROTATION_DEGREES:-0}" \
       -p prefer_native_mjpeg:="${FRONT_CAMERA_PREFER_NATIVE_MJPEG:-true}" \
-      -p preview_fps:="${FRONT_CAMERA_PREVIEW_FPS:-30.0}" \
+      -p preview_fps:="${FRONT_CAMERA_PREVIEW_FPS:-24.0}" \
       -p manual_exposure:="${FRONT_CAMERA_MANUAL_EXPOSURE:-true}" \
       -p exposure_time_absolute:="${FRONT_CAMERA_EXPOSURE_ABSOLUTE:-300}" \
       -p camera_gain:="${FRONT_CAMERA_GAIN:-48}" \

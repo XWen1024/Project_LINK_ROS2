@@ -20,4 +20,6 @@ else
   export PROJECT_LINK_TRANSPORT_MODE=legacy-dds
 fi
 
+source "$workspace/scripts/project_link_dds_profile.sh"
+
 exec ros2 run project_link_console_gui project_link_console "$@"

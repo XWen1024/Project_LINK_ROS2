@@ -66,6 +66,7 @@ class VoicePage(QWidget):
         self._connected = False
         self._control_available = False
         self._backend = "off"
+        self._switch_pending = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 18, 20, 18)
@@ -185,11 +186,21 @@ class VoicePage(QWidget):
         self._bridge.probe_voice_control()
 
     def _request_switch(self, backend: int, label: str) -> None:
+        if self._switch_pending:
+            return
+        self._switch_pending = True
         self.operation_label.setText(f"正在请求：{label}…")
+        self._refresh_buttons()
         self._bridge.switch_voice(backend)
 
     def show_voice_operation(self, message: str) -> None:
         self.operation_label.setText(message)
+
+    def voice_lifecycle_completed(self, success: bool) -> None:
+        self._switch_pending = False
+        if not success and not self.operation_label.text():
+            self.operation_label.setText("语音切换失败")
+        self._refresh_buttons()
 
     def update_system_state(self, state: dict) -> None:
         backend = str(state.get("voice_backend", "off") or "off")
@@ -260,7 +271,7 @@ class VoicePage(QWidget):
         return "-" if number <= 0.0 else f"{number:.0f} ms"
 
     def _refresh_buttons(self) -> None:
-        enabled = self._control_available
+        enabled = self._control_available and not self._switch_pending
         self.classic_button.setEnabled(enabled and self._backend != "classic")
         self.qwen_button.setEnabled(enabled and self._backend not in {"qwen_realtime", "qwen-realtime"})
         self.stop_button.setEnabled(enabled and self._backend != "off")

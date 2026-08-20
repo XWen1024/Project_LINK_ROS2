@@ -208,7 +208,7 @@ class ConsoleWindow(QMainWindow):
         root.addWidget(content_splitter, 1)
         self.setCentralWidget(central)
 
-        self.navigation.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self.navigation.currentRowChanged.connect(self._page_changed)
         self.navigation.setCurrentRow(0)
         self.advanced_toggle.toggled.connect(self._set_advanced)
         self.navigation_page.launch_rviz_requested.connect(self._launch_rviz)
@@ -229,8 +229,7 @@ class ConsoleWindow(QMainWindow):
         bridge.cloud_updated.connect(self.navigation_page.update_cloud)
         bridge.path_updated.connect(self.navigation_page.update_path)
         bridge.robot_updated.connect(self.navigation_page.update_robot)
-        bridge.front_camera_image.connect(self.navigation_page.update_front_camera)
-        bridge.front_camera_image.connect(self.fall_response_page.update_camera)
+        bridge.front_camera_image.connect(self._front_camera_received)
         bridge.fall_evidence_image.connect(self.fall_response_page.update_evidence)
         bridge.operation_event.connect(self._append_log)
         bridge.console_event.connect(self._console_event)
@@ -267,7 +266,24 @@ class ConsoleWindow(QMainWindow):
             self._connection_changed(connected, text)
         if not self._demo:
             self._config_reload_timer.start(0)
+        self._page_changed(0)
         self._fit_to_available_screen()
+
+    def _page_changed(self, index: int) -> None:
+        self.pages.setCurrentIndex(index)
+        current = self.pages.currentWidget()
+        navigation_visible = current is self.navigation_page
+        fall_visible = current is self.fall_response_page
+        if hasattr(self._bridge, "set_visible_pages"):
+            self._bridge.set_visible_pages(navigation_visible, fall_visible)
+        self.fall_response_page.set_page_visible(fall_visible)
+
+    def _front_camera_received(self, jpeg_data: bytes) -> None:
+        current = self.pages.currentWidget()
+        if current is self.navigation_page:
+            self.navigation_page.update_front_camera(jpeg_data)
+        elif current is self.fall_response_page:
+            self.fall_response_page.update_camera(jpeg_data)
 
     def _reload_configs(self) -> None:
         self.config_client.load("global")
@@ -275,6 +291,8 @@ class ConsoleWindow(QMainWindow):
         self.config_client.load("fall")
 
     def _lifecycle_completed(self, _area: str, success: bool) -> None:
+        if _area == "voice":
+            self.voice_page.voice_lifecycle_completed(success)
         if success and not self._demo:
             self._config_reload_timer.start(300)
 
@@ -446,6 +464,7 @@ class ConsoleWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         if self._transport_process is not None:
             self._transport_process.kill()
+        self.fall_response_page.set_page_visible(False)
         self.manipulation_page.shutdown()
         self.config_client.shutdown()
         self._bridge.stop()

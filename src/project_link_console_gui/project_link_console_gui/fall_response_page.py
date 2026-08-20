@@ -249,9 +249,7 @@ class FallResponsePage(QWidget):
         config_client.failed.connect(self._config_failed)
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setInterval(5000)
-        self._refresh_timer.timeout.connect(lambda: bridge.request_fall_events(30))
-        self._refresh_timer.start()
-        QTimer.singleShot(0, lambda: bridge.request_fall_events(30))
+        self._refresh_timer.timeout.connect(self._refresh_events)
 
     @staticmethod
     def _image_label(text: str) -> QLabel:
@@ -404,7 +402,16 @@ class FallResponsePage(QWidget):
 
     def _operation(self, message: str) -> None:
         self.status_message.setText(message)
+
+    def _refresh_events(self) -> None:
         self._bridge.request_fall_events(30)
+
+    def set_page_visible(self, visible: bool) -> None:
+        if visible:
+            self._refresh_timer.start()
+            self._refresh_events()
+        else:
+            self._refresh_timer.stop()
 
     def _confirm_demo_event(self) -> None:
         answer = QMessageBox.warning(

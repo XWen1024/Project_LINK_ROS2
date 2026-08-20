@@ -47,6 +47,7 @@ chmod 0755 "$root/deploy/systemd/bin/project-link-component"
 chmod 0755 "$root/deploy/systemd/bin/project-link-wait"
 chmod 0755 "$root/deploy/systemd/bin/project-link-wait-wall-clock"
 chmod 0755 "$root/deploy/systemd/bin/project-link-zero-velocity"
+chmod 0755 "$root/scripts/project_link_dds_profile.sh"
 
 systemd-analyze --user verify "$target_dir"/project-link-*.service "$target_dir"/project-link-*.target
 systemctl --user daemon-reload

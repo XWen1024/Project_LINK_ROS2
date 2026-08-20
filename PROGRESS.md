@@ -14,6 +14,14 @@ lifecycle/configuration, followed by one repeatable Qwen Realtime to Nav2 loop.
 UWB is excluded. The STM32-native handset is the primary manual driving control;
 GUI teleop remains an advanced-mode backup.
 
+Network P0 implementation is now in progress on `main`: Fast DDS startup creates
+a dynamic single-interface whitelist from the kernel route; hidden console pages
+destroy heavy visual subscriptions; the fall page no longer self-requeues event
+requests; lifecycle commands use bounded/coalesced priority handling; and voice
+switching is single-flight with nonblocking systemd job submission. Linux build,
+CPU/bandwidth measurement and 20-cycle voice lifecycle validation remain the
+deployment gate.
+
 ## Repository Consolidation Completed
 
 - [x] Split the former 50-file dirty main into coherent VL53L0X, visual-grasp,

@@ -39,6 +39,14 @@ Secrets are edited through
 an SSH-invoked allowlisted configuration helper and are never transported as ROS
 messages.
 
+Every production ROS process sources `scripts/project_link_dds_profile.sh`. It
+asks the kernel which interface routes to the configured peer/default gateway,
+generates a user-runtime Fast DDS XML profile, disables builtin transports and
+whitelists only that IPv4 address. This avoids duplicate DDS traffic when a host
+has Ethernet and Wi-Fi on the same subnet while still following DHCP/network
+changes. The vehicle baseline is Orin-to-CPE Ethernet plus Ubuntu-to-CPE 5 GHz
+Wi-Fi; lifecycle/configuration remain separate SSH traffic.
+
 The helper is `scripts/project_link_console_config.py`. It accepts only the
 `voice`, `global`, `uwb` and `fall` sections, validates allowlisted fields, writes local
 mode-0600 files atomically, never returns secret values, and never accepts a
@@ -71,6 +79,13 @@ The built-in view is a Qt 2D renderer for occupancy grids, global/local costmaps
 LaserScan, downsampled XY point-cloud projection, paths, footprint and targets.
 Complex 3D point clouds and TF debugging open a repository-owned RViz2 profile
 in a separate process.
+
+Map, costmap, scan, path, front-camera and fall-evidence subscriptions exist only
+while their owning page is visible. The front-camera JPEG is decoded once by the
+visible consumer. Occupancy grids retain the ROS signed-byte buffer and use a Qt
+indexed palette instead of a Python per-pixel RGBA loop. Production preview is
+native 1280x720 capture with a stable 24 FPS publish gate; advanced mode may use
+30 FPS after bandwidth validation.
 
 The Ubuntu GUI never publishes `/cmd_vel` directly. It sends bounded teleop
 requests to the Orin agent. The agent publishes only in mapping mode and stops

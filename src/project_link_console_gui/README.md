@@ -36,8 +36,15 @@ Connect to the real Orin agent on ROS domain 42:
 ```bash
 export ROS_DOMAIN_ID=42
 export ROS_LOCALHOST_ONLY=0
+source ~/wheeltec_robot/scripts/project_link_dds_profile.sh
 ros2 run project_link_console_gui project_link_console
 ```
+
+The repository launcher `deploy/dds-router/bin/project-link-console` sources the
+profile automatically. It binds Fast DDS to the single IPv4 interface selected
+by the kernel route. Set `PROJECT_LINK_DDS_PEER_IP` to the current Orin address
+when both local interfaces have competing defaults; use
+`PROJECT_LINK_DDS_INTERFACE` only as an explicit diagnostic override.
 
 Only one real console instance may run per Ubuntu login. If the console is
 already active, a second launch asks the operator to return to the existing

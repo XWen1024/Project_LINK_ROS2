@@ -88,3 +88,21 @@ def test_nonblocking_start_uses_systemd_job_queue():
         "start",
         UNITS["mapping_target"],
     ]
+
+
+def test_nonblocking_stop_uses_systemd_job_queue():
+    commands = []
+
+    def runner(command, timeout):
+        commands.append((command, timeout))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    manager = SystemdManager(runner=runner)
+    manager.stop_no_block(UNITS["voice_qwen"])
+    assert commands[0][0] == [
+        "systemctl",
+        "--user",
+        "--no-block",
+        "stop",
+        UNITS["voice_qwen"],
+    ]

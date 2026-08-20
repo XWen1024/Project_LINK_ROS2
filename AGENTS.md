@@ -58,6 +58,13 @@ are evidence snapshots, not current operating instructions.
   and loopback listeners but could not pass a typed ROS endpoint across the WAN
   participants. Do not enable it as the default console path without a new
   successful end-to-end gate.
+- Production DDS must bind to exactly one routed IPv4 interface per host. Source
+  `scripts/project_link_dds_profile.sh` before ROS startup; it selects the
+  interface/address from the kernel route (or the explicit
+  `PROJECT_LINK_DDS_INTERFACE` override) and disables Fast DDS builtin transports.
+  Do not allow Fast DDS to advertise both Wi-Fi and Ethernet on the same LAN.
+  The intended vehicle CPE topology is Orin by Ethernet and Ubuntu by 5 GHz
+  Wi-Fi, with client isolation disabled and multicast allowed.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
 - The production cameras have separate roles: `/dev/project_link_front_camera`
   is the chassis-front preview and `/dev/project_link_arm_camera` is the
@@ -256,6 +263,11 @@ are evidence snapshots, not current operating instructions.
   tooltips, not the default interface.
 - Use a built-in 2D map/costmap/scan renderer. Launch a separate configured
   RViz2 process for 3D point-cloud and TF diagnostics.
+- Heavy visual subscriptions are page-owned: hidden pages must destroy camera,
+  map, costmap, scan, evidence and point-cloud subscriptions. Decode a shared
+  camera frame only once and route it only to the visible page. The stable front
+  camera default is native 1280x720 capture with a 24 FPS DDS preview; 30 FPS is
+  an explicit advanced option.
 - The Orin console agent may control only an explicit allowlist of systemd units.
   Never accept arbitrary unit names or shell commands from GUI input.
 - API keys remain in mode-0600 Orin files and are edited through an allowlisted

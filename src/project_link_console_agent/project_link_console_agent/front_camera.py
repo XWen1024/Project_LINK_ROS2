@@ -27,7 +27,7 @@ class FrontCameraNode(Node):
         self.declare_parameter("camera_width", 1280)
         self.declare_parameter("camera_height", 720)
         self.declare_parameter("camera_fps", 30.0)
-        self.declare_parameter("preview_fps", 30.0)
+        self.declare_parameter("preview_fps", 24.0)
         self.declare_parameter("preview_width", 1280)
         self.declare_parameter("preview_height", 720)
         self.declare_parameter("jpeg_quality", 70)

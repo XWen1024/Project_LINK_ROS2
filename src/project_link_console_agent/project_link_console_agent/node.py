@@ -76,6 +76,7 @@ class ConsoleAgent(Node):
         self._callbacks = ReentrantCallbackGroup()
         self._systemd = SystemdManager(str(self.get_parameter("systemctl_command").value))
         self._lock = threading.RLock()
+        self._voice_lifecycle_lock = threading.Lock()
         self._voice = VoiceState()
         self._emergency_latched = False
         self._mode = SystemState.MODE_OFF
@@ -584,6 +585,26 @@ class ConsoleAgent(Node):
     def _switch_voice(self, goal_handle) -> SwitchVoice.Result:
         request = goal_handle.request
         result = SwitchVoice.Result()
+        if not self._voice_lifecycle_lock.acquire(blocking=False):
+            goal_handle.abort()
+            result.success = False
+            states = self._systemd.safe_states(
+                [UNITS["voice_classic"], UNITS["voice_qwen"]]
+            )
+            if states[UNITS["voice_qwen"]].active:
+                result.active_backend = SwitchVoice.Goal.BACKEND_QWEN_REALTIME
+            elif states[UNITS["voice_classic"]].active:
+                result.active_backend = SwitchVoice.Goal.BACKEND_CLASSIC
+            else:
+                result.active_backend = SwitchVoice.Goal.BACKEND_OFF
+            result.message = "voice_switch_already_in_progress"
+            return result
+        try:
+            return self._switch_voice_locked(goal_handle, request, result)
+        finally:
+            self._voice_lifecycle_lock.release()
+
+    def _switch_voice_locked(self, goal_handle, request, result) -> SwitchVoice.Result:
         with self._lock:
             current = self._voice
         voice_units = self._systemd.safe_states(
@@ -602,26 +623,27 @@ class ConsoleAgent(Node):
             return result
         try:
             feedback = SwitchVoice.Feedback()
-            feedback.step = "stop_existing"
-            feedback.progress = 0.25
-            feedback.message = "Stopping current voice backend"
+            feedback.step = "submit"
+            feedback.progress = 0.20
+            feedback.message = "正在提交语音后端切换"
             goal_handle.publish_feedback(feedback)
-            self._systemd.stop(UNITS["voice_classic"])
-            self._systemd.stop(UNITS["voice_qwen"])
-            stopped_states = self._systemd.safe_states(
-                [UNITS["voice_classic"], UNITS["voice_qwen"]]
-            )
-            for unit, state in stopped_states.items():
-                if state.active_state == "failed":
-                    self._systemd.reset_failed(unit)
             with self._lock:
                 self._voice = VoiceState()
             if request.backend == SwitchVoice.Goal.BACKEND_CLASSIC:
-                self._systemd.start(UNITS["voice_classic"])
+                self._systemd.reset_failed(UNITS["voice_classic"])
+                self._systemd.start_no_block(UNITS["voice_classic"])
             elif request.backend == SwitchVoice.Goal.BACKEND_QWEN_REALTIME:
-                self._systemd.start(UNITS["voice_qwen"])
+                self._systemd.reset_failed(UNITS["voice_qwen"])
+                self._systemd.start_no_block(UNITS["voice_qwen"])
+            elif request.backend == SwitchVoice.Goal.BACKEND_OFF:
+                self._systemd.stop_no_block(UNITS["voice_classic"])
+                self._systemd.stop_no_block(UNITS["voice_qwen"])
             elif request.backend != SwitchVoice.Goal.BACKEND_OFF:
                 raise ValueError("unsupported_voice_backend")
+            feedback.step = "queued"
+            feedback.progress = 0.85
+            feedback.message = "systemd 已接收请求，后台状态将自动刷新"
+            goal_handle.publish_feedback(feedback)
         except Exception as exc:
             with self._lock:
                 self._voice = VoiceState()
