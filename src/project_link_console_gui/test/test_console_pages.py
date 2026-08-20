@@ -164,3 +164,11 @@ def test_voice_profile_accepts_only_registered_executors():
     assert "REGISTERED_TOOLS" in page
     assert "tool_not_registered_or_duplicate" in helper
     assert "任意命令" in page
+
+
+def test_ros_command_queue_wakes_executor_immediately():
+    bridge = _source("ros_bridge.py")
+    assert "create_guard_condition(self._process_commands)" in bridge
+    assert "guard.trigger()" in bridge
+    assert "MutuallyExclusiveCallbackGroup" in bridge
+    assert "callback_group=self._command_callback_group" in bridge

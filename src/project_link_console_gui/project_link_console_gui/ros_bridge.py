@@ -88,6 +88,8 @@ class RosBridge(QObject):
         self._node = None
         self._executor = None
         self._thread: threading.Thread | None = None
+        self._command_guard = None
+        self._command_callback_group = None
         self._rclpy = None
         self._teleop_type = None
         self._manage_type = None
@@ -121,6 +123,7 @@ class RosBridge(QObject):
         from project_link_emergency_interfaces.srv import GetFallEvent, ListFallEvents
         from rcl_interfaces.srv import GetParameters, SetParameters
         from rclpy.action import ActionClient
+        from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
         from rclpy.executors import MultiThreadedExecutor
         from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
         from rclpy.parameter import Parameter
@@ -150,16 +153,28 @@ class RosBridge(QObject):
         if not rclpy.ok():
             rclpy.init(args=None, signal_handler_options=SignalHandlerOptions.NO)
         self._node = rclpy.create_node("project_link_console_gui")
+        self._command_callback_group = MutuallyExclusiveCallbackGroup()
         self._teleop_pub = self._node.create_publisher(
             TeleopCommand, "/project_link/console/teleop", 20
         )
         self._manage_client = ActionClient(
-            self._node, ManageStack, "/project_link/console/manage_stack"
+            self._node,
+            ManageStack,
+            "/project_link/console/manage_stack",
+            callback_group=self._command_callback_group,
         )
         self._switch_voice_client = ActionClient(
-            self._node, SwitchVoice, "/project_link/console/switch_voice"
+            self._node,
+            SwitchVoice,
+            "/project_link/console/switch_voice",
+            callback_group=self._command_callback_group,
         )
-        self._navigate_client = ActionClient(self._node, NavigateToPose, "/navigate_to_pose")
+        self._navigate_client = ActionClient(
+            self._node,
+            NavigateToPose,
+            "/navigate_to_pose",
+            callback_group=self._command_callback_group,
+        )
         self._emergency_client = self._node.create_client(
             Trigger, "/project_link/console/emergency_stop"
         )
@@ -288,7 +303,15 @@ class RosBridge(QObject):
             qos_profile_sensor_data,
         )
         self._node.create_subscription(Path, "/plan", self._on_path, 5)
-        self._node.create_timer(0.05, self._process_commands)
+        self._command_guard = self._node.create_guard_condition(
+            self._process_commands,
+            callback_group=self._command_callback_group,
+        )
+        self._node.create_timer(
+            0.05,
+            self._process_commands,
+            callback_group=self._command_callback_group,
+        )
         self._node.create_timer(0.20, self._publish_robot_pose)
         self._node.create_timer(0.50, self._check_state_freshness)
         self._node.create_timer(1.00, self._check_voice_control)
@@ -310,6 +333,12 @@ class RosBridge(QObject):
             self._commands.put_nowait(command)
         except queue.Full:
             self.operation_event.emit("命令队列已满；已丢弃本次操作")
+            return
+        # Wake the ROS executor immediately. Relying only on the polling timer
+        # can starve lifecycle requests behind map, camera and point-cloud work.
+        guard = self._command_guard
+        if guard is not None:
+            guard.trigger()
 
     def _on_front_camera(self, message) -> None:
         with self._front_camera_lock:
