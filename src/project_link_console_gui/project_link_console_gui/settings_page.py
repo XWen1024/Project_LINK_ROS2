@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
 FIELDS = [
     ("console", "PROJECT_LINK_WORKSPACE", "Orin 工作区", False, True),
     ("console", "ROS_DOMAIN_ID", "ROS Domain ID", False, True),
+    ("console", "PROJECT_LINK_DDS_INTERFACE", "DDS 指定网卡（留空自动）", False, True),
+    ("console", "PROJECT_LINK_DDS_PEER_IP", "DDS 对端 IP（留空走默认路由）", False, True),
     ("console", "ROS_LOCALHOST_ONLY", "允许局域网 ROS", False, True),
     ("console", "CHASSIS_DEVICE", "底盘控制器设备", False, True),
     ("console", "UNILIDAR_PORT", "Unitree 雷达设备", False, False),

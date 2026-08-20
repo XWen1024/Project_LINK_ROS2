@@ -10,10 +10,6 @@ def test_runtime_fastdds_profile_is_single_interface_and_dynamic():
     )
     assert "ip -4 route get" in helper
     assert "PROJECT_LINK_DDS_PEER_IP" in helper
-    assert "PROJECT_LINK_DDS_PEER_HOST" in helper
-    assert "XWen-P1430.local" in helper
-    assert "ubuntu.local" in helper
-    assert "<initialPeersList>" in helper
     assert "PROJECT_LINK_DDS_INTERFACE" in helper
     assert "<interfaceWhiteList>" in helper
     assert "<useBuiltinTransports>false</useBuiltinTransports>" in helper

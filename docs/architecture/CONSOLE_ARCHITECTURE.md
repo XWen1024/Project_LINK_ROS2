@@ -42,13 +42,17 @@ messages.
 Every production ROS process sources `scripts/project_link_dds_profile.sh`. It
 asks the kernel which interface routes to the configured peer/default gateway,
 generates a user-runtime Fast DDS XML profile, disables builtin transports and
-whitelists only that IPv4 address. It also resolves the known peer mDNS name once
-at process startup and adds the numeric address as a unicast initial peer, so DDS
-discovery does not depend on the CPE bridging multicast between Ethernet and
-Wi-Fi. This avoids duplicate DDS traffic when a host
+whitelists only that IPv4 address. This avoids duplicate DDS traffic when a host
 has Ethernet and Wi-Fi on the same subnet while still following DHCP/network
 changes. The vehicle baseline is Orin-to-CPE Ethernet plus Ubuntu-to-CPE 5 GHz
 Wi-Fi; lifecycle/configuration remain separate SSH traffic.
+
+The 2026-08-20 temporary router passed ICMP/TCP but dropped bidirectional unicast
+UDP between Orin Ethernet and Ubuntu Wi-Fi. In that topology Orin must use the
+allowlisted `PROJECT_LINK_DDS_INTERFACE=wlP1p1s0` override so both DDS peers stay
+on the reachable Wi-Fi segment. This is still single-interface DDS, not a return
+to duplicate multi-NIC advertisement. Remove the override only after the vehicle
+CPE passes wired-to-wireless UDP and multicast validation.
 
 The helper is `scripts/project_link_console_config.py`. It accepts only the
 `voice`, `global`, `uwb` and `fall` sections, validates allowlisted fields, writes local

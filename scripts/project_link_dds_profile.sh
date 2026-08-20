@@ -5,19 +5,8 @@
 project_link_configure_fastdds() {
   local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/project-link"
   local profile="${PROJECT_LINK_FASTDDS_PROFILE:-$runtime_dir/fastdds.xml}"
-  local peer_host="${PROJECT_LINK_DDS_PEER_HOST:-}"
   local peer_ip="${PROJECT_LINK_DDS_PEER_IP:-}"
-  local route_target route interface address temporary initial_peers
-
-  if [[ -z "$peer_host" ]]; then
-    case "${USER:-$(id -un)}" in
-      wte) peer_host="XWen-P1430.local" ;;
-      xwen) peer_host="ubuntu.local" ;;
-    esac
-  fi
-  if [[ -z "$peer_ip" && -n "$peer_host" ]]; then
-    peer_ip="$(getent ahostsv4 "$peer_host" 2>/dev/null | awk 'NR == 1 {print $1}')"
-  fi
+  local route_target route interface address temporary
   route_target="${peer_ip:-1.1.1.1}"
 
   if [[ -n "${PROJECT_LINK_DDS_INTERFACE:-}" ]]; then
@@ -36,10 +25,6 @@ project_link_configure_fastdds() {
 
   mkdir -p "$runtime_dir"
   temporary="$profile.tmp.$$"
-  initial_peers=""
-  if [[ -n "$peer_ip" ]]; then
-    initial_peers="<builtin><initialPeersList><locator><udpv4><address>$peer_ip</address></udpv4></locator></initialPeersList></builtin>"
-  fi
   cat >"$temporary" <<EOF
 <?xml version="1.0" encoding="UTF-8" ?>
 <profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
@@ -52,7 +37,6 @@ project_link_configure_fastdds() {
   </transport_descriptors>
   <participant profile_name="project_link_single_interface" is_default_profile="true">
     <rtps>
-      $initial_peers
       <userTransports><transport_id>project_link_udp</transport_id></userTransports>
       <useBuiltinTransports>false</useBuiltinTransports>
     </rtps>
@@ -64,7 +48,6 @@ EOF
   export FASTRTPS_DEFAULT_PROFILES_FILE="$profile"
   export PROJECT_LINK_DDS_SELECTED_INTERFACE="$interface"
   export PROJECT_LINK_DDS_SELECTED_ADDRESS="$address"
-  export PROJECT_LINK_DDS_SELECTED_PEER="$peer_ip"
 }
 
 project_link_configure_fastdds
