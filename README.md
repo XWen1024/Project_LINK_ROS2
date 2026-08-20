@@ -33,6 +33,10 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
   The window is desktop-bounded, the sidebar can
   collapse to icons, and real mode is single-instance to avoid duplicate ROS
   nodes. Live hardware loops remain supervised field items.
+- Field Wi-Fi protection: the chassis camera still captures native
+  `1280x720@30 FPS`, while the cross-host console preview defaults to `10 FPS`;
+  disabled 3D point-cloud layers remove their DDS subscription instead of merely
+  discarding callbacks. This keeps lifecycle/voice traffic responsive on a busy LAN.
 - Transport: the MVP uses verified native DDS Peer on ROS domain 42, while SSH
   owns service lifecycle, configuration and secrets. DDS Router v2.2.0 is built
   on both hosts and preserved as an experiment, but the 2026-08-19 domain-142/42

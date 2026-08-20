@@ -54,6 +54,7 @@ case "$component" in
       -p camera_device:="${FRONT_CAMERA_DEVICE:-/dev/project_link_front_camera}" \
       -p rotation_degrees:="${FRONT_CAMERA_ROTATION_DEGREES:-0}" \
       -p prefer_native_mjpeg:="${FRONT_CAMERA_PREFER_NATIVE_MJPEG:-true}" \
+      -p preview_fps:="${FRONT_CAMERA_PREVIEW_FPS:-10.0}" \
       -p manual_exposure:="${FRONT_CAMERA_MANUAL_EXPOSURE:-true}" \
       -p exposure_time_absolute:="${FRONT_CAMERA_EXPOSURE_ABSOLUTE:-300}" \
       -p camera_gain:="${FRONT_CAMERA_GAIN:-32}"

@@ -55,6 +55,7 @@ class FrontCameraNode(Node):
         self._latest_frame_monotonic = 0.0
         self._latest_stamp_ns = 0
         self._last_published_stamp_ns = 0
+        self._last_preview_publish_monotonic = 0.0
         self._capture_mode = "starting"
         self._exposure_update_requested = False
         self.add_on_set_parameters_callback(self._on_parameters_set)
@@ -322,6 +323,10 @@ class FrontCameraNode(Node):
                 self._latest_stamp_ns = stamp_ns
 
     def _publish_preview(self) -> None:
+        now = time.monotonic()
+        preview_fps = max(1.0, float(self.get_parameter("preview_fps").value))
+        if now - self._last_preview_publish_monotonic < 1.0 / preview_fps:
+            return
         with self._frame_lock:
             if self._latest_stamp_ns == self._last_published_stamp_ns:
                 return
@@ -356,6 +361,7 @@ class FrontCameraNode(Node):
         message.format = "jpeg"
         message.data = jpeg
         self._image_pub.publish(message)
+        self._last_preview_publish_monotonic = now
         self._frames += 1
 
     def _capture_still(

@@ -99,6 +99,8 @@ class RosBridge(QObject):
         self._connection_text = "等待 Orin console agent"
         self._cloud_enabled = False
         self._lidar_calibration_enabled = False
+        self._cloud_subscription = None
+        self._sensor_qos = None
         self._lidar_preview_rpy = (-1.5707963268, -0.0383972435, 1.5707963268)
         self._lidar_preview_frame = "project_link_lidar_calibration"
         self._front_camera_lock = threading.Lock()
@@ -144,6 +146,7 @@ class RosBridge(QObject):
         self._time_type = Time
         self._point_cloud2 = point_cloud2
         self._point_cloud_type = PointCloud2
+        self._sensor_qos = qos_profile_sensor_data
         self._transform_stamped_type = TransformStamped
         self._parameter_type = Parameter
         self._get_parameters_type = GetParameters
@@ -296,12 +299,6 @@ class RosBridge(QObject):
             lambda message: self.fall_evidence_image.emit(bytes(message.data)),
             qos_profile_sensor_data,
         )
-        self._node.create_subscription(
-            PointCloud2,
-            "/unilidar/cloud",
-            self._on_cloud,
-            qos_profile_sensor_data,
-        )
         self._node.create_subscription(Path, "/plan", self._on_path, 5)
         self._command_guard = self._node.create_guard_condition(
             self._process_commands,
@@ -420,13 +417,13 @@ class RosBridge(QObject):
         self._put(("uwb_shadow", False))
 
     def set_cloud_enabled(self, enabled: bool) -> None:
-        self._cloud_enabled = bool(enabled)
+        self._put(("cloud_enabled", bool(enabled)))
 
     def set_lidar_preview_rpy(self, roll: float, pitch: float, yaw: float) -> None:
         self._lidar_preview_rpy = (float(roll), float(pitch), float(yaw))
 
     def set_lidar_calibration_enabled(self, enabled: bool) -> None:
-        self._lidar_calibration_enabled = bool(enabled)
+        self._put(("lidar_calibration_enabled", bool(enabled)))
 
     def _process_commands(self) -> None:
         latest_teleop = None
@@ -465,6 +462,12 @@ class RosBridge(QObject):
                 self._get_front_camera_parameters()
             elif command[0] == "front_camera_set":
                 self._set_front_camera_parameters(*command[1:])
+            elif command[0] == "cloud_enabled":
+                self._cloud_enabled = bool(command[1])
+                self._sync_cloud_subscription()
+            elif command[0] == "lidar_calibration_enabled":
+                self._lidar_calibration_enabled = bool(command[1])
+                self._sync_cloud_subscription()
             elif command[0] == "uwb_shadow":
                 self._set_uwb_shadow(command[1])
         if latest_teleop is not None:
@@ -1097,6 +1100,19 @@ class RosBridge(QObject):
             if len(points) >= 4000:
                 break
         self.cloud_updated.emit(points)
+
+    def _sync_cloud_subscription(self) -> None:
+        wanted = self._cloud_enabled or self._lidar_calibration_enabled
+        if wanted and self._cloud_subscription is None:
+            self._cloud_subscription = self._node.create_subscription(
+                self._point_cloud_type,
+                "/unilidar/cloud",
+                self._on_cloud,
+                self._sensor_qos,
+            )
+        elif not wanted and self._cloud_subscription is not None:
+            self._node.destroy_subscription(self._cloud_subscription)
+            self._cloud_subscription = None
 
     def _publish_lidar_calibration_cloud(self, message) -> None:
         if not self._lidar_calibration_enabled:

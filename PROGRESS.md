@@ -121,6 +121,13 @@ Archive tags:
   at `main@3210e70`. A real Ubuntu RosBridge round trip changed the camera to
   automatic exposure, read it back, then restored manual `300/32`; `/cmd_vel`
   and all motion paths were untouched.
+- 2026-08-20 field diagnosis found severe Wi-Fi queueing rather than packet loss:
+  with full-rate camera plus cloud traffic, bidirectional ping averaged
+  `200-302 ms` and peaked at `503-668 ms`; stopping only the camera reduced it to
+  `20.8 ms` average and `41.6 ms` peak. The camera remains native 30-FPS capture,
+  but cross-host preview now defaults to 10 FPS, and disabled console point-cloud
+  display destroys its DDS subscription. GUI lifecycle commands also use a ROS
+  GuardCondition instead of waiting only for a polling timer.
 - The independent manipulator camera is now also configured for its verified
   native `1280x720@30 FPS` MJPEG mode instead of the previous YUYV 10-FPS path.
   Native JPEG bytes are forwarded without Orin re-encoding; CUDA detection

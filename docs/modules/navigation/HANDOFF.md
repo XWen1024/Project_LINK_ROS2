@@ -24,10 +24,15 @@ Verified code: `main@3210e70`
 - 车头 icSpring 摄像头由 Orin 以 `/dev/project_link_front_camera` 独占，
   发布 `/front_camera/image/compressed`；中控仅在地图侧边小框渲染。
   摄像头故障不得阻断建图或 Nav2 的基本启动。
-- 车头摄像头已验证原生 `1280x720 MJPEG @ 30 FPS`。默认固定曝光为
+- 车头摄像头继续原生采集 `1280x720 MJPEG @ 30 FPS`，静态抓拍保留最新
+  原生帧。现场 A/B 验证表明全帧率跨 Wi-Fi 预览约占 `22 Mbps`，会将双向
+  RTT 从约 `20 ms` 推高到 `200–300 ms`；因此中控预览默认限为 `10 FPS`，
+  可通过 Orin `console.env` 的 `FRONT_CAMERA_PREVIEW_FPS` 调整。默认固定曝光为
   `exposure=300`、`gain=32`；中控高级模式可即时切换自动曝光，或恢复手动
   曝光并调节曝光值与增益。GUI 只调用该节点固定的 ROS 参数服务，不接收
   任意命令；长期默认值仍由全局设置中的 allowlist 配置保存。
+- 中控的三维点云开关必须真正创建/销毁 `/unilidar/cloud` DDS 订阅，不能只
+  在回调里丢弃数据；关闭点云时不应继续让约 `4.4 Mbps` 点云占用无线链路。
 
 ## 2. 一键脚本
 

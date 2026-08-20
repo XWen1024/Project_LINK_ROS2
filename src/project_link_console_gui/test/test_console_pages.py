@@ -35,6 +35,26 @@ def test_navigation_page_has_separate_front_camera_preview():
     assert '"/visual_grasp/image/compressed"' not in bridge
 
 
+def test_point_cloud_subscription_is_created_only_when_visible():
+    bridge = _source("ros_bridge.py")
+    assert 'self._put(("cloud_enabled", bool(enabled)))' in bridge
+    assert "def _sync_cloud_subscription" in bridge
+    assert "destroy_subscription(self._cloud_subscription)" in bridge
+
+
+def test_front_camera_network_preview_has_explicit_rate_gate():
+    camera = (
+        REPOSITORY_ROOT
+        / "src"
+        / "project_link_console_agent"
+        / "project_link_console_agent"
+        / "front_camera.py"
+    ).read_text(encoding="utf-8")
+    assert 'self.get_parameter("preview_fps")' in camera
+    assert "1.0 / preview_fps" in camera
+    assert "self._last_preview_publish_monotonic = now" in camera
+
+
 def test_front_camera_exposure_is_advanced_and_uses_typed_parameter_services():
     page = _source("navigation_page.py")
     bridge = _source("ros_bridge.py")
