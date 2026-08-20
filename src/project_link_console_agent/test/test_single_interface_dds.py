@@ -12,6 +12,8 @@ def test_runtime_fastdds_profile_is_single_interface_and_dynamic():
     assert "PROJECT_LINK_DDS_PEER_IP" in helper
     assert "PROJECT_LINK_DDS_INTERFACE" in helper
     assert "<interfaceWhiteList>" in helper
+    assert "<transport_id>project_link_shm</transport_id>" in helper
+    assert "<type>SHM</type>" in helper
     assert "<useBuiltinTransports>false</useBuiltinTransports>" in helper
     assert 'export FASTRTPS_DEFAULT_PROFILES_FILE="$profile"' in helper
 

@@ -34,10 +34,17 @@ project_link_configure_fastdds() {
       <type>UDPv4</type>
       <interfaceWhiteList><address>$address</address></interfaceWhiteList>
     </transport_descriptor>
+    <transport_descriptor>
+      <transport_id>project_link_shm</transport_id>
+      <type>SHM</type>
+    </transport_descriptor>
   </transport_descriptors>
   <participant profile_name="project_link_single_interface" is_default_profile="true">
     <rtps>
-      <userTransports><transport_id>project_link_udp</transport_id></userTransports>
+      <userTransports>
+        <transport_id>project_link_udp</transport_id>
+        <transport_id>project_link_shm</transport_id>
+      </userTransports>
       <useBuiltinTransports>false</useBuiltinTransports>
     </rtps>
   </participant>

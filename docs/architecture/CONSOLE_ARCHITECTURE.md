@@ -42,7 +42,9 @@ messages.
 Every production ROS process sources `scripts/project_link_dds_profile.sh`. It
 asks the kernel which interface routes to the configured peer/default gateway,
 generates a user-runtime Fast DDS XML profile, disables builtin transports and
-whitelists only that IPv4 address. This avoids duplicate DDS traffic when a host
+re-enables only an explicit SHM transport plus one UDP transport whitelisted to
+that IPv4 address. SHM preserves same-host systemd readiness probes without
+advertising another network interface. This avoids duplicate DDS traffic when a host
 has Ethernet and Wi-Fi on the same subnet while still following DHCP/network
 changes. The vehicle baseline is Orin-to-CPE Ethernet plus Ubuntu-to-CPE 5 GHz
 Wi-Fi; lifecycle/configuration remain separate SSH traffic.
