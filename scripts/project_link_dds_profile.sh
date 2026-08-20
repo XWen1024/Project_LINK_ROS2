@@ -38,7 +38,7 @@ project_link_configure_fastdds() {
   temporary="$profile.tmp.$$"
   initial_peers=""
   if [[ -n "$peer_ip" ]]; then
-    initial_peers="<builtin><discovery_config><initialPeersList><locator><udpv4><address>$peer_ip</address></udpv4></locator></initialPeersList></discovery_config></builtin>"
+    initial_peers="<builtin><initialPeersList><locator><udpv4><address>$peer_ip</address></udpv4></locator></initialPeersList></builtin>"
   fi
   cat >"$temporary" <<EOF
 <?xml version="1.0" encoding="UTF-8" ?>
