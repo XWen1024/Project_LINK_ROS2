@@ -51,7 +51,7 @@ def test_front_camera_network_preview_has_explicit_rate_gate():
         / "front_camera.py"
     ).read_text(encoding="utf-8")
     assert 'self.get_parameter("preview_fps")' in camera
-    assert "1.0 / preview_fps" in camera
+    assert 'period = 1.0 / max(1.0, float(self.get_parameter("preview_fps").value))' in camera
     assert "self._last_preview_publish_monotonic = now" in camera
 
 
@@ -60,7 +60,8 @@ def test_front_camera_exposure_is_advanced_and_uses_typed_parameter_services():
     bridge = _source("ros_bridge.py")
     demo = _source("demo.py")
     assert 'QCheckBox("自动曝光（弱光时可能降低帧率）")' in page
-    assert 'QPushButton("立即应用车头曝光")' in page
+    assert 'QPushButton("立即应用车头画面参数")' in page
+    assert 'QCheckBox("自动白平衡")' in page
     assert "self.advanced_group.setVisible(self._advanced)" in page
     assert "self.camera_exposure.setEnabled(not automatic)" in page
     assert "self.camera_gain.setEnabled(not automatic)" in page
@@ -188,7 +189,8 @@ def test_voice_profile_accepts_only_registered_executors():
 
 def test_ros_command_queue_wakes_executor_immediately():
     bridge = _source("ros_bridge.py")
-    assert "create_guard_condition(self._process_commands)" in bridge
+    assert "create_guard_condition(" in bridge
+    assert "self._process_commands," in bridge
     assert "guard.trigger()" in bridge
     assert "MutuallyExclusiveCallbackGroup" in bridge
     assert "callback_group=self._command_callback_group" in bridge
