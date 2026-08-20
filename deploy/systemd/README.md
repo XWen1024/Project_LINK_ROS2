@@ -41,6 +41,11 @@ systemctl --user stop project-link-platform.target
 systemctl --user start project-link-rf2o-fallback.target
 ```
 
+Console-independent SSH one-click entry points are documented in
+`docs/runbooks/SSH_STANDALONE_START.md`. They call only the Orin user systemd
+manager and report readiness through systemd state, not through the console
+agent or cross-host DDS.
+
 Copy `console.env.example` to `~/.config/project_link/console.env` for non-secret
 path and tuning overrides. Classic voice secrets remain in `voice_api.env`, Qwen
 secrets in `qwen_realtime.env`, and the private UWB tag address in `uwb.env`.

@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# SSH-safe lifecycle entry point. It talks only to the Orin user systemd
+# manager; it never calls the console agent and never sends a ROS goal/velocity.
+
+component="${1:-}"
+timeout_sec=0
+entry_unit=""
+declare -a required_units=()
+
+case "$component" in
+  nav2)
+    entry_unit="project-link-navigation.target"
+    timeout_sec=210
+    required_units=(
+      project-link-base.service
+      project-link-lidar.service
+      project-link-robot-description.service
+      project-link-scan.service
+      project-link-point-lio-map.service
+      project-link-nav2.service
+    )
+    ;;
+  qwen-realtime)
+    entry_unit="project-link-voice-qwen.service"
+    timeout_sec=120
+    required_units=(project-link-voice-qwen.service)
+    ;;
+  fall-response)
+    entry_unit="project-link-emergency.target"
+    timeout_sec=150
+    required_units=(
+      project-link-front-camera.service
+      project-link-fall-response.service
+      project-link-wechatbot.service
+    )
+    ;;
+  *)
+    echo "Usage: project-link-standalone-start {nav2|qwen-realtime|fall-response}" >&2
+    exit 2
+    ;;
+esac
+
+if ! systemctl --user cat "$entry_unit" >/dev/null 2>&1; then
+  echo "Project LINK user units are not installed. Run:" >&2
+  echo "  cd /home/wte/wheeltec_robot && ./deploy/systemd/install-user-units.sh" >&2
+  exit 3
+fi
+
+echo "Submitting $component through Orin systemd --user..."
+systemctl --user reset-failed "${required_units[@]}" >/dev/null 2>&1 || true
+systemctl --user start --no-block "$entry_unit"
+
+deadline=$((SECONDS + timeout_sec))
+while (( SECONDS < deadline )); do
+  all_active=1
+  for unit in "${required_units[@]}"; do
+    active="$(systemctl --user show "$unit" --property=ActiveState --value)"
+    sub="$(systemctl --user show "$unit" --property=SubState --value)"
+    result="$(systemctl --user show "$unit" --property=Result --value)"
+    printf '%-46s %-11s %-12s %s\n' "$unit" "$active" "$sub" "$result"
+    if [[ "$active" == "failed" ]]; then
+      echo "Startup failed at $unit" >&2
+      journalctl --user -u "$unit" -n 35 --no-pager >&2 || true
+      exit 1
+    fi
+    [[ "$active" == "active" ]] || all_active=0
+  done
+  if (( all_active )); then
+    echo "$component is ready. No goal or motion command was sent."
+    exit 0
+  fi
+  echo "Waiting for $component startup..."
+  sleep 2
+done
+
+echo "Timed out waiting for $component after ${timeout_sec}s." >&2
+for unit in "${required_units[@]}"; do
+  systemctl --user --no-pager --full status "$unit" >&2 || true
+done
+exit 1

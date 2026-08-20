@@ -35,6 +35,15 @@ def test_navigation_page_has_separate_front_camera_preview():
     assert '"/visual_grasp/image/compressed"' not in bridge
 
 
+def test_rviz_compressed_camera_transport_is_declared():
+    manifest = (PACKAGE_ROOT / "package.xml").read_text(encoding="utf-8")
+    readme = (PACKAGE_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "<exec_depend>image_transport</exec_depend>" in manifest
+    assert "<exec_depend>compressed_image_transport</exec_depend>" in manifest
+    assert "/front_camera/image" in readme
+    assert "ros-humble-compressed-image-transport" in readme
+
+
 def test_point_cloud_subscription_is_created_only_when_visible():
     bridge = _source("ros_bridge.py")
     assert 'self._put(("cloud_enabled", bool(enabled)))' in bridge

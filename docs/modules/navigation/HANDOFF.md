@@ -36,6 +36,10 @@ Verified code: `main@3210e70`
   自动曝光、调节曝光/增益，也可切换自动白平衡或设置 2800–6500 K 手动
   色温。GUI 只调用该节点固定的 ROS 参数服务，不接收
   任意命令；长期默认值仍由全局设置中的 allowlist 配置保存。
+- RViz2 的 Image display 应选择基础 topic `/front_camera/image`，Transport
+  Hint 选择 `compressed`；Ubuntu 必须安装
+  `ros-humble-compressed-image-transport`。直接把
+  `/front_camera/image/compressed` 当作 raw Image topic 会失败。
 - 中控的三维点云开关必须真正创建/销毁 `/unilidar/cloud` DDS 订阅，不能只
   在回调里丢弃数据；关闭点云时不应继续让约 `4.4 Mbps` 点云占用无线链路。
 - 中控离开建图导航页时必须销毁地图、全局/局部代价地图、扫描、路径和车头

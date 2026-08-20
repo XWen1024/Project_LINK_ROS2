@@ -47,7 +47,14 @@ chmod 0755 "$root/deploy/systemd/bin/project-link-component"
 chmod 0755 "$root/deploy/systemd/bin/project-link-wait"
 chmod 0755 "$root/deploy/systemd/bin/project-link-wait-wall-clock"
 chmod 0755 "$root/deploy/systemd/bin/project-link-zero-velocity"
+chmod 0755 "$root/deploy/systemd/bin/project-link-standalone-start"
 chmod 0755 "$root/scripts/project_link_dds_profile.sh"
+chmod 0755 "$root/scripts/standalone/start_nav2.sh"
+chmod 0755 "$root/scripts/standalone/start_qwen_realtime.sh"
+chmod 0755 "$root/scripts/standalone/start_fall_response.sh"
+chmod 0755 "$root/scripts/ssh_start_nav2.sh"
+chmod 0755 "$root/scripts/ssh_start_qwen_realtime.sh"
+chmod 0755 "$root/scripts/ssh_start_fall_response.sh"
 
 systemd-analyze --user verify "$target_dir"/project-link-*.service "$target_dir"/project-link-*.target
 systemctl --user daemon-reload

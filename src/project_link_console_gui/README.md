@@ -22,7 +22,8 @@ source install/setup.bash
 
 Verified Ubuntu prerequisites are `git`, `python3-pip`,
 `python3-colcon-common-extensions`, `ros-humble-navigation2` and
-`ros-humble-nav2-bringup`. PySide6 is intentionally installed in the operator's
+`ros-humble-nav2-bringup`. RViz2 compressed camera display additionally requires
+`ros-humble-compressed-image-transport`. PySide6 is intentionally installed in the operator's
 user Python environment rather than declared as a Jammy apt/rosdep dependency.
 
 Laptop-only visual development:
@@ -68,6 +69,17 @@ The navigation page renders `/front_camera/image/compressed` in a small side
 preview that does not cover the map. The stream comes from the Orin-owned
 `/dev/project_link_front_camera`; the manipulation page continues to use the
 separate `/dev/project_link_arm_camera` stream.
+
+For RViz2, add an **Image** display with base topic `/front_camera/image` and set
+the transport hint to `compressed`. The publisher provides the matching wire
+topic `/front_camera/image/compressed`. Selecting the compressed wire topic as a
+raw image is incorrect. If RViz reports that
+`image_transport/compressed_sub` does not exist, install the missing Ubuntu
+package:
+
+```bash
+sudo apt install ros-humble-compressed-image-transport
+```
 
 The remaining pages are implemented as follows:
 
