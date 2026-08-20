@@ -41,7 +41,8 @@ Verified code: `main@3210e70`
 - 中控离开建图导航页时必须销毁地图、全局/局部代价地图、扫描、路径和车头
   摄像头订阅；跌倒页仅在可见时复用车头图像并订阅证据图。Fast DDS 由
   `scripts/project_link_dds_profile.sh` 动态绑定到路由选中的唯一 IPv4 接口，
-  禁止同网段双网卡重复发送同一份 DDS 数据。
+  禁止同网段双网卡重复发送同一份 DDS 数据；同时在启动时通过 mDNS 解析
+  对端当前地址并写入 unicast initial peer，避免依赖 CPE 的有线/Wi-Fi 组播桥接。
 
 ## 2. 一键脚本
 

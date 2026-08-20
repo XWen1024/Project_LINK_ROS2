@@ -42,7 +42,10 @@ messages.
 Every production ROS process sources `scripts/project_link_dds_profile.sh`. It
 asks the kernel which interface routes to the configured peer/default gateway,
 generates a user-runtime Fast DDS XML profile, disables builtin transports and
-whitelists only that IPv4 address. This avoids duplicate DDS traffic when a host
+whitelists only that IPv4 address. It also resolves the known peer mDNS name once
+at process startup and adds the numeric address as a unicast initial peer, so DDS
+discovery does not depend on the CPE bridging multicast between Ethernet and
+Wi-Fi. This avoids duplicate DDS traffic when a host
 has Ethernet and Wi-Fi on the same subnet while still following DHCP/network
 changes. The vehicle baseline is Orin-to-CPE Ethernet plus Ubuntu-to-CPE 5 GHz
 Wi-Fi; lifecycle/configuration remain separate SSH traffic.

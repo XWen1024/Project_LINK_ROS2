@@ -63,6 +63,10 @@ are evidence snapshots, not current operating instructions.
   interface/address from the kernel route (or the explicit
   `PROJECT_LINK_DDS_INTERFACE` override) and disables Fast DDS builtin transports.
   Do not allow Fast DDS to advertise both Wi-Fi and Ethernet on the same LAN.
+  The profile also resolves the known peer mDNS name at startup and installs it
+  as a unicast Fast DDS initial peer, because some CPEs do not bridge discovery
+  multicast reliably between wired and wireless clients. mDNS is discovery only;
+  the generated profile contains the resolved numeric address for that process.
   The intended vehicle CPE topology is Orin by Ethernet and Ubuntu by 5 GHz
   Wi-Fi, with client isolation disabled and multicast allowed.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
