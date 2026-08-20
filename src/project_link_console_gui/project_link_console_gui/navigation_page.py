@@ -6,7 +6,7 @@ from collections import deque
 import math
 import time
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -126,6 +126,11 @@ class StackProgressDialog(QDialog):
         self.setModal(False)
         self.setMinimumWidth(560)
         self._last_line = ""
+        self._last_activity = time.monotonic()
+        self._watchdog = QTimer(self)
+        self._watchdog.setInterval(500)
+        self._watchdog.timeout.connect(self._check_stalled)
+        self._watchdog.start()
         layout = QVBoxLayout(self)
         self.description = QLabel("正在向 Orin 提交启动请求…")
         self.description.setWordWrap(True)
@@ -154,6 +159,7 @@ class StackProgressDialog(QDialog):
         self.description.setText(message)
 
     def update_progress(self, event: dict) -> None:
+        self._last_activity = time.monotonic()
         state = str(event.get("state", "running"))
         progress = max(0.0, min(1.0, float(event.get("progress", 0.0))))
         message = str(event.get("message", ""))
@@ -168,6 +174,18 @@ class StackProgressDialog(QDialog):
                 self.description.setText("启动流程已完成")
             else:
                 self.description.setText("启动失败：" + message)
+
+    def _check_stalled(self) -> None:
+        if not self.running or time.monotonic() - self._last_activity < 12.0:
+            return
+        self.update_progress(
+            {
+                "state": "failed",
+                "progress": 0.0,
+                "step": "连接超时",
+                "message": "12 秒内未收到 Orin 管理端反馈，请关闭后重试",
+            }
+        )
 
     @property
     def running(self) -> bool:
@@ -367,19 +385,35 @@ class NavigationPage(QWidget):
         self.camera_exposure.setSuffix(" 级")
         self.camera_gain = QSpinBox()
         self.camera_gain.setRange(0, 63)
-        self.camera_gain.setValue(32)
-        self.camera_apply = QPushButton("立即应用车头曝光")
+        self.camera_gain.setValue(48)
+        self.camera_auto_white_balance = QCheckBox("自动白平衡")
+        self.camera_auto_white_balance.setChecked(True)
+        self.camera_white_balance = QSpinBox()
+        self.camera_white_balance.setRange(2800, 6500)
+        self.camera_white_balance.setSingleStep(100)
+        self.camera_white_balance.setValue(3400)
+        self.camera_white_balance.setSuffix(" K")
+        self.camera_white_balance.setEnabled(False)
+        self.camera_apply = QPushButton("立即应用车头画面参数")
         self.camera_apply.clicked.connect(self._apply_camera_exposure)
         self.camera_auto_exposure.toggled.connect(self._camera_auto_changed)
-        self.camera_config_status = QLabel("固定曝光可保持约 30 FPS；长期默认值可在全局设置保存。")
+        self.camera_auto_white_balance.toggled.connect(
+            lambda automatic: self.camera_white_balance.setEnabled(not automatic)
+        )
+        self.camera_config_status = QLabel(
+            "固定曝光保持 30 FPS；自动白平衡会在相机启动时强制重新校准。"
+        )
         self.camera_config_status.setWordWrap(True)
         advanced_layout.addWidget(self.camera_auto_exposure, 3, 0, 1, 2)
         advanced_layout.addWidget(QLabel("手动曝光"), 4, 0)
         advanced_layout.addWidget(self.camera_exposure, 4, 1)
         advanced_layout.addWidget(QLabel("画面增益"), 5, 0)
         advanced_layout.addWidget(self.camera_gain, 5, 1)
-        advanced_layout.addWidget(self.camera_apply, 6, 0, 1, 2)
-        advanced_layout.addWidget(self.camera_config_status, 7, 0, 1, 2)
+        advanced_layout.addWidget(self.camera_auto_white_balance, 6, 0, 1, 2)
+        advanced_layout.addWidget(QLabel("手动色温"), 7, 0)
+        advanced_layout.addWidget(self.camera_white_balance, 7, 1)
+        advanced_layout.addWidget(self.camera_apply, 8, 0, 1, 2)
+        advanced_layout.addWidget(self.camera_config_status, 9, 0, 1, 2)
 
         lidar_calibration = QGroupBox("雷达方向可视化标定")
         lidar_layout = QGridLayout(lidar_calibration)
@@ -629,6 +663,8 @@ class NavigationPage(QWidget):
             self.camera_auto_exposure.isChecked(),
             self.camera_exposure.value(),
             self.camera_gain.value(),
+            self.camera_auto_white_balance.isChecked(),
+            self.camera_white_balance.value(),
         )
 
     def _update_camera_parameters(self, values: dict) -> None:
@@ -637,7 +673,15 @@ class NavigationPage(QWidget):
         self.camera_auto_exposure.setChecked(automatic)
         self.camera_auto_exposure.blockSignals(False)
         self.camera_exposure.setValue(int(values.get("exposure", 300)))
-        self.camera_gain.setValue(int(values.get("gain", 32)))
+        self.camera_gain.setValue(int(values.get("gain", 48)))
+        automatic_white_balance = bool(values.get("automatic_white_balance", True))
+        self.camera_auto_white_balance.blockSignals(True)
+        self.camera_auto_white_balance.setChecked(automatic_white_balance)
+        self.camera_auto_white_balance.blockSignals(False)
+        self.camera_white_balance.setValue(
+            int(values.get("white_balance_temperature", 3400))
+        )
+        self.camera_white_balance.setEnabled(not automatic_white_balance)
         self._camera_auto_changed(automatic)
         self.camera_apply.setEnabled(True)
         self.camera_config_status.setText(

@@ -45,6 +45,7 @@ for unit in "$source_dir"/*.service "$source_dir"/*.target; do
 done
 chmod 0755 "$root/deploy/systemd/bin/project-link-component"
 chmod 0755 "$root/deploy/systemd/bin/project-link-wait"
+chmod 0755 "$root/deploy/systemd/bin/project-link-wait-wall-clock"
 chmod 0755 "$root/deploy/systemd/bin/project-link-zero-velocity"
 
 systemd-analyze --user verify "$target_dir"/project-link-*.service "$target_dir"/project-link-*.target

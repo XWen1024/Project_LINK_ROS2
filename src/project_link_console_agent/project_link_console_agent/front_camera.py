@@ -39,7 +39,9 @@ class FrontCameraNode(Node):
         self.declare_parameter("prefer_native_mjpeg", True)
         self.declare_parameter("manual_exposure", True)
         self.declare_parameter("exposure_time_absolute", 300)
-        self.declare_parameter("camera_gain", 32)
+        self.declare_parameter("camera_gain", 48)
+        self.declare_parameter("automatic_white_balance", True)
+        self.declare_parameter("white_balance_temperature", 3400)
 
         self._cv2: Any = None
         self._camera: Any = None
@@ -69,7 +71,7 @@ class FrontCameraNode(Node):
         self.create_service(CaptureStill, "/front_camera/capture_still", self._capture_still)
         # Poll the latest-frame slot faster than capture. Only a new timestamp is
         # published, so this avoids clock aliasing without duplicating frames.
-        period = 0.5 / max(1.0, float(self.get_parameter("preview_fps").value))
+        period = 1.0 / max(1.0, float(self.get_parameter("preview_fps").value))
         self.create_timer(period, self._publish_preview)
         self.create_timer(1.0, self._publish_periodic_status)
         self.create_timer(0.1, self._apply_pending_exposure)
@@ -120,13 +122,32 @@ class FrontCameraNode(Node):
                     return SetParametersResult(
                         successful=False, reason="camera_gain must be between 0 and 63"
                     )
+                if parameter.name == "automatic_white_balance" and not isinstance(
+                    parameter.value, bool
+                ):
+                    return SetParametersResult(
+                        successful=False, reason="automatic_white_balance must be boolean"
+                    )
+                if parameter.name == "white_balance_temperature" and not 2800 <= int(
+                    parameter.value
+                ) <= 6500:
+                    return SetParametersResult(
+                        successful=False,
+                        reason="white_balance_temperature must be between 2800 and 6500",
+                    )
             except (TypeError, ValueError):
                 return SetParametersResult(
                     successful=False, reason=f"invalid value for {parameter.name}"
                 )
         if any(
             parameter.name
-            in {"manual_exposure", "exposure_time_absolute", "camera_gain"}
+            in {
+                "manual_exposure",
+                "exposure_time_absolute",
+                "camera_gain",
+                "automatic_white_balance",
+                "white_balance_temperature",
+            }
             for parameter in parameters
         ):
             self._exposure_update_requested = True
@@ -256,6 +277,32 @@ class FrontCameraNode(Node):
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip()
             self.get_logger().warning(f"Unable to apply camera exposure controls: {detail}")
+            return
+        automatic_white_balance = bool(
+            self.get_parameter("automatic_white_balance").value
+        )
+        temperature = max(
+            2800, min(6500, int(self.get_parameter("white_balance_temperature").value))
+        )
+        white_balance_commands = (
+            ["white_balance_automatic=0", "white_balance_automatic=1"]
+            if automatic_white_balance
+            else [f"white_balance_automatic=0,white_balance_temperature={temperature}"]
+        )
+        for controls in white_balance_commands:
+            result = subprocess.run(
+                ["v4l2-ctl", "-d", device, f"--set-ctrl={controls}"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5.0,
+            )
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout).strip()
+                self.get_logger().warning(
+                    f"Unable to apply camera white balance controls: {detail}"
+                )
+                break
 
     def _open_decoded_camera(self) -> bool:
         self._last_open_attempt = time.monotonic()
@@ -324,9 +371,6 @@ class FrontCameraNode(Node):
 
     def _publish_preview(self) -> None:
         now = time.monotonic()
-        preview_fps = max(1.0, float(self.get_parameter("preview_fps").value))
-        if now - self._last_preview_publish_monotonic < 1.0 / preview_fps:
-            return
         with self._frame_lock:
             if self._latest_stamp_ns == self._last_published_stamp_ns:
                 return

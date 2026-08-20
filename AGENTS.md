@@ -178,6 +178,14 @@ are evidence snapshots, not current operating instructions.
   `ros2 daemon stop` before readiness checks, or use the verb's `--no-daemon`
   option. A stale daemon can report missing topics or `!rclpy.ok()` even while
   the target node is healthy.
+- A systemd user service can be process-active while its Fast DDS endpoints have
+  vanished if the Orin participant started on the RTC fallback date and NTP later
+  made a large wall-clock jump. The console agent must pass
+  `project-link-wait-wall-clock` before creating ROS participants. When the GUI
+  receives fresh camera/Nav2 data but `/project_link/console/manage_stack` has no
+  server, treat this as a false-healthy agent: restart only
+  `project-link-console-agent.service`, verify the Action server, and do not cycle
+  the already healthy Nav2 target.
 - Orin Python ROS packages in this repository must be built with normal colcon
   installation unless the package is already proven editable-safe. The installed
   setuptools rejects ament's `--editable` path for packages such as

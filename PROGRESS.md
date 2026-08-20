@@ -115,19 +115,32 @@ Archive tags:
   previously overlapping soft-cost corridor and completed multiple supervised
   goals. Remaining failures were tied to hard occupied cells or a goal outside
   the global costmap, not to the inflation radius alone.
-- The front-camera path now uses native 1280x720 MJPEG pass-through at about
-  `29.8 FPS`. Fixed exposure `300` and gain `32` preserve that rate; the navigation
-  page exposes runtime automatic/manual exposure controls only in advanced mode.
+- The front-camera path uses native 1280x720 MJPEG pass-through. A 2026-08-20
+  two-host capture proved that the Orin and Ubuntu JPEGs were complete and
+  visually identical, with no UVC reset/disconnect evidence; the severe orange
+  cast was stale camera white balance, not a loose USB connection or DDS frame
+  corruption. Camera startup now forces automatic-white-balance recalibration,
+  publishes the requested preview cadence without a second rate gate, and exposes
+  exposure, gain, automatic white balance and manual colour temperature in the
+  advanced console controls.
+- A field restart also exposed a false-healthy console agent: Fast DDS endpoints
+  disappeared after the Orin wall clock jumped from its RTC fallback date while
+  the systemd process remained active. The agent now waits for a sane wall clock
+  before creating ROS participants. GUI teleop heartbeats are coalesced outside
+  the lifecycle queue, so they cannot crowd out a Navigation2 request; the start
+  dialog now reports endpoint discovery and fails visibly instead of staying at 2%.
   Orin agent tests passed (`28 passed`) and Ubuntu GUI tests passed (`25 passed`)
   at `main@3210e70`. A real Ubuntu RosBridge round trip changed the camera to
-  automatic exposure, read it back, then restored manual `300/32`; `/cmd_vel`
+  automatic exposure, read it back, then restored the previous manual controls; `/cmd_vel`
   and all motion paths were untouched.
 - 2026-08-20 field diagnosis found severe Wi-Fi queueing rather than packet loss:
   with full-rate camera plus cloud traffic, bidirectional ping averaged
   `200-302 ms` and peaked at `503-668 ms`; stopping only the camera reduced it to
   `20.8 ms` average and `41.6 ms` peak. The camera remains native 30-FPS capture,
-  but cross-host preview now defaults to 10 FPS, and disabled console point-cloud
-  display destroys its DDS subscription. GUI lifecycle commands also use a ROS
+  and initially limited cross-host preview to 10 FPS. On the current improved LAN,
+  the default has returned to 30 FPS; field operators should lower
+  `FRONT_CAMERA_PREVIEW_FPS` to 10 when RTT rises. Disabled console point-cloud
+  display still destroys its DDS subscription. GUI lifecycle commands use a ROS
   GuardCondition instead of waiting only for a polling timer.
 - The independent manipulator camera is now also configured for its verified
   native `1280x720@30 FPS` MJPEG mode instead of the previous YUYV 10-FPS path.

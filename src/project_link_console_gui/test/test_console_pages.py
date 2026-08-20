@@ -192,3 +192,7 @@ def test_ros_command_queue_wakes_executor_immediately():
     assert "guard.trigger()" in bridge
     assert "MutuallyExclusiveCallbackGroup" in bridge
     assert "callback_group=self._command_callback_group" in bridge
+    assert "self._pending_teleop" in bridge
+    assert "Orin 管理端点" in bridge
+    assert "_reconcile_pending_manage" in bridge
+    assert "Orin 当前系统状态已确认目标模式" in bridge

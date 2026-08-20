@@ -326,12 +326,31 @@ class DemoBridge(QObject):
 
     def request_front_camera_parameters(self) -> None:
         self.front_camera_parameters.emit(
-            {"automatic": False, "exposure": 300, "gain": 32}
+            {
+                "automatic": False,
+                "exposure": 300,
+                "gain": 48,
+                "automatic_white_balance": True,
+                "white_balance_temperature": 3400,
+            }
         )
 
-    def set_front_camera_exposure(self, automatic: bool, exposure: int, gain: int) -> None:
+    def set_front_camera_exposure(
+        self,
+        automatic: bool,
+        exposure: int,
+        gain: int,
+        automatic_white_balance: bool = True,
+        white_balance_temperature: int = 3400,
+    ) -> None:
         self.front_camera_parameters.emit(
-            {"automatic": automatic, "exposure": exposure, "gain": gain}
+            {
+                "automatic": automatic,
+                "exposure": exposure,
+                "gain": gain,
+                "automatic_white_balance": automatic_white_balance,
+                "white_balance_temperature": white_balance_temperature,
+            }
         )
         self.front_camera_configured.emit(True, "演示相机参数已应用")
 

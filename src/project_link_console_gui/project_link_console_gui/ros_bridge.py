@@ -84,6 +84,10 @@ class RosBridge(QObject):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._commands: queue.Queue[tuple[Any, ...]] = queue.Queue(maxsize=200)
+        self._teleop_lock = threading.Lock()
+        self._pending_teleop: tuple[bool, bool, float, float] | None = None
+        self._pending_manage: dict[str, Any] | None = None
+        self._last_mode: int | None = None
         self._sequence = 0
         self._node = None
         self._executor = None
@@ -349,10 +353,47 @@ class RosBridge(QObject):
             self.front_camera_image.emit(jpeg_data)
 
     def manage_stack(self, operation: int, restart: bool = False) -> None:
+        expected_modes = {
+            1: {1},
+            2: {2},
+            3: {3},
+            4: {0, 1},
+            5: {0},
+        }
+        if not restart and self._last_mode in expected_modes.get(int(operation), set()):
+            message = "Orin 已经处于目标模式，无需重复启动"
+            self.operation_event.emit(message)
+            self.stack_progress.emit(
+                {
+                    "state": "complete",
+                    "step": "状态确认",
+                    "progress": 1.0,
+                    "message": message,
+                }
+            )
+            self.lifecycle_completed.emit("stack", True)
+            return
+        self._pending_manage = {
+            "operation": int(operation),
+            "restart": bool(restart),
+            "saw_transitioning": False,
+        }
         self._put(("manage", int(operation), bool(restart)))
 
     def send_teleop(self, enabled: bool, deadman: bool, linear: float, angular: float) -> None:
-        self._put(("teleop", bool(enabled), bool(deadman), float(linear), float(angular)))
+        # Teleop is a latest-value heartbeat, not a lifecycle command. Coalesce
+        # it outside the bounded command queue so a disconnected/stalled DDS
+        # executor can never let heartbeats crowd out Start Navigation2.
+        with self._teleop_lock:
+            self._pending_teleop = (
+                bool(enabled),
+                bool(deadman),
+                float(linear),
+                float(angular),
+            )
+        guard = self._command_guard
+        if guard is not None:
+            guard.trigger()
 
     def send_navigation_goal(self, pose: Pose2D) -> None:
         self._put(("goal", pose))
@@ -407,8 +448,24 @@ class RosBridge(QObject):
     def request_front_camera_parameters(self) -> None:
         self._put(("front_camera_get",))
 
-    def set_front_camera_exposure(self, automatic: bool, exposure: int, gain: int) -> None:
-        self._put(("front_camera_set", bool(automatic), int(exposure), int(gain)))
+    def set_front_camera_exposure(
+        self,
+        automatic: bool,
+        exposure: int,
+        gain: int,
+        automatic_white_balance: bool = True,
+        white_balance_temperature: int = 3400,
+    ) -> None:
+        self._put(
+            (
+                "front_camera_set",
+                bool(automatic),
+                int(exposure),
+                int(gain),
+                bool(automatic_white_balance),
+                int(white_balance_temperature),
+            )
+        )
 
     def start_uwb_shadow(self) -> None:
         self._put(("uwb_shadow", True))
@@ -426,52 +483,65 @@ class RosBridge(QObject):
         self._put(("lidar_calibration_enabled", bool(enabled)))
 
     def _process_commands(self) -> None:
-        latest_teleop = None
         while True:
             try:
                 command = self._commands.get_nowait()
             except queue.Empty:
                 break
-            if command[0] == "teleop":
-                latest_teleop = command
-            elif command[0] == "manage":
-                self._send_manage_goal(command[1], command[2])
-            elif command[0] == "goal":
-                self._send_navigation_action(command[1])
-            elif command[0] == "emergency":
-                self._call_emergency_stop()
-            elif command[0] == "switch_voice":
-                self._switch_voice(command[1])
-            elif command[0] == "probe_voice":
-                self._probe_voice_control()
-            elif command[0] == "visual_grasp":
-                self._set_visual_grasp(command[1])
-            elif command[0] == "fall_lifecycle":
-                self._set_fall_lifecycle(command[1])
-            elif command[0] == "fall_cancel":
-                self._call_fall_trigger(self._cancel_fall_client, "取消跌倒处置")
-            elif command[0] == "fall_demo":
-                self._call_fall_trigger(self._create_fall_demo_client, "创建演示事件")
-            elif command[0] == "fall_preflight":
-                self._call_fall_trigger(self._fall_preflight_client, "运行 Nav2 预检")
-            elif command[0] == "fall_events":
-                self._request_fall_events(command[1])
-            elif command[0] == "fall_event":
-                self._request_fall_event(command[1])
-            elif command[0] == "front_camera_get":
-                self._get_front_camera_parameters()
-            elif command[0] == "front_camera_set":
-                self._set_front_camera_parameters(*command[1:])
-            elif command[0] == "cloud_enabled":
-                self._cloud_enabled = bool(command[1])
-                self._sync_cloud_subscription()
-            elif command[0] == "lidar_calibration_enabled":
-                self._lidar_calibration_enabled = bool(command[1])
-                self._sync_cloud_subscription()
-            elif command[0] == "uwb_shadow":
-                self._set_uwb_shadow(command[1])
+            try:
+                if command[0] == "manage":
+                    self._send_manage_goal(command[1], command[2])
+                elif command[0] == "goal":
+                    self._send_navigation_action(command[1])
+                elif command[0] == "emergency":
+                    self._call_emergency_stop()
+                elif command[0] == "switch_voice":
+                    self._switch_voice(command[1])
+                elif command[0] == "probe_voice":
+                    self._probe_voice_control()
+                elif command[0] == "visual_grasp":
+                    self._set_visual_grasp(command[1])
+                elif command[0] == "fall_lifecycle":
+                    self._set_fall_lifecycle(command[1])
+                elif command[0] == "fall_cancel":
+                    self._call_fall_trigger(self._cancel_fall_client, "取消跌倒处置")
+                elif command[0] == "fall_demo":
+                    self._call_fall_trigger(self._create_fall_demo_client, "创建演示事件")
+                elif command[0] == "fall_preflight":
+                    self._call_fall_trigger(self._fall_preflight_client, "运行 Nav2 预检")
+                elif command[0] == "fall_events":
+                    self._request_fall_events(command[1])
+                elif command[0] == "fall_event":
+                    self._request_fall_event(command[1])
+                elif command[0] == "front_camera_get":
+                    self._get_front_camera_parameters()
+                elif command[0] == "front_camera_set":
+                    self._set_front_camera_parameters(*command[1:])
+                elif command[0] == "cloud_enabled":
+                    self._cloud_enabled = bool(command[1])
+                    self._sync_cloud_subscription()
+                elif command[0] == "lidar_calibration_enabled":
+                    self._lidar_calibration_enabled = bool(command[1])
+                    self._sync_cloud_subscription()
+                elif command[0] == "uwb_shadow":
+                    self._set_uwb_shadow(command[1])
+            except Exception as exc:
+                message = f"中控命令执行失败：{type(exc).__name__}: {exc}"
+                self.operation_event.emit(message)
+                if command[0] == "manage":
+                    self._pending_manage = None
+                    self.stack_progress.emit(
+                        {"state": "failed", "progress": 0.0, "message": message}
+                    )
+                    self.lifecycle_completed.emit("stack", False)
+        with self._teleop_lock:
+            latest_teleop = self._pending_teleop
+            self._pending_teleop = None
         if latest_teleop is not None:
-            self._publish_teleop(*latest_teleop[1:])
+            try:
+                self._publish_teleop(*latest_teleop)
+            except Exception as exc:
+                self.operation_event.emit(f"遥控心跳发送失败：{exc}")
 
     def _publish_teleop(self, enabled: bool, deadman: bool, linear: float, angular: float) -> None:
         message = self._teleop_type()
@@ -484,7 +554,16 @@ class RosBridge(QObject):
         self._teleop_pub.publish(message)
 
     def _send_manage_goal(self, operation: int, restart: bool) -> None:
-        if not self._manage_client.wait_for_server(timeout_sec=0.0):
+        self.stack_progress.emit(
+            {
+                "state": "running",
+                "step": "连接中控代理",
+                "progress": 0.03,
+                "message": "正在确认 Orin 管理端点",
+            }
+        )
+        if not self._manage_client.wait_for_server(timeout_sec=1.0):
+            self._pending_manage = None
             self.operation_event.emit("Orin console agent 尚未连接")
             self.stack_progress.emit(
                 {
@@ -493,6 +572,7 @@ class RosBridge(QObject):
                     "message": "Orin console agent 尚未连接",
                 }
             )
+            self.lifecycle_completed.emit("stack", False)
             return
         goal = self._manage_type.Goal()
         goal.operation = operation
@@ -645,7 +725,13 @@ class RosBridge(QObject):
             self.front_camera_configured.emit(False, "车头相机参数服务尚未连接")
             return
         request = self._get_parameters_type.Request()
-        request.names = ["manual_exposure", "exposure_time_absolute", "camera_gain"]
+        request.names = [
+            "manual_exposure",
+            "exposure_time_absolute",
+            "camera_gain",
+            "automatic_white_balance",
+            "white_balance_temperature",
+        ]
         self._front_camera_get_client.call_async(request).add_done_callback(
             self._front_camera_parameters_received
         )
@@ -657,13 +743,22 @@ class RosBridge(QObject):
                 "automatic": not bool(values[0].bool_value),
                 "exposure": int(values[1].integer_value),
                 "gain": int(values[2].integer_value),
+                "automatic_white_balance": bool(values[3].bool_value),
+                "white_balance_temperature": int(values[4].integer_value),
             }
         except Exception as exc:
             self.front_camera_configured.emit(False, f"读取车头相机参数失败：{exc}")
             return
         self.front_camera_parameters.emit(result)
 
-    def _set_front_camera_parameters(self, automatic: bool, exposure: int, gain: int) -> None:
+    def _set_front_camera_parameters(
+        self,
+        automatic: bool,
+        exposure: int,
+        gain: int,
+        automatic_white_balance: bool,
+        white_balance_temperature: int,
+    ) -> None:
         if not self._front_camera_set_client.wait_for_service(timeout_sec=0.25):
             self.front_camera_configured.emit(False, "车头相机参数服务尚未连接")
             return
@@ -672,6 +767,12 @@ class RosBridge(QObject):
             self._parameter_type("manual_exposure", value=not automatic).to_parameter_msg(),
             self._parameter_type("exposure_time_absolute", value=exposure).to_parameter_msg(),
             self._parameter_type("camera_gain", value=gain).to_parameter_msg(),
+            self._parameter_type(
+                "automatic_white_balance", value=automatic_white_balance
+            ).to_parameter_msg(),
+            self._parameter_type(
+                "white_balance_temperature", value=white_balance_temperature
+            ).to_parameter_msg(),
         ]
         self._front_camera_set_client.call_async(request).add_done_callback(
             self._front_camera_parameters_set
@@ -812,6 +913,7 @@ class RosBridge(QObject):
         try:
             handle = future.result()
         except Exception as exc:
+            self._pending_manage = None
             self.operation_event.emit(f"模式切换失败：{exc}")
             self.stack_progress.emit(
                 {"state": "failed", "progress": 0.0, "message": f"模式切换失败：{exc}"}
@@ -819,6 +921,7 @@ class RosBridge(QObject):
             self.lifecycle_completed.emit("stack", False)
             return
         if not handle.accepted:
+            self._pending_manage = None
             self.operation_event.emit("模式切换请求被拒绝")
             self.stack_progress.emit(
                 {"state": "failed", "progress": 0.0, "message": "模式切换请求被拒绝"}
@@ -829,6 +932,7 @@ class RosBridge(QObject):
         result_future.add_done_callback(self._manage_result)
 
     def _manage_result(self, future) -> None:
+        self._pending_manage = None
         try:
             result = future.result().result
             success = bool(result.success)
@@ -879,6 +983,7 @@ class RosBridge(QObject):
 
     def _on_system_state(self, message) -> None:
         self._last_state_monotonic = time.monotonic()
+        self._last_mode = int(message.mode)
         if not self._connected:
             self._connected = True
             self._connection_text = "Orin 已连接"
@@ -905,6 +1010,39 @@ class RosBridge(QObject):
                 ],
             }
         )
+        self._reconcile_pending_manage(self._last_mode)
+
+    def _reconcile_pending_manage(self, mode: int) -> None:
+        pending = self._pending_manage
+        if pending is None:
+            return
+        # MODE_TRANSITIONING is 4 in the typed SystemState contract.
+        if mode == 4:
+            pending["saw_transitioning"] = True
+            return
+        if pending["restart"] and not pending["saw_transitioning"]:
+            return
+        expected_modes = {
+            1: {1},       # start mapping
+            2: {2},       # start Navigation2
+            3: {3},       # start rf2o fallback
+            4: {0, 1},    # stop Nav2, preserve mapping when available
+            5: {0},       # stop all
+        }
+        if mode not in expected_modes.get(int(pending["operation"]), set()):
+            return
+        self._pending_manage = None
+        message = "Orin 当前系统状态已确认目标模式"
+        self.operation_event.emit(message)
+        self.stack_progress.emit(
+            {
+                "state": "complete",
+                "step": "状态确认",
+                "progress": 1.0,
+                "message": message,
+            }
+        )
+        self.lifecycle_completed.emit("stack", True)
 
     def _check_state_freshness(self) -> None:
         if self._connected and time.monotonic() - self._last_state_monotonic > 2.0:

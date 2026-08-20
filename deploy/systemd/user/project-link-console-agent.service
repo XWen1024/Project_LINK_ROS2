@@ -4,6 +4,7 @@ Description=Project LINK headless console agent
 Type=simple
 WorkingDirectory=/home/wte/wheeltec_robot
 EnvironmentFile=-%h/.config/project_link/console.env
+ExecStartPre=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait-wall-clock
 ExecStart=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-component console-agent
 ExecStartPost=/home/wte/wheeltec_robot/deploy/systemd/bin/project-link-wait topic /project_link/console/system_state 20
 Restart=always

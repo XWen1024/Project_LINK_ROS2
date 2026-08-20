@@ -58,10 +58,14 @@ def test_front_camera_exposure_controls_follow_advanced_and_automatic_modes():
     assert not page.advanced_group.isHidden()
     assert page.camera_exposure.isEnabled()
     assert page.camera_gain.isEnabled()
+    assert not page.camera_white_balance.isEnabled()
 
     page.camera_auto_exposure.setChecked(True)
     assert not page.camera_exposure.isEnabled()
     assert not page.camera_gain.isEnabled()
+
+    page.camera_auto_white_balance.setChecked(False)
+    assert page.camera_white_balance.isEnabled()
 
     page.camera_apply.click()
     assert page.camera_apply.isEnabled()

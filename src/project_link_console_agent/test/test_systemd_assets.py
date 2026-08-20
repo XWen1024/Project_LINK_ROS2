@@ -53,6 +53,16 @@ def test_console_agent_unit_retries_ros_discovery_before_ready():
         DEPLOY_ROOT / "user" / UNITS["agent"]
     ).read_text(encoding="utf-8")
     assert "project-link-wait topic /project_link/console/system_state 20" in unit
+    assert "project-link-wait-wall-clock" in unit
+
+
+def test_console_agent_waits_for_sane_wall_clock_before_fast_dds_start():
+    helper = (DEPLOY_ROOT / "bin" / "project-link-wait-wall-clock").read_text(
+        encoding="utf-8"
+    )
+    assert "1704067200" in helper
+    assert "date +%s" in helper
+    assert "exit 1" in helper
 
 
 def test_topic_readiness_ignores_stale_ros2_cli_daemon_state():
@@ -138,7 +148,9 @@ def test_front_camera_component_uses_the_stable_alias():
     assert 'CHASSIS_DEVICE:-/dev/project_link_chassis' in component
     assert 'FRONT_CAMERA_PREFER_NATIVE_MJPEG:-true' in component
     assert 'FRONT_CAMERA_EXPOSURE_ABSOLUTE:-300' in component
-    assert 'FRONT_CAMERA_GAIN:-32' in component
+    assert 'FRONT_CAMERA_GAIN:-48' in component
+    assert 'FRONT_CAMERA_AUTO_WHITE_BALANCE:-true' in component
+    assert 'FRONT_CAMERA_WHITE_BALANCE_TEMPERATURE:-3400' in component
 
 
 def test_visual_grasp_cuda_detector_is_process_isolated_from_lerobot():

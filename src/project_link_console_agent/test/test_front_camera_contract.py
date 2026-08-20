@@ -22,11 +22,13 @@ def test_front_camera_is_orin_owned_and_uses_a_dedicated_topic():
     assert 'name="front-camera-capture"' in source
     assert "def _capture_loop(self)" in source
     assert "def _publish_preview(self)" in source
-    assert "period = 0.5 / max" in source
+    assert "period = 1.0 / max" in source
     assert 'self.declare_parameter("prefer_native_mjpeg", True)' in source
     assert 'self.declare_parameter("manual_exposure", True)' in source
     assert 'self.declare_parameter("exposure_time_absolute", 300)' in source
-    assert 'self.declare_parameter("camera_gain", 32)' in source
+    assert 'self.declare_parameter("camera_gain", 48)' in source
+    assert 'self.declare_parameter("automatic_white_balance", True)' in source
+    assert 'self.declare_parameter("white_balance_temperature", 3400)' in source
     assert '"--stream-to=-"' in source
     assert '"native_mjpeg_zero_reencode"' in source
     assert '"auto_exposure=1,exposure_time_absolute={exposure},gain={gain}"' in source
@@ -68,6 +70,8 @@ def test_front_camera_runtime_exposure_parameters_are_bounded():
     assert "manual_exposure must be boolean" in source
     assert "exposure_time_absolute must be between 1 and 5000" in source
     assert "camera_gain must be between 0 and 63" in source
+    assert "automatic_white_balance must be boolean" in source
+    assert "white_balance_temperature must be between 2800 and 6500" in source
     assert 'controls = "auto_exposure=3"' in source
 
 

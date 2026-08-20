@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fast DDS participants created before network time synchronisation can remain
+# alive at process level while their ROS graph endpoints disappear after a
+# large wall-clock jump. Refuse to start the console agent on the RTC fallback
+# date; systemd will retry it until the host clock is sane.
+minimum_epoch="${PROJECT_LINK_MINIMUM_EPOCH:-1704067200}"
+timeout_sec="${PROJECT_LINK_CLOCK_WAIT_TIMEOUT_SEC:-60}"
+deadline=$((SECONDS + timeout_sec))
+
+while (( $(date +%s) < minimum_epoch )); do
+  if (( SECONDS >= deadline )); then
+    echo "Wall clock is not synchronised after ${timeout_sec}s" >&2
+    exit 1
+  fi
+  sleep 1
+done

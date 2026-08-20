@@ -27,7 +27,10 @@ class TeleopPad(QWidget):
         self._timer.start()
 
     def set_mapping_mode(self, enabled: bool) -> None:
-        self._mapping_mode = bool(enabled)
+        enabled = bool(enabled)
+        if enabled == self._mapping_mode:
+            return
+        self._mapping_mode = enabled
         if not enabled:
             self._keys.clear()
             self._emit_command()
