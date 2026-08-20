@@ -84,6 +84,11 @@ are evidence snapshots, not current operating instructions.
 - Run Linux-only checks such as PySide6 rendering, ROS 2 builds, Bash validation,
   `systemd-analyze --user verify` and user-unit tests directly on the target Linux
   machines over SSH.
+- Orin production `systemd --user` services require `loginctl show-user wte -p
+  Linger` to report `yes`. With `Linger=no`, healthy services can receive SIGINT
+  and stop shortly after the final SSH session closes, which can look like an
+  application crash. Checking linger is agent-owned and read-only; enabling it
+  with `sudo loginctl enable-linger wte` is a Level 3 user action.
 - Tell the user before initiating any SSH connection and identify the target.
   The Orin is normally powered on during coding sessions. The Ubuntu laptop may
   be off, so ask the user to power it on before a validation step that requires it.

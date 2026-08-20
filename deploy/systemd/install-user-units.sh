@@ -31,6 +31,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 mkdir -p "$target_dir"
+linger="$(loginctl show-user "$USER" --property=Linger --value 2>/dev/null || true)"
+if [[ "$linger" != "yes" ]]; then
+  cat >&2 <<EOF
+WARNING: systemd user lingering is not enabled for $USER.
+Project LINK services may stop when the SSH/login session closes.
+Run once with administrator authority:
+  sudo loginctl enable-linger $USER
+EOF
+fi
 for unit in "$source_dir"/*.service "$source_dir"/*.target; do
   install -m 0644 "$unit" "$target_dir/$(basename "$unit")"
 done

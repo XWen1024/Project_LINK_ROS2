@@ -58,6 +58,20 @@ def test_systemd_rejects_arbitrary_unit():
         raise AssertionError("arbitrary unit was accepted")
 
 
+def test_reset_failed_remains_allowlisted():
+    commands = []
+
+    def runner(command, timeout):
+        commands.append((command, timeout))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    manager = SystemdManager(runner=runner)
+    manager.reset_failed(UNITS["voice_qwen"])
+    assert commands == [
+        (["systemctl", "--user", "reset-failed", UNITS["voice_qwen"]], 10.0)
+    ]
+
+
 def test_nonblocking_start_uses_systemd_job_queue():
     commands = []
 

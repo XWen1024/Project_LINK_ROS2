@@ -26,7 +26,7 @@ from project_link_console_interfaces.msg import (
 
 from .systemd import SystemdManager, UNITS
 from .teleop import TeleopLease
-from .voice_state import VoiceState, parse_voice_status
+from .voice_state import VoiceState, active_voice_backend, parse_voice_status
 
 
 SUBSYSTEM_LABELS = {
@@ -334,7 +334,10 @@ class ConsoleAgent(Node):
         message.mode_name = mode_name
         message.emergency_stop_latched = emergency
         message.teleop_active = teleop_active
-        message.voice_backend = voice.backend
+        message.voice_backend = active_voice_backend(
+            states[UNITS["voice_classic"]].active,
+            states[UNITS["voice_qwen"]].active,
+        )
         message.message = "emergency_stop_latched" if emergency else "ready"
         for unit, state in states.items():
             item = SubsystemState()
@@ -583,7 +586,15 @@ class ConsoleAgent(Node):
         result = SwitchVoice.Result()
         with self._lock:
             current = self._voice
-        if request.backend != SwitchVoice.Goal.BACKEND_OFF and not current.idle:
+        voice_units = self._systemd.safe_states(
+            [UNITS["voice_classic"], UNITS["voice_qwen"]]
+        )
+        any_voice_active = any(state.active for state in voice_units.values())
+        if (
+            request.backend != SwitchVoice.Goal.BACKEND_OFF
+            and any_voice_active
+            and not current.idle
+        ):
             goal_handle.abort()
             result.success = False
             result.active_backend = SwitchVoice.Goal.BACKEND_OFF
@@ -597,6 +608,14 @@ class ConsoleAgent(Node):
             goal_handle.publish_feedback(feedback)
             self._systemd.stop(UNITS["voice_classic"])
             self._systemd.stop(UNITS["voice_qwen"])
+            stopped_states = self._systemd.safe_states(
+                [UNITS["voice_classic"], UNITS["voice_qwen"]]
+            )
+            for unit, state in stopped_states.items():
+                if state.active_state == "failed":
+                    self._systemd.reset_failed(unit)
+            with self._lock:
+                self._voice = VoiceState()
             if request.backend == SwitchVoice.Goal.BACKEND_CLASSIC:
                 self._systemd.start(UNITS["voice_classic"])
             elif request.backend == SwitchVoice.Goal.BACKEND_QWEN_REALTIME:
@@ -604,6 +623,8 @@ class ConsoleAgent(Node):
             elif request.backend != SwitchVoice.Goal.BACKEND_OFF:
                 raise ValueError("unsupported_voice_backend")
         except Exception as exc:
+            with self._lock:
+                self._voice = VoiceState()
             goal_handle.abort()
             result.success = False
             result.active_backend = SwitchVoice.Goal.BACKEND_OFF

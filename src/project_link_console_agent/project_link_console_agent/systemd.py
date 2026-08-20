@@ -90,6 +90,9 @@ class SystemdManager:
     def stop(self, unit: str) -> None:
         self._run(["stop", self.validate_unit(unit)], timeout_sec=30.0)
 
+    def reset_failed(self, unit: str) -> None:
+        self._run(["reset-failed", self.validate_unit(unit)], timeout_sec=10.0)
+
     def restart(self, unit: str) -> None:
         self._run(["restart", self.validate_unit(unit)], timeout_sec=240.0)
 

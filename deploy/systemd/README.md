@@ -10,6 +10,22 @@ cd /home/wte/wheeltec_robot
 ./deploy/systemd/install-user-units.sh
 ```
 
+The Orin user manager must survive SSH logout. Verify once with:
+
+```bash
+loginctl show-user wte -p Linger
+```
+
+If it reports `Linger=no`, enable it with administrator authority before using
+the console as a production lifecycle controller:
+
+```bash
+sudo loginctl enable-linger wte
+```
+
+Without lingering, otherwise healthy Qwen, console-agent and robot user services
+receive SIGINT shortly after the final SSH/login session closes.
+
 The installer copies and verifies the units, reloads the user manager and enables
 only `project-link-console-agent.service` for future logins. Add `--start-agent`
 to start that headless, no-motion agent immediately. It never starts a robot stack.

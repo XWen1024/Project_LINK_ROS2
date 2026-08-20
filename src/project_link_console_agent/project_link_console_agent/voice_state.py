@@ -6,6 +6,14 @@ from dataclasses import dataclass
 import json
 
 
+def active_voice_backend(classic_active: bool, qwen_active: bool) -> str:
+    if qwen_active:
+        return "qwen_realtime"
+    if classic_active:
+        return "classic"
+    return "off"
+
+
 @dataclass(frozen=True)
 class VoiceState:
     backend: str = "off"
