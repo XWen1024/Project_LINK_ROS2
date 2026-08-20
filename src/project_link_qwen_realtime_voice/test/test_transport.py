@@ -78,7 +78,7 @@ def test_transport_configures_semantic_vad_and_tools(monkeypatch):
     conversation = FakeConversation.instance
     assert conversation.session["turn_detection_type"] == "semantic_vad"
     assert conversation.session["turn_detection_threshold"] == 0.5
-    assert conversation.session["turn_detection_silence_duration_ms"] == 1200
+    assert conversation.session["turn_detection_silence_duration_ms"] == 800
     assert conversation.session["enable_search"] is False
 
     transport.append_audio(b"pcm")

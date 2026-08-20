@@ -30,7 +30,7 @@ class DashScopeRealtimeTransport:
         output_sample_rate: int = 24000,
         vad_type: str = "semantic_vad",
         vad_threshold: float = 0.5,
-        vad_silence_ms: int = 1200,
+        vad_silence_ms: int = 800,
         prefix_padding_ms: int = 300,
     ) -> None:
         self._callback = callback

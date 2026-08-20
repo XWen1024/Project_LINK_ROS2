@@ -187,7 +187,7 @@ class QwenRealtimeVoiceNode(Node):
         self.declare_parameter("qwen_realtime_voice", os.environ.get("QWEN_REALTIME_VOICE", "Ethan"))
         self.declare_parameter("turn_detection_type", "semantic_vad")
         self.declare_parameter("turn_detection_threshold", 0.5)
-        self.declare_parameter("turn_detection_silence_duration_ms", 1200)
+        self.declare_parameter("turn_detection_silence_duration_ms", 800)
         self.declare_parameter("prefix_padding_ms", 300)
         self.declare_parameter("barge_in_enabled", True)
         self.declare_parameter("audio_input_sample_rate", 16000)
@@ -213,6 +213,7 @@ class QwenRealtimeVoiceNode(Node):
         self.declare_parameter("keyboard_wakeup", False)
         self.declare_parameter("wakeup_ack_text", "我在，请说。")
         self.declare_parameter("wakeup_ack_pcm_file", "~/.cache/project_link_qwen_realtime/wakeup_ack.pcm")
+        self.declare_parameter("listen_during_wakeup_ack", True)
         self.declare_parameter("continuous_conversation_enabled", True)
         self.declare_parameter("continuous_silence_timeout_sec", 30.0)
         self.declare_parameter("first_turn_no_speech_timeout_sec", 8.0)
@@ -498,7 +499,8 @@ class QwenRealtimeVoiceNode(Node):
                 except OSError as exc:
                     self.get_logger().warn(f"Failed to cache wake acknowledgement: {exc}")
                 self._wake_ack_capture.clear()
-            self._enable_listening(first_turn=True)
+            if not bool(self.get_parameter("listen_during_wakeup_ack").value):
+                self._enable_listening(first_turn=True)
             return
         if self._end_after_response:
             self._end_after_response = False
@@ -603,15 +605,23 @@ class QwenRealtimeVoiceNode(Node):
         if self._audio is not None and cache_file.is_file():
             generation = self._audio.next_generation()
             self._audio.enqueue(cache_file.read_bytes(), generation)
+            listen_immediately = bool(
+                self.get_parameter("listen_during_wakeup_ack").value
+            )
+            if listen_immediately:
+                self._enable_listening(first_turn=True)
 
             def wait_ack() -> None:
                 self._audio.wait_idle(5.0)
-                self._enable_listening(first_turn=True)
+                if not listen_immediately:
+                    self._enable_listening(first_turn=True)
 
             threading.Thread(target=wait_ack, daemon=True).start()
             return
         self._wake_ack_response = True
         self._wake_ack_capture.clear()
+        if bool(self.get_parameter("listen_during_wakeup_ack").value):
+            self._enable_listening(first_turn=True)
         self._transport.send_text(
             "请严格只朗读以下内容，不要改写："
             + str(self.get_parameter("wakeup_ack_text").value)
