@@ -49,17 +49,18 @@ if ! systemctl --user cat "$entry_unit" >/dev/null 2>&1; then
 fi
 
 echo "Submitting $component through Orin systemd --user..."
-systemctl --user reset-failed "${required_units[@]}" >/dev/null 2>&1 || true
+systemctl --user reset-failed "$entry_unit" "${required_units[@]}" >/dev/null 2>&1 || true
 systemctl --user start --no-block "$entry_unit"
 
 deadline=$((SECONDS + timeout_sec))
 while (( SECONDS < deadline )); do
   all_active=1
+  summary=""
   for unit in "${required_units[@]}"; do
     active="$(systemctl --user show "$unit" --property=ActiveState --value)"
     sub="$(systemctl --user show "$unit" --property=SubState --value)"
     result="$(systemctl --user show "$unit" --property=Result --value)"
-    printf '%-46s %-11s %-12s %s\n' "$unit" "$active" "$sub" "$result"
+    summary+="${unit#project-link-}=${active}/${sub} "
     if [[ "$active" == "failed" ]]; then
       echo "Startup failed at $unit" >&2
       journalctl --user -u "$unit" -n 35 --no-pager >&2 || true
@@ -67,12 +68,13 @@ while (( SECONDS < deadline )); do
     fi
     [[ "$active" == "active" ]] || all_active=0
   done
+  echo "$summary"
   if (( all_active )); then
     echo "$component is ready. No goal or motion command was sent."
     exit 0
   fi
   echo "Waiting for $component startup..."
-  sleep 2
+  sleep 3
 done
 
 echo "Timed out waiting for $component after ${timeout_sec}s." >&2

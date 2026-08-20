@@ -58,13 +58,16 @@ are evidence snapshots, not current operating instructions.
   and loopback listeners but could not pass a typed ROS endpoint across the WAN
   participants. Do not enable it as the default console path without a new
   successful end-to-end gate.
-- Production DDS must bind to exactly one routed IPv4 interface per host. Source
-  `scripts/project_link_dds_profile.sh` before ROS startup; it selects the
-  interface/address from the kernel route (or the explicit
-  `PROJECT_LINK_DDS_INTERFACE` override) and disables Fast DDS builtin transports.
-  Do not allow Fast DDS to advertise both Wi-Fi and Ethernet on the same LAN.
-  If a field router blocks UDP between its wired and wireless clients, set the
-  allowlisted `PROJECT_LINK_DDS_INTERFACE` override so both hosts use the same
+- The verified production default is native Fast DDS on domain 42. The generated
+  single-interface profile is experimental and must remain disabled unless
+  `PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS=1` is explicitly set for a complete,
+  consistently restarted stack. Never mix old native-DDS processes with newly
+  started profile-bound processes: this caused Nav2 to see its own Action while
+  losing the existing Point-LIO odometry/TF publishers.
+  If a field router blocks UDP between its wired and wireless clients, first
+  preserve the verified native DDS path. For a supervised full-stack experiment,
+  set the explicit enable flag and the allowlisted
+  `PROJECT_LINK_DDS_INTERFACE` override so both hosts use the same
   reachable LAN segment; an initial-peer XML entry cannot bypass blocked UDP.
   Remove the override after the production CPE passes bidirectional UDP and
   multicast gates with Orin on Ethernet and Ubuntu on 5 GHz Wi-Fi.

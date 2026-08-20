@@ -108,11 +108,14 @@ device when two same-subnet interfaces exist. This same-subnet dual-homing must
 be eliminated or handled with verified policy routing; it is not a robust
 production topology.
 
-The Orin allowlisted runtime configuration was set to:
+The Orin allowlisted runtime configuration contains the following historical
+diagnostic values, but the profile is disabled by default unless the explicit
+enable flag is set:
 
 ```text
 PROJECT_LINK_DDS_INTERFACE=wlP1p1s0
 PROJECT_LINK_DDS_PEER_IP=192.168.66.160
+PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS=0
 FRONT_CAMERA_PREVIEW_FPS=24.0
 ```
 

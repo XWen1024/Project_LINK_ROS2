@@ -45,7 +45,9 @@ case "$component" in
     set -u
     export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
     export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
-    source "$workspace/scripts/project_link_dds_profile.sh"
+    if [[ "${PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS:-0}" == "1" ]]; then
+      source "$workspace/scripts/project_link_dds_profile.sh"
+    fi
     exec ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
       -p port:="${UNILIDAR_PORT:-/dev/project_link_lidar}"
     ;;

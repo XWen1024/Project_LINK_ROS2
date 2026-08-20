@@ -39,7 +39,9 @@ Secrets are edited through
 an SSH-invoked allowlisted configuration helper and are never transported as ROS
 messages.
 
-Every production ROS process sources `scripts/project_link_dds_profile.sh`. It
+Native Fast DDS on domain 42 is the production default. The optional
+`scripts/project_link_dds_profile.sh` is sourced only when
+`PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS=1`. It
 asks the kernel which interface routes to the configured peer/default gateway,
 generates a user-runtime Fast DDS XML profile, disables builtin transports and
 re-enables only an explicit SHM transport plus one UDP transport whitelisted to
@@ -49,7 +51,15 @@ has Ethernet and Wi-Fi on the same subnet while still following DHCP/network
 changes. The vehicle baseline is Orin-to-CPE Ethernet plus Ubuntu-to-CPE 5 GHz
 Wi-Fi; lifecycle/configuration remain separate SSH traffic.
 
-The 2026-08-20 temporary router passed ICMP/TCP but dropped bidirectional unicast
+Do not enable it for only part of a live stack. A mixed deployment left the old
+Point-LIO/map processes on native DDS while a new Nav2 process used the custom
+profile; Nav2 exposed `/navigate_to_pose` but could not discover `/odom_lio_raw`
+or `odom -> base_footprint`, so its local costmap never activated.
+
+The 2026-08-20 temporary router diagnosis reported conflicting socket results,
+but a 2026-08-21 live screenshot proved that console map, scan, status and camera
+DDS were operating. Treat native DDS as authoritative until a full-stack profile
+test passes. The earlier test suggested that the router passed ICMP/TCP but dropped bidirectional unicast
 UDP between Orin Ethernet and Ubuntu Wi-Fi. In that topology Orin must use the
 allowlisted `PROJECT_LINK_DDS_INTERFACE=wlP1p1s0` override so both DDS peers stay
 on the reachable Wi-Fi segment. This is still single-interface DDS, not a return

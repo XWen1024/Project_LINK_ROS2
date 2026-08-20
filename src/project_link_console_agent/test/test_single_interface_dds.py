@@ -18,10 +18,12 @@ def test_runtime_fastdds_profile_is_single_interface_and_dynamic():
     assert 'export FASTRTPS_DEFAULT_PROFILES_FILE="$profile"' in helper
 
 
-def test_orin_and_ubuntu_launchers_source_fastdds_profile():
+def test_orin_and_ubuntu_launchers_gate_fastdds_profile_explicitly():
     orin_env = (ROOT / "scripts" / "project_link_env.sh").read_text(encoding="utf-8")
     ubuntu_launcher = (
         ROOT / "deploy" / "dds-router" / "bin" / "project-link-console"
     ).read_text(encoding="utf-8")
     assert "project_link_dds_profile.sh" in orin_env
     assert "project_link_dds_profile.sh" in ubuntu_launcher
+    assert "PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS" in orin_env
+    assert "PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS" in ubuntu_launcher

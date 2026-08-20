@@ -20,6 +20,8 @@ else
   export PROJECT_LINK_TRANSPORT_MODE=legacy-dds
 fi
 
-source "$workspace/scripts/project_link_dds_profile.sh"
+if [[ "${PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS:-0}" == "1" ]]; then
+  source "$workspace/scripts/project_link_dds_profile.sh"
+fi
 
 exec ros2 run project_link_console_gui project_link_console "$@"

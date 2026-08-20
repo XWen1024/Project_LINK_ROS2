@@ -22,6 +22,7 @@ FIELDS = [
     ("console", "ROS_DOMAIN_ID", "ROS Domain ID", False, True),
     ("console", "PROJECT_LINK_DDS_INTERFACE", "DDS 指定网卡（留空自动）", False, True),
     ("console", "PROJECT_LINK_DDS_PEER_IP", "DDS 对端 IP（留空走默认路由）", False, True),
+    ("console", "PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS", "实验性单网卡 DDS", False, True),
     ("console", "ROS_LOCALHOST_ONLY", "允许局域网 ROS", False, True),
     ("console", "CHASSIS_DEVICE", "底盘控制器设备", False, True),
     ("console", "UNILIDAR_PORT", "Unitree 雷达设备", False, False),

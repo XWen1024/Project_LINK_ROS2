@@ -2,7 +2,8 @@
 
 export ROS_DOMAIN_ID=42
 export ROS_LOCALHOST_ONLY=0
-if [ -f /home/wte/wheeltec_robot/scripts/project_link_dds_profile.sh ]; then
+if [ "${PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS:-0}" = "1" ] && \
+   [ -f /home/wte/wheeltec_robot/scripts/project_link_dds_profile.sh ]; then
   source /home/wte/wheeltec_robot/scripts/project_link_dds_profile.sh
 fi
 source /opt/ros/humble/setup.bash
