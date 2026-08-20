@@ -113,8 +113,8 @@ export ROS_LOCALHOST_ONLY=0
 ```
 
 Operator SSH uses `ssh orin` (`wte`) and `ssh seewo` (`xwen`). Their Windows SSH
-aliases point to the currently verified numeric IPs; on 2026-08-19 these are
-`10.255.176.119` and `10.255.176.106`. When the LAN changes, use mDNS only to
+aliases point to the currently verified numeric IPs; on 2026-08-20 these are
+`192.168.66.27` and `192.168.66.160`. When the LAN changes, use mDNS only to
 rediscover candidates, verify hostname/machine-id/host-key identity, and update
 the numeric alias instead of installing a permanent mDNS proxy mapping.
 

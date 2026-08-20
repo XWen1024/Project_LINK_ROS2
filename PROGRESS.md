@@ -84,8 +84,9 @@ Archive tags:
 - The allowlisted configuration helper passed masking and runtime-YAML tests.
   Ubuntu now has its own ED25519 key authorized exactly once on Orin; real config
   read, secret masking and no-op write passed without copying the Windows key.
-- After the LAN changed on 2026-08-19, bounded subnet discovery found and verified
-  Ubuntu at `10.255.176.106` and Orin at `10.255.176.119` using hostname,
+- After the LAN changed again on 2026-08-20, mDNS discovery and strict stable
+  HostKeyAlias verification found Ubuntu at `192.168.66.160` and Orin at
+  `192.168.66.27` using hostname,
   machine-id and ED25519 host-key fingerprints. Windows aliases now use those
   numeric IPs directly; the attempted permanent mDNS proxy mapping was removed.
   Future alias failures trigger immediate rediscovery and verified IP refresh.

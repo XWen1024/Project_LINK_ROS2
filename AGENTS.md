@@ -97,8 +97,8 @@ are evidence snapshots, not current operating instructions.
 - Use the system SSH aliases `ssh orin` for the Orin Nano and `ssh seewo` for the
   Ubuntu laptop, with users `wte` and `xwen` respectively. The aliases intentionally
   point to the currently verified numeric DHCP addresses instead of relying on a
-  permanent mDNS `ProxyCommand`. As of 2026-08-19 they are Orin `10.255.176.119`
-  and Ubuntu `10.255.176.106`.
+  permanent mDNS `ProxyCommand`. As of 2026-08-20 they are Orin `192.168.66.27`
+  and Ubuntu `192.168.66.160`.
 - Treat an SSH alias failure as a likely network/DHCP change before spending time
   debugging the old address. Autonomously inspect the active Windows subnet, scan
   that bounded subnet for SSH hosts, and use mDNS only to discover candidates

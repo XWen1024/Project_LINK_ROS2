@@ -47,7 +47,7 @@ allowlisted console bridge over SSH with explicit reconnect/state resync.
 
 Interactive access uses the stable aliases `ssh orin` and `ssh seewo`, while each
 alias points to the currently verified numeric DHCP address. On 2026-08-19 the
-addresses are Orin `10.255.176.119` and Ubuntu `10.255.176.106`. If an alias stops
+addresses are Orin `192.168.66.27` and Ubuntu `192.168.66.160`. If an alias stops
 connecting after a network change, scan the current bounded subnet and use mDNS
 only for candidate discovery. Revalidate hostname, machine-id and the SSH host-key
 fingerprint before updating the alias IP; do not depend on a permanent mDNS proxy.
