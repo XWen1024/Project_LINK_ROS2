@@ -22,6 +22,15 @@ switching is single-flight with nonblocking systemd job submission. Linux build,
 CPU/bandwidth measurement and 20-cycle voice lifecycle validation remain the
 deployment gate.
 
+On 2026-08-21 the lifecycle path was split from the console: fixed allowlisted
+SSH/systemd scripts now start Nav2, Qwen Realtime and fall response directly on
+Orin. All three passed live readiness checks without sending a navigation goal,
+fall event or motion command. Nav2 initially failed because a newly profile-bound
+process could not see the older native-DDS Point-LIO odometry; custom
+single-interface DDS is therefore opt-in again and native Fast DDS remains the
+verified default. A second SSH start completed and the Ubuntu screenshot showed
+Navigation2 mode with the live local costmap restored.
+
 ## Repository Consolidation Completed
 
 - [x] Split the former 50-file dirty main into coherent VL53L0X, visual-grasp,

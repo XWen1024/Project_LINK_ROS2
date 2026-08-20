@@ -22,6 +22,16 @@ The Ubuntu console has a dedicated **跌倒检测** page. Ubuntu renders video,
 evidence, status, event history and configuration; Orin retains camera, model,
 SQLite, Nav2 Action and notification ownership.
 
+The backend can be started independently of the console over SSH:
+
+```bash
+ssh orin /home/wte/wheeltec_robot/scripts/standalone/start_fall_response.sh
+```
+
+This starts the fixed `project-link-emergency.target` allowlist and waits for the
+front camera, fall coordinator and WeChat notifier through systemd state. It does
+not create an event, send a notification or start motion.
+
 ## Implemented backend
 
 Android endpoints remain:

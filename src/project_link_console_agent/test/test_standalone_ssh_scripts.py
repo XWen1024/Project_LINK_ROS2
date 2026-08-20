@@ -42,3 +42,15 @@ def test_three_client_wrappers_use_ssh_and_fixed_remote_scripts():
         assert "BatchMode=yes" in source
         assert "PROJECT_LINK_ORIN_SSH_TARGET" in source
         assert "/home/wte/wheeltec_robot/scripts/standalone/" in source
+
+
+def test_windows_double_click_wrappers_use_orin_alias():
+    windows = ROOT / "scripts" / "windows"
+    for name in (
+        "start_nav2_over_ssh.cmd",
+        "start_qwen_realtime_over_ssh.cmd",
+        "start_fall_response_over_ssh.cmd",
+    ):
+        source = (windows / name).read_text(encoding="utf-8")
+        assert "ssh orin /home/wte/wheeltec_robot/scripts/standalone/" in source
+        assert "pause" in source

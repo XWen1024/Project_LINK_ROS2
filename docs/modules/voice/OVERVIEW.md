@@ -29,3 +29,13 @@ cancel pending/active robot work, play the fixed exit acknowledgement, close the
 current realtime session and return to wake standby. Direct keyword matching
 remains a fallback for exact and repeated commands such as `退出退出`. Runtime YAML
 overrides remain local mode-0600 files on Orin.
+
+Qwen Realtime also has a console-independent production entry point:
+
+```bash
+ssh orin /home/wte/wheeltec_robot/scripts/standalone/start_qwen_realtime.sh
+```
+
+It talks only to Orin `systemd --user`, relies on the service's existing conflict
+with the classic backend and reports readiness from systemd. It does not require
+the Ubuntu console or console-agent Action path.

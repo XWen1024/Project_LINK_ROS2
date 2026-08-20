@@ -16,6 +16,14 @@ ssh orin /home/wte/wheeltec_robot/scripts/standalone/start_qwen_realtime.sh
 ssh orin /home/wte/wheeltec_robot/scripts/standalone/start_fall_response.sh
 ```
 
+Windows double-click wrappers are also provided:
+
+```text
+scripts/windows/start_nav2_over_ssh.cmd
+scripts/windows/start_qwen_realtime_over_ssh.cmd
+scripts/windows/start_fall_response_over_ssh.cmd
+```
+
 From the Ubuntu laptop, use its configured SSH target, for example:
 
 ```bash
