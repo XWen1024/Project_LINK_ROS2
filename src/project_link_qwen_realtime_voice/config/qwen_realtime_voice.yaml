@@ -34,9 +34,9 @@ qwen_realtime_voice_node:
     demo_step_sec: 1.0
     demo_turn_sec: 1.2
     demo_spin_sec: 5.5
-    turn_detection_type: semantic_vad
-    turn_detection_threshold: 0.5
-    turn_detection_silence_duration_ms: 800
+    turn_detection_type: server_vad
+    turn_detection_threshold: 0.3
+    turn_detection_silence_duration_ms: 1000
     prefix_padding_ms: 300
     barge_in_enabled: true
     audio_input_sample_rate: 16000
@@ -53,10 +53,13 @@ qwen_realtime_voice_node:
     keyboard_wakeup: false
     wakeup_ack_text: 我在，请说。
     wakeup_ack_pcm_file: ~/.cache/project_link_qwen_realtime/wakeup_ack.pcm
-    listen_during_wakeup_ack: true
+    listen_during_wakeup_ack: false
     continuous_conversation_enabled: true
     continuous_silence_timeout_sec: 30.0
-    first_turn_no_speech_timeout_sec: 8.0
+    first_turn_no_speech_timeout_sec: 12.0
+    local_audio_peak_threshold: 700
+    local_audio_rms_threshold: 120.0
+    local_audio_min_voiced_chunks: 3
     continuous_max_turns: 0
     continuous_max_session_sec: 0.0
     conversation_exit_reply: 好的，我退下了

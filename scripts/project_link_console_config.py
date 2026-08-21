@@ -54,6 +54,10 @@ VOICE_PARAMETERS = {
         "audio_input_chunk_ms": (int, 20, 500),
         "audio_output_chunk_ms": (int, 10, 500),
         "first_turn_no_speech_timeout_sec": (float, 2.0, 60.0),
+        "listen_during_wakeup_ack": (bool, None, None),
+        "local_audio_peak_threshold": (int, 100, 10000),
+        "local_audio_rms_threshold": (float, 10.0, 5000.0),
+        "local_audio_min_voiced_chunks": (int, 1, 100),
         "confirmation_timeout_sec": (float, 5.0, 120.0),
     },
 }

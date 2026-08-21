@@ -6,7 +6,6 @@ import base64
 import json
 import os
 import queue
-import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -25,7 +24,7 @@ from std_msgs.msg import String
 
 from project_link_voice.wakeup import SerialWakeDetector, resolve_wakeup_serial_port
 
-from .audio import DuplexPcmAudio
+from .audio import DuplexPcmAudio, pcm16_levels
 from .protocol import RealtimeEvent
 from .robot_tools import RobotToolController
 from .timing import TimingTrace
@@ -49,6 +48,10 @@ class QwenRealtimeVoiceNode(Node):
         self._conversation_active = threading.Event()
         self._input_requested = False
         self._microphone_stream_seen = False
+        self._microphone_peak_max = 0
+        self._microphone_rms_max = 0.0
+        self._microphone_voiced_chunks = 0
+        self._manual_audio_commit_sent = False
         self._wake_serial_state = "starting"
         self._wake_serial_port = ""
         self._wake_bytes_seen = 0
@@ -185,9 +188,9 @@ class QwenRealtimeVoiceNode(Node):
             os.environ.get("QWEN_REALTIME_MODEL", "qwen3.5-omni-flash-realtime"),
         )
         self.declare_parameter("qwen_realtime_voice", os.environ.get("QWEN_REALTIME_VOICE", "Ethan"))
-        self.declare_parameter("turn_detection_type", "semantic_vad")
-        self.declare_parameter("turn_detection_threshold", 0.5)
-        self.declare_parameter("turn_detection_silence_duration_ms", 800)
+        self.declare_parameter("turn_detection_type", "server_vad")
+        self.declare_parameter("turn_detection_threshold", 0.3)
+        self.declare_parameter("turn_detection_silence_duration_ms", 1000)
         self.declare_parameter("prefix_padding_ms", 300)
         self.declare_parameter("barge_in_enabled", True)
         self.declare_parameter("audio_input_sample_rate", 16000)
@@ -213,10 +216,13 @@ class QwenRealtimeVoiceNode(Node):
         self.declare_parameter("keyboard_wakeup", False)
         self.declare_parameter("wakeup_ack_text", "我在，请说。")
         self.declare_parameter("wakeup_ack_pcm_file", "~/.cache/project_link_qwen_realtime/wakeup_ack.pcm")
-        self.declare_parameter("listen_during_wakeup_ack", True)
+        self.declare_parameter("listen_during_wakeup_ack", False)
         self.declare_parameter("continuous_conversation_enabled", True)
         self.declare_parameter("continuous_silence_timeout_sec", 30.0)
-        self.declare_parameter("first_turn_no_speech_timeout_sec", 8.0)
+        self.declare_parameter("first_turn_no_speech_timeout_sec", 12.0)
+        self.declare_parameter("local_audio_peak_threshold", 700)
+        self.declare_parameter("local_audio_rms_threshold", 120.0)
+        self.declare_parameter("local_audio_min_voiced_chunks", 3)
         self.declare_parameter("continuous_max_turns", 0)
         self.declare_parameter("continuous_max_session_sec", 0.0)
         self.declare_parameter("conversation_exit_reply", "好的，我退下了")
@@ -288,6 +294,8 @@ class QwenRealtimeVoiceNode(Node):
             self._session_ready.set()
             if self._audio is not None:
                 self._audio.set_input_enabled(self._input_requested)
+            if self._conversation_active.is_set() and self._input_requested:
+                self._last_activity = time.monotonic()
             self.get_logger().info(
                 "Qwen realtime session ready: "
                 + json.dumps(payload.get("session", {}).get("turn_detection", {}), ensure_ascii=False)
@@ -301,6 +309,8 @@ class QwenRealtimeVoiceNode(Node):
             if self._audio is not None:
                 self._audio.set_input_enabled(False)
                 self._audio.interrupt()
+            if self._conversation_active.is_set() and self._input_requested:
+                self._reset_local_audio_evidence()
             if self._intentional_session_rotation and event_type == "transport.close":
                 self._intentional_session_rotation = False
                 self.get_logger().info("Qwen realtime session rotated after conversation")
@@ -644,7 +654,7 @@ class QwenRealtimeVoiceNode(Node):
         self._awaiting_first_speech = first_turn
         self._last_activity = time.monotonic()
         self._response_audio_seen = False
-        self._microphone_stream_seen = False
+        self._reset_local_audio_evidence()
         self._input_requested = True
         if self._audio is not None:
             self._audio.set_input_enabled(self._session_ready.is_set())
@@ -668,6 +678,7 @@ class QwenRealtimeVoiceNode(Node):
     def _check_conversation_timeout(self) -> None:
         if (
             not self._conversation_active.is_set()
+            or not self._session_ready.is_set()
             or not self._input_requested
             or self._response_audio_seen
             or self._end_after_response
@@ -692,6 +703,34 @@ class QwenRealtimeVoiceNode(Node):
             ).value
         )
         if timeout > 0 and now - self._last_activity >= timeout:
+            if (
+                self._awaiting_first_speech
+                and not self._manual_audio_commit_sent
+                and self._microphone_voiced_chunks
+                >= int(self.get_parameter("local_audio_min_voiced_chunks").value)
+            ):
+                self._manual_audio_commit_sent = True
+                self._awaiting_first_speech = False
+                self._input_requested = False
+                if self._audio is not None:
+                    self._audio.set_input_enabled(False)
+                self.get_logger().warn(
+                    "Server VAD missed locally voiced PCM; committing fallback audio: "
+                    f"chunks={self._microphone_voiced_chunks}, "
+                    f"peak={self._microphone_peak_max}, rms={self._microphone_rms_max:.1f}"
+                )
+                self._timing(
+                    "local_audio_fallback_commit",
+                    voiced_chunks=self._microphone_voiced_chunks,
+                    peak=self._microphone_peak_max,
+                    rms=round(self._microphone_rms_max, 1),
+                )
+                try:
+                    self._transport.commit_audio()
+                    self._transport.create_response()
+                    return
+                except Exception as exc:
+                    self.get_logger().error(f"Fallback audio commit failed: {exc}")
             reply = (
                 "没有听到有效语音，我先休息了。"
                 if self._awaiting_first_speech
@@ -708,16 +747,26 @@ class QwenRealtimeVoiceNode(Node):
     def _on_microphone_audio(self, pcm: bytes) -> None:
         if self._session_ready.is_set() and self._conversation_active.is_set():
             try:
+                peak, rms = pcm16_levels(pcm)
+                self._microphone_peak_max = max(self._microphone_peak_max, peak)
+                self._microphone_rms_max = max(self._microphone_rms_max, rms)
+                if (
+                    peak >= int(self.get_parameter("local_audio_peak_threshold").value)
+                    or rms >= float(self.get_parameter("local_audio_rms_threshold").value)
+                ):
+                    self._microphone_voiced_chunks += 1
                 if not self._microphone_stream_seen:
                     self._microphone_stream_seen = True
-                    peak = max(
-                        (abs(sample) for sample, in struct.iter_unpack("<h", pcm)),
-                        default=0,
-                    )
                     self.get_logger().info(
-                        f"Microphone PCM upload started: bytes={len(pcm)}, peak={peak}"
+                        "Microphone PCM upload started: "
+                        f"bytes={len(pcm)}, peak={peak}, rms={rms:.1f}"
                     )
-                    self._timing("microphone_first_chunk", bytes=len(pcm), peak=peak)
+                    self._timing(
+                        "microphone_first_chunk",
+                        bytes=len(pcm),
+                        peak=peak,
+                        rms=round(rms, 1),
+                    )
                 self._transport.append_audio(pcm)
             except Exception as exc:
                 self.get_logger().error(f"Microphone upload failed: {exc}")
@@ -770,12 +819,22 @@ class QwenRealtimeVoiceNode(Node):
             "wakeup_events_seen": self._wake_events_seen,
             "wakeup_last_data_age_sec": round(last_data_age, 3),
             "microphone_stream_seen": self._microphone_stream_seen,
+            "microphone_peak_max": self._microphone_peak_max,
+            "microphone_rms_max": round(self._microphone_rms_max, 1),
+            "microphone_voiced_chunks": self._microphone_voiced_chunks,
         }
         self._status_pub.publish(String(data=json.dumps(status, ensure_ascii=False)))
 
     def _timing(self, phase: str, **fields: Any) -> None:
         if self._trace is not None:
             self._trace.event(phase, **fields)
+
+    def _reset_local_audio_evidence(self) -> None:
+        self._microphone_stream_seen = False
+        self._microphone_peak_max = 0
+        self._microphone_rms_max = 0.0
+        self._microphone_voiced_chunks = 0
+        self._manual_audio_commit_sent = False
 
     @staticmethod
     def _extract_text(payload: dict[str, Any]) -> str:

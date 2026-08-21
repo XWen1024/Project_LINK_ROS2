@@ -1,4 +1,10 @@
-from project_link_qwen_realtime_voice.audio import DuplexPcmAudio, resolve_device
+from project_link_qwen_realtime_voice.audio import DuplexPcmAudio, pcm16_levels, resolve_device
+
+
+def test_pcm16_levels_reports_peak_and_rms():
+    peak, rms = pcm16_levels(b"\x00\x00\xe8\x03\x18\xfc")
+    assert peak == 1000
+    assert 816.0 < rms < 817.0
 
 
 class FakePortAudio:

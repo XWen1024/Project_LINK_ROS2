@@ -19,7 +19,9 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
   visual-servo target/box anchor GUI. CUDA Torch never replaces LeRobot's
   validated CPU environment.
 - Voice: classic Volcano/DeepSeek pipeline and Qwen Realtime are both available
-  but must never run simultaneously.
+  but must never run simultaneously. Qwen uses acoustic server VAD plus a local
+  PCM-energy commit fallback so real microphone audio is not discarded merely
+  because the cloud omits a speech event.
 - UWB: code is preserved, but the page is hidden and the module is outside the current MVP.
 - Fall response: the Android client, static fallback and fail-closed real Nav2
   Spin adapter are implemented with Token-authenticated HTTP, strict SQLite

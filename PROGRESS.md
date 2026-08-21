@@ -49,6 +49,14 @@ Point-LIO and Nav2, and the standalone launcher now enforces that restart. The
 Orin shared environment also auto-prefers a reachable USB console peer so stale
 GUI configuration cannot recreate the split.
 
+The first live Qwen wake tests also showed a false no-audio timeout: PCM upload
+started with nonzero peaks, but semantic VAD emitted no speech/transcription
+events and the local 8-second timer said no valid speech was heard. Qwen now
+defaults to acoustic server VAD, waits 12 seconds for the first turn, listens
+after the wake acknowledgement, publishes PCM peak/RMS evidence and commits
+buffered audio through the SDK when locally voiced chunks prove that cloud VAD
+missed the turn.
+
 ## Repository Consolidation Completed
 
 - [x] Split the former 50-file dirty main into coherent VL53L0X, visual-grasp,

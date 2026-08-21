@@ -28,9 +28,9 @@ class DashScopeRealtimeTransport:
         tools: list[dict[str, Any]],
         input_sample_rate: int = 16000,
         output_sample_rate: int = 24000,
-        vad_type: str = "semantic_vad",
-        vad_threshold: float = 0.5,
-        vad_silence_ms: int = 800,
+        vad_type: str = "server_vad",
+        vad_threshold: float = 0.3,
+        vad_silence_ms: int = 1000,
         prefix_padding_ms: int = 300,
     ) -> None:
         self._callback = callback
@@ -167,6 +167,12 @@ class DashScopeRealtimeTransport:
                 self._conversation.create_response,
                 {"output_modalities": self._modalities()},
             )
+
+    def commit_audio(self) -> None:
+        with self._lock:
+            if self._conversation is None:
+                raise RuntimeError("Realtime session is not connected")
+            self._conversation.commit()
 
     def cancel_response(self) -> None:
         with self._lock:

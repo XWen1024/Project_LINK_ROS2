@@ -15,6 +15,7 @@ class FakeConversation:
         self.items = []
         self.responses = 0
         self.canceled = 0
+        self.committed = 0
         FakeConversation.instance = self
 
     def connect(self):
@@ -41,6 +42,9 @@ class FakeConversation:
     def cancel_response(self):
         self.canceled += 1
 
+    def commit(self):
+        self.committed += 1
+
     def close(self):
         return None
 
@@ -63,7 +67,7 @@ def install_fake_dashscope(monkeypatch):
     monkeypatch.setitem(sys.modules, "dashscope.audio.qwen_omni", qwen_omni)
 
 
-def test_transport_configures_semantic_vad_and_tools(monkeypatch):
+def test_transport_configures_server_vad_and_tools(monkeypatch):
     install_fake_dashscope(monkeypatch)
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     transport = DashScopeRealtimeTransport(
@@ -76,9 +80,9 @@ def test_transport_configures_semantic_vad_and_tools(monkeypatch):
     )
     transport.connect()
     conversation = FakeConversation.instance
-    assert conversation.session["turn_detection_type"] == "semantic_vad"
-    assert conversation.session["turn_detection_threshold"] == 0.5
-    assert conversation.session["turn_detection_silence_duration_ms"] == 800
+    assert conversation.session["turn_detection_type"] == "server_vad"
+    assert conversation.session["turn_detection_threshold"] == 0.3
+    assert conversation.session["turn_detection_silence_duration_ms"] == 1000
     assert conversation.session["enable_search"] is False
 
     transport.append_audio(b"pcm")
@@ -86,5 +90,7 @@ def test_transport_configures_semantic_vad_and_tools(monkeypatch):
     transport.send_text("hello")
     assert conversation.items[-1]["content"][0]["text"] == "hello"
     assert conversation.responses == 1
+    transport.commit_audio()
+    assert conversation.committed == 1
     transport.send_tool_result("call-1", {"success": True})
     assert conversation.items[-1]["call_id"] == "call-1"

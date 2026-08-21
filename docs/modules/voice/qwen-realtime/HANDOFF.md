@@ -7,7 +7,7 @@ Archived pre-merge tag: `archive/qwen-realtime-premerge-20260814`
 
 ## Pipeline And Boundary
 
-`project_link_qwen_realtime_voice` uses Qwen3.5 Omni Flash Realtime for semantic
+`project_link_qwen_realtime_voice` uses Qwen3.5 Omni Flash Realtime for server
 VAD, streaming ASR, Function Calling and 24 kHz PCM output in one WebSocket.
 The model never owns ROS Actions, services or `/cmd_vel`; the Python robot-tools
 layer performs all validation and execution.
@@ -21,7 +21,15 @@ Entry modes are `pure-test`, `demo`, `nav2-dry`, `nav2` and `fetch` through
 
 - The merged code passes 11 direct regression scenarios and Python syntax checks.
 - Orin previously built the package with DashScope SDK `1.26.5`.
-- Semantic VAD used threshold `0.5`, 1200 ms silence and 300 ms prefix padding.
+- The current field default is acoustic `server_vad`, threshold `0.3`, 1000 ms
+  silence and 300 ms prefix padding. The earlier semantic-VAD default could
+  receive real PCM while emitting no `speech_started` event.
+- Local PCM peak/RMS evidence and voiced-chunk counts are published in
+  `/voice/status`. If voiced PCM is present but cloud VAD misses the turn, the
+  node calls the DashScope SDK `commit()` fallback instead of immediately
+  claiming there was no audio.
+- First-turn timeout is 12 seconds, and microphone listening normally begins
+  after the wake acknowledgement finishes to avoid self-capture.
 - Name-based iFlytek microphone selection, cached wake playback, clean Ctrl-C,
   multi-turn conversation and bounded natural exit matching were validated.
 - QWeather worked with a real project host and Gzip responses.

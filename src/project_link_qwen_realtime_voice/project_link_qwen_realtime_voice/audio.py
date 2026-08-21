@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import queue
+import struct
 import threading
 import time
 from collections.abc import Callable
@@ -19,6 +20,22 @@ def resolve_device(audio, name: str, input_device: bool) -> int | None:
         if int(info.get(channel_key, 0)) > 0 and wanted in str(info.get("name", "")).lower():
             return index
     return None
+
+
+def pcm16_levels(pcm: bytes) -> tuple[int, float]:
+    """Return peak and RMS for little-endian mono PCM16 without NumPy."""
+    usable = len(pcm) - (len(pcm) % 2)
+    if usable <= 0:
+        return 0, 0.0
+    peak = 0
+    square_sum = 0
+    count = 0
+    for sample, in struct.iter_unpack("<h", pcm[:usable]):
+        magnitude = abs(sample)
+        peak = max(peak, magnitude)
+        square_sum += sample * sample
+        count += 1
+    return peak, (square_sum / count) ** 0.5 if count else 0.0
 
 
 class DuplexPcmAudio:

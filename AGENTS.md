@@ -259,6 +259,11 @@ are evidence snapshots, not current operating instructions.
   `odom -> base_footprint`.
 - Qwen and classic voice are mutually exclusive because they share wake serial,
   microphone, speaker and robot tools.
+- Qwen production input defaults to acoustic `server_vad`. Do not infer silence
+  merely because the cloud emitted no VAD event: retain local PCM peak/RMS and
+  voiced-chunk evidence, and use the bounded SDK audio-commit fallback when
+  clearly voiced PCM was uploaded. Start first-turn listening after the wake
+  acknowledgement unless an AEC-supervised test explicitly enables overlap.
 - LLMs choose registered tools only. The mandatory `end_conversation` executor
   cancels current robot work, plays the fixed exit acknowledgement and returns
   the voice backend to wake standby; it must remain available even when the
