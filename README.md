@@ -42,6 +42,11 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
   on both hosts and preserved as an experiment, but the 2026-08-19 domain-142/42
   WAN field gate failed to pass even a typed `std_msgs/String` endpoint and is
   therefore not the default console path.
+- Field wiring: when connected, the console automatically prefers the Jetson
+  USB device-mode subnet (`Orin 192.168.55.1`, Ubuntu normally
+  `192.168.55.100`) for project data and allowlisted SSH configuration. Orin's
+  gigabit Ethernet remains a separate CPE/external-network path. Disconnecting
+  USB falls back to the existing domain-42 LAN behavior.
 
 See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware gates.
 

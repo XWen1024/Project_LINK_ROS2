@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 import json
+import os
 from typing import Any
 
 from PySide6.QtCore import QObject, QProcess, QSettings, Signal
@@ -26,6 +27,9 @@ class ConfigClient(QObject):
 
     @property
     def ssh_target(self) -> str:
+        runtime_target = os.environ.get("PROJECT_LINK_ORIN_SSH_TARGET", "").strip()
+        if runtime_target:
+            return runtime_target
         return str(self._settings.value("orin/ssh_target", "wte@orin"))
 
     @property

@@ -9,6 +9,24 @@ set -u
 
 export ROS_LOCALHOST_ONLY=0
 
+# Jetson Linux exposes the Orin USB-C device-mode link as 192.168.55.1.
+# Prefer it whenever the kernel has a directly connected route, while keeping
+# the existing LAN/native-DDS path as a fallback when the cable is absent.
+usb_orin_ip="${PROJECT_LINK_USB_ORIN_IP:-192.168.55.1}"
+usb_route="$(ip -4 route get "$usb_orin_ip" 2>/dev/null | head -n 1 || true)"
+usb_interface="$(awk '{for (i=1; i<=NF; i++) if ($i == "dev") {print $(i+1); exit}}' <<<"$usb_route")"
+usb_source="$(awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}' <<<"$usb_route")"
+if [[ "${PROJECT_LINK_ENABLE_EXPERIMENTAL_DDS_ROUTER:-0}" != "1" && \
+      "${PROJECT_LINK_PREFER_USB_DIRECT:-1}" == "1" && \
+      -n "$usb_interface" && "$usb_source" == 192.168.55.* ]] && \
+   ping -I "$usb_interface" -c 1 -W 1 "$usb_orin_ip" >/dev/null 2>&1; then
+  export PROJECT_LINK_DDS_INTERFACE="$usb_interface"
+  export PROJECT_LINK_DDS_PEER_IP="$usb_orin_ip"
+  export PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS=1
+  export PROJECT_LINK_ORIN_SSH_TARGET="wte@$usb_orin_ip"
+  export PROJECT_LINK_TRANSPORT_MODE=usb-direct
+fi
+
 if [[ "${PROJECT_LINK_ENABLE_EXPERIMENTAL_DDS_ROUTER:-0}" == "1" ]]; then
   export ROS_DOMAIN_ID="${PROJECT_LINK_CONSOLE_DOMAIN_ID:-142}"
   export PROJECT_LINK_TRANSPORT_MODE=dds-router
@@ -17,7 +35,7 @@ else
   # Field-safe MVP fallback: use the already verified native ROS 2 domain.
   # Lifecycle/configuration still use SSH; no Router service is started.
   export ROS_DOMAIN_ID="${PROJECT_LINK_CONSOLE_DOMAIN_ID:-42}"
-  export PROJECT_LINK_TRANSPORT_MODE=legacy-dds
+  export PROJECT_LINK_TRANSPORT_MODE="${PROJECT_LINK_TRANSPORT_MODE:-legacy-dds}"
 fi
 
 if [[ "${PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS:-0}" == "1" ]]; then

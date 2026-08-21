@@ -58,10 +58,14 @@ are evidence snapshots, not current operating instructions.
   and loopback listeners but could not pass a typed ROS endpoint across the WAN
   participants. Do not enable it as the default console path without a new
   successful end-to-end gate.
-- The verified production default is native Fast DDS on domain 42. The generated
-  single-interface profile is experimental and must remain disabled unless
-  `PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS=1` is explicitly set for a complete,
-  consistently restarted stack. Never mix old native-DDS processes with newly
+- The verified production default is native Fast DDS on domain 42. When the
+  Jetson USB device-mode link is present, the Ubuntu console launcher prefers
+  the dedicated `192.168.55.0/24` USB subnet and enables the generated
+  single-interface profile consistently: Orin is `192.168.55.1` on `l4tbr0`,
+  and Ubuntu is normally `192.168.55.100` on the route-selected `enx*` device.
+  Set `PROJECT_LINK_PREFER_USB_DIRECT=0` only for a supervised fallback test.
+  Without the USB link, the single-interface profile remains opt-in through
+  `PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS=1`. Never mix old native-DDS processes with newly
   started profile-bound processes: this caused Nav2 to see its own Action while
   losing the existing Point-LIO odometry/TF publishers.
   If a field router blocks UDP between its wired and wireless clients, first
@@ -73,6 +77,14 @@ are evidence snapshots, not current operating instructions.
   multicast gates with Orin on Ethernet and Ubuntu on 5 GHz Wi-Fi.
   The intended vehicle CPE topology is Orin by Ethernet and Ubuntu by 5 GHz
   Wi-Fi, with client isolation disabled and multicast allowed.
+- The preferred field topology separates traffic: Orin USB-C device mode to the
+  Ubuntu console carries project ROS/preview/control traffic, while Orin gigabit
+  Ethernet to the CPE carries external network access. The measured USB 2.0
+  link delivered about 240 Mbps, 0% packet loss and about 0.43 ms ICMP RTT on
+  2026-08-21. Do not bridge or NAT the USB project subnet into the CPE by default.
+  Ordinary Type-C cables cannot network the Ubuntu laptop to a Windows PC when
+  both ports are USB hosts; use a supported USB bridge/USB4 link or USB-Ethernet
+  adapters for a second wired segment.
 - Do not move camera, SO-101, audio, UWB or serial ownership into the Ubuntu GUI.
 - The production cameras have separate roles: `/dev/project_link_front_camera`
   is the chassis-front preview and `/dev/project_link_arm_camera` is the

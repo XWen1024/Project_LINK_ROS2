@@ -27,3 +27,13 @@ def test_orin_and_ubuntu_launchers_gate_fastdds_profile_explicitly():
     assert "project_link_dds_profile.sh" in ubuntu_launcher
     assert "PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS" in orin_env
     assert "PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS" in ubuntu_launcher
+
+
+def test_ubuntu_launcher_prefers_the_jetson_usb_device_mode_link():
+    launcher = (
+        ROOT / "deploy" / "dds-router" / "bin" / "project-link-console"
+    ).read_text(encoding="utf-8")
+    assert "PROJECT_LINK_USB_ORIN_IP:-192.168.55.1" in launcher
+    assert 'ping -I "$usb_interface"' in launcher
+    assert 'PROJECT_LINK_ORIN_SSH_TARGET="wte@$usb_orin_ip"' in launcher
+    assert "PROJECT_LINK_TRANSPORT_MODE=usb-direct" in launcher

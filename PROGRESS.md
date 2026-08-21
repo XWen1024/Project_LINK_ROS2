@@ -31,6 +31,16 @@ single-interface DDS is therefore opt-in again and native Fast DDS remains the
 verified default. A second SSH start completed and the Ubuntu screenshot showed
 Navigation2 mode with the live local costmap restored.
 
+Also on 2026-08-21, the Orin Jetson USB device-mode link was validated to the
+Ubuntu console at `192.168.55.1 <-> 192.168.55.100`: 0% loss, roughly 0.43 ms
+RTT and roughly 240 Mbps application throughput over the available USB 2.0
+cable. The console launcher now auto-prefers this dedicated project subnet,
+binds its single-interface Fast DDS profile to the route-selected USB adapter,
+and directs allowlisted configuration SSH to `wte@192.168.55.1`. Orin Ethernet
+remains available for CPE/external traffic. A normal Type-C cable between the
+Ubuntu and Windows host ports did not enumerate a network adapter and is not a
+usable second network segment without bridge-capable hardware.
+
 ## Repository Consolidation Completed
 
 - [x] Split the former 50-file dirty main into coherent VL53L0X, visual-grasp,

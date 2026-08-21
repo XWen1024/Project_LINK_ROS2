@@ -15,6 +15,11 @@ Verified code: `main@3210e70`
 - Orin 主仓库：`/home/wte/wheeltec_robot`。
 - 外部 Point-LIO 工作区：`/home/wte/point_lio_ws`。
 - ROS 网络：`ROS_DOMAIN_ID=42`、`ROS_LOCALHOST_ONLY=0`。
+- 首选现场链路：Orin 的 Jetson USB device-mode `l4tbr0` 地址
+  `192.168.55.1` 直连 Ubuntu；Ubuntu 通常由 Jetson DHCP 获得
+  `192.168.55.100`。中控启动器通过内核路由动态识别 `enx*` 网卡，USB
+  在线时自动绑定该接口并将配置 SSH 指向 `wte@192.168.55.1`，断开时回退
+  到原 domain 42 局域网路径。
 - 小车外廓：长 `0.51 m`、宽 `0.41 m`、高约 `0.82 m`。
 - Nav2 有效碰撞外廓含 padding 后约为 `0.53 x 0.43 m`。
 - 自动倒车禁用，因为当前没有可靠的后视避障。
@@ -45,10 +50,10 @@ Verified code: `main@3210e70`
 - 中控离开建图导航页时必须销毁地图、全局/局部代价地图、扫描、路径和车头
   摄像头订阅；跌倒页仅在可见时复用车头图像并订阅证据图。Fast DDS 由
   `scripts/project_link_dds_profile.sh` 动态绑定到路由选中的唯一 IPv4 接口，
-  禁止同网段双网卡重复发送同一份 DDS 数据。2026-08-20 当前临时路由器会
-  丢弃 Orin 有线与希沃 Wi-Fi 之间的双向 UDP，因此 Orin 暂用 allowlist 中的
-  `PROJECT_LINK_DDS_INTERFACE=wlP1p1s0`，两端均走 Wi-Fi 单接口；车载 CPE
-  通过跨介质 UDP/组播 gate 后再清除此 override，切换 Orin 有线。
+  禁止同网段双网卡重复发送同一份 DDS 数据。2026-08-21 已验证 USB 2.0
+  直连为 0% 丢包、约 0.43 ms RTT、约 240 Mbps，因此现场优先让项目数据
+  走 USB；Orin 千兆网口保留给 CPE 外网。旧的 Wi-Fi allowlist 仅作为 USB
+  断开后的回退证据，不再是首选现场拓扑。
 
 ## 2. 一键脚本
 
