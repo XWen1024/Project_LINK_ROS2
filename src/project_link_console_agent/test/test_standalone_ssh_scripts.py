@@ -17,6 +17,14 @@ def test_standalone_start_is_allowlisted_and_console_independent():
     assert "/cmd_vel" not in helper
 
 
+def test_nav2_standalone_start_restarts_the_complete_dependency_chain():
+    helper = (
+        ROOT / "deploy" / "systemd" / "bin" / "project-link-standalone-start"
+    ).read_text(encoding="utf-8")
+    assert 'if [[ "$component" == "nav2" ]]' in helper
+    assert 'systemctl --user stop "$entry_unit" "${required_units[@]}"' in helper
+
+
 def test_three_operator_wrappers_use_only_fixed_components():
     expected = {
         "start_nav2.sh": "nav2",

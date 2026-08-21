@@ -41,6 +41,14 @@ remains available for CPE/external traffic. A normal Type-C cable between the
 Ubuntu and Windows host ports did not enumerate a network adapter and is not a
 usable second network segment without bridge-capable hardware.
 
+The first live USB Nav2 retry exposed a stale-process split: the lidar retained
+the USB Fast DDS profile while a later scan process inherited old Wi-Fi/native
+settings, leaving `/unilidar/cloud` discoverable by name but with no usable
+publisher. A complete dependency restart immediately restored `/scan`,
+Point-LIO and Nav2, and the standalone launcher now enforces that restart. The
+Orin shared environment also auto-prefers a reachable USB console peer so stale
+GUI configuration cannot recreate the split.
+
 ## Repository Consolidation Completed
 
 - [x] Split the former 50-file dirty main into coherent VL53L0X, visual-grasp,

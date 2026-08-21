@@ -29,6 +29,23 @@ def test_orin_and_ubuntu_launchers_gate_fastdds_profile_explicitly():
     assert "PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS" in ubuntu_launcher
 
 
+def test_orin_environment_prefers_live_jetson_usb_link():
+    orin_env = (ROOT / "scripts" / "project_link_env.sh").read_text(encoding="utf-8")
+    assert "PROJECT_LINK_USB_CONSOLE_IP:-192.168.55.100" in orin_env
+    assert "ping -I l4tbr0" in orin_env
+    assert "PROJECT_LINK_DDS_INTERFACE=l4tbr0" in orin_env
+    assert "PROJECT_LINK_TRANSPORT_MODE=usb-direct" in orin_env
+
+
+def test_lidar_uses_the_shared_project_environment_before_its_overlay():
+    component = (ROOT / "deploy/systemd/bin/project-link-component").read_text(
+        encoding="utf-8"
+    )
+    lidar = component.split("  lidar)", 1)[1].split("  front-camera)", 1)[0]
+    assert 'source "$workspace/scripts/project_link_env.sh"' in lidar
+    assert lidar.index("project_link_env.sh") < lidar.index("unilidar_ws/install/setup.bash")
+
+
 def test_ubuntu_launcher_prefers_the_jetson_usb_device_mode_link():
     launcher = (
         ROOT / "deploy" / "dds-router" / "bin" / "project-link-console"

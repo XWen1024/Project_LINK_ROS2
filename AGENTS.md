@@ -64,6 +64,11 @@ are evidence snapshots, not current operating instructions.
   single-interface profile consistently: Orin is `192.168.55.1` on `l4tbr0`,
   and Ubuntu is normally `192.168.55.100` on the route-selected `enx*` device.
   Set `PROJECT_LINK_PREFER_USB_DIRECT=0` only for a supervised fallback test.
+  Orin `scripts/project_link_env.sh` performs the same live-peer check and
+  overrides stale Wi-Fi values from `console.env`; all services started while
+  USB is present must therefore select `l4tbr0`. The standalone Nav2 entry point
+  deliberately stops and recreates the complete dependency chain so an older
+  lidar process cannot be mixed with a newly USB-bound scan/Nav2 process.
   Without the USB link, the single-interface profile remains opt-in through
   `PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS=1`. Never mix old native-DDS processes with newly
   started profile-bound processes: this caused Nav2 to see its own Action while

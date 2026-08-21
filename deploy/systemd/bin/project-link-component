@@ -39,15 +39,12 @@ case "$component" in
     # ROS 2 Humble setup files are not nounset-safe: they probe variables such
     # as AMENT_TRACE_SETUP_FILES before defining them. Keep strict mode for the
     # component itself, but temporarily disable nounset while sourcing overlays.
+    # Load the shared project environment first so lidar uses the exact same
+    # live USB/LAN selection as scan, Point-LIO and Nav2.
     set +u
-    source /opt/ros/humble/setup.bash
+    source "$workspace/scripts/project_link_env.sh"
     source "$unilidar_ws/install/setup.bash"
     set -u
-    export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
-    export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
-    if [[ "${PROJECT_LINK_ENABLE_SINGLE_INTERFACE_DDS:-0}" == "1" ]]; then
-      source "$workspace/scripts/project_link_dds_profile.sh"
-    fi
     exec ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
       -p port:="${UNILIDAR_PORT:-/dev/project_link_lidar}"
     ;;

@@ -50,6 +50,15 @@ fi
 
 echo "Submitting $component through Orin systemd --user..."
 systemctl --user reset-failed "$entry_unit" "${required_units[@]}" >/dev/null 2>&1 || true
+
+# Never reuse a partial Nav2 chain started under another LAN/USB transport.
+# Mixed lidar and scan DDS environments expose topic names without scan data.
+if [[ "$component" == "nav2" ]]; then
+  echo "Stopping the previous Nav2 dependency chain for a consistent restart..."
+  systemctl --user stop "$entry_unit" "${required_units[@]}"
+  systemctl --user reset-failed "$entry_unit" "${required_units[@]}" >/dev/null 2>&1 || true
+fi
+
 systemctl --user start --no-block "$entry_unit"
 
 deadline=$((SECONDS + timeout_sec))

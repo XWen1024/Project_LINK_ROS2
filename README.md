@@ -46,7 +46,9 @@ Ubuntu performs all rendering; Orin remains a headless ROS 2 hardware and contro
   USB device-mode subnet (`Orin 192.168.55.1`, Ubuntu normally
   `192.168.55.100`) for project data and allowlisted SSH configuration. Orin's
   gigabit Ethernet remains a separate CPE/external-network path. Disconnecting
-  USB falls back to the existing domain-42 LAN behavior.
+  USB falls back to the existing domain-42 LAN behavior. Orin services perform
+  the same live-peer check, and standalone Nav2 startup recreates its complete
+  dependency chain so lidar and scan processes cannot retain mixed transports.
 
 See [PROGRESS.md](PROGRESS.md) for the active milestone and remaining hardware gates.
 
